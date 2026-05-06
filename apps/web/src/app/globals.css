@@ -1,0 +1,143 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #000000;
+  --bg-surface: #0a0a0a;
+  --bg-card: #0f0f0f;
+  --border: #1f1f1f;
+  --border-glow: #86f0ad;
+  --accent: #86f0ad;
+  --accent-bright: #b5fad0;
+  --accent-dim: #3d8f62;
+  --survive: #4ade80;
+  --rug: #ef4444;
+  --warning: #f59e0b;
+  --text-primary: #ecfccb;
+  --text-muted: #6b7280;
+  --text-secondary: #a3a3a3;
+  --glow: rgba(134, 240, 173, 0.22);
+  --on-accent: #000000;
+  --inset-glow: rgba(134, 240, 173, 0.1);
+}
+
+@layer base {
+  html {
+    @apply scroll-smooth;
+  }
+
+  html,
+  body {
+    @apply min-h-full font-sans text-foreground antialiased;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-display font-bold tracking-tight;
+    color: var(--text-primary);
+  }
+
+  ::selection {
+    background-color: rgba(134, 240, 173, 0.35);
+    color: var(--text-primary);
+  }
+}
+
+@layer components {
+  .terminal-bg {
+    background-color: var(--bg-primary);
+  }
+
+  .card-cyber {
+    @apply border border-[var(--border)] bg-[var(--bg-card)] transition-all duration-200;
+    box-shadow: none;
+  }
+
+  .card-cyber:hover {
+    border-color: var(--border-glow);
+    box-shadow: 0 0 28px var(--glow), 0 0 0 1px var(--border-glow);
+  }
+
+  .header-scanline {
+    position: relative;
+  }
+
+  .header-scanline::after {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    background-color: rgba(134, 240, 173, 0.04);
+  }
+
+  .glitch-rug {
+    animation: glitch-rug 0.4s ease-out;
+  }
+
+  @keyframes glitch-rug {
+    0% {
+      transform: translate(0);
+      filter: none;
+    }
+    20% {
+      transform: translate(-2px, 1px);
+      filter: hue-rotate(-10deg);
+    }
+    40% {
+      transform: translate(2px, -1px);
+    }
+    60% {
+      transform: translate(-1px, -1px);
+    }
+    100% {
+      transform: translate(0);
+      filter: none;
+    }
+  }
+
+  .wallet-adapter-modal-wrapper {
+    font-family: var(--font-display), system-ui, sans-serif;
+  }
+
+  .wallet-adapter-modal {
+    background-color: var(--bg-card) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 0.5rem !important;
+    box-shadow: 0 0 32px var(--glow) !important;
+  }
+
+  .wallet-adapter-modal-title {
+    color: var(--text-primary) !important;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: 0.7rem !important;
+  }
+
+  .wallet-adapter-modal-button-close {
+    background-color: transparent !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 0.5rem !important;
+  }
+
+  .wallet-adapter-modal-list .wallet-adapter-button {
+    background-color: var(--bg-surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 0.5rem !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-mono), ui-monospace, monospace !important;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+  }
+
+  .wallet-adapter-modal-list .wallet-adapter-button:hover {
+    border-color: var(--border-glow) !important;
+    box-shadow: 0 0 16px var(--glow) !important;
+  }
+}
