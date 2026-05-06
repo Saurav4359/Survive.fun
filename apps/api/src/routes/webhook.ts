@@ -179,6 +179,8 @@ function prismaRowToMarket(row: DbMarket): Market {
     openPrice: row.openPrice?.toString() ?? null,
     openLiquidity: row.openLiquidity?.toString() ?? null,
     devWallet: row.devWallet,
+    devSellThresholdOverride:
+      row.devSellThresholdOverride?.toString() ?? null,
     status: row.status as Market["status"],
     outcome: (row.outcome as Market["outcome"] | null) ?? null,
     onChainAddress: row.onChainAddress,

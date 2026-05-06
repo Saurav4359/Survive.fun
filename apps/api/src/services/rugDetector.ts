@@ -206,6 +206,12 @@ async function conditionDevSell(market: Market): Promise<{
   const ratio =
     initialHoldingsAtOpenUi > 0 ? totalSoldUi / initialHoldingsAtOpenUi : 0;
 
+  const override = parseMarketDecimal(market.devSellThresholdOverride ?? undefined);
+  const ratioThreshold =
+    override != null && override > 0 && override <= 1
+      ? override
+      : DEV_SELL_RATIO_THRESHOLD;
+
   const detail: Record<string, unknown> = {
     devWallet,
     tokenMint: market.tokenMint,
@@ -215,9 +221,10 @@ async function conditionDevSell(market: Market): Promise<{
     currentBalanceUi: currentUi,
     initialHoldingsAtOpenUi,
     soldToInitialRatio: ratio,
+    devSellRatioThreshold: ratioThreshold,
   };
 
-  const triggered = ratio > DEV_SELL_RATIO_THRESHOLD;
+  const triggered = ratio > ratioThreshold;
   return { triggered, detail };
 }
 

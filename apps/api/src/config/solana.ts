@@ -8,12 +8,21 @@ export const connection = new Connection(
   "confirmed",
 );
 
+/** Default from `contracts/programs/survivefun` Anchor `declare_id!` (local dev). */
+const DEFAULT_DEV_PROGRAM_ID = "HB3uE5XQGq1xNtW9RMSrnBegwifeLzk1xyr75ofRPrtH";
+
 function readProgramId(): PublicKey {
   const raw = process.env.SURVIVEFUN_PROGRAM_ID?.trim();
-  if (!raw) {
-    throw new Error("SURVIVEFUN_PROGRAM_ID must be set");
+  if (raw) {
+    return new PublicKey(raw);
   }
-  return new PublicKey(raw);
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("SURVIVEFUN_PROGRAM_ID must be set in production");
+  }
+  console.warn(
+    "[solana] SURVIVEFUN_PROGRAM_ID unset; using local dev program id (set env for your deployment)",
+  );
+  return new PublicKey(DEFAULT_DEV_PROGRAM_ID);
 }
 
 /** On-chain program public key (from env). */

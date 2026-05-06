@@ -20,6 +20,8 @@ model Market {
   openPrice       Decimal?  @map("open_price") @db.Decimal(18, 9)
   openLiquidity   Decimal?  @map("open_liquidity") @db.Decimal(18, 2)
   devWallet       String?   @map("dev_wallet") @db.VarChar(44)
+  /// Demo-only: when set (e.g. 0.05), dev_sell rug ratio uses this instead of 25%.
+  devSellThresholdOverride Decimal? @map("dev_sell_threshold_override") @db.Decimal(7, 6)
   status          String    @default("active") @db.VarChar(20)
   outcome         String?   @db.VarChar(10)
   onChainAddress  String?   @map("on_chain_address") @db.VarChar(44)

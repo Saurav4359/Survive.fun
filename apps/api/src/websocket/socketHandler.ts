@@ -3,7 +3,7 @@
  * No database access — callers pass data in from routes/jobs/services.
  */
 
-import type { BetSide, Market, Outcome } from "@survivefun/types";
+import type { BetPlaced, Market, Outcome } from "@survivefun/types";
 import type { Server, Socket } from "socket.io";
 
 /** All connected clients are joined here on connect (platform-wide feed). */
@@ -15,14 +15,6 @@ export const ROOM_STATS = "stats";
 export function roomForMarket(marketId: string): string {
   return `market:${marketId}`;
 }
-
-export type BetPlacedSocketPayload = {
-  marketId: string;
-  side: BetSide;
-  amount: string;
-  wallet: string;
-  timestamp: string;
-};
 
 export type MarketResolvedSocketPayload = {
   marketId: string;
@@ -110,7 +102,7 @@ export function emitMarketCreated(market: Market): void {
 }
 
 /** Emits only to subscribers of that market room. */
-export function emitBetPlaced(payload: BetPlacedSocketPayload): void {
+export function emitBetPlaced(payload: BetPlaced): void {
   getIo()
     .to(roomForMarket(payload.marketId))
     .emit("bet_placed", payload);
