@@ -20,5 +20,5 @@ custom-heap = []
 custom-panic = []
 
 [dependencies]
-anchor-lang = "0.31.1"
-anchor-spl = "0.31.1"
+anchor-lang = "0.29.0"
+anchor-spl = "0.29.0"

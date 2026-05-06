@@ -8,7 +8,7 @@ pub mod state;
 pub use state::bet::BetSide;
 pub use state::market::Outcome;
 
-declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYUkpgULLyQ4K");
+declare_id!("HB3uE5XQGq1xNtW9RMSrnBegwifeLzk1xyr75ofRPrtH");
 
 #[program]
 pub mod survivefun {
