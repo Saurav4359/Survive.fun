@@ -10,6 +10,7 @@ import { PhantomWalletAdapter } from "@solana/wallet-adapter-wallets";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useMemo, useState, type ReactNode } from "react";
 
+import { ToastProvider } from "@/components/ToastProvider";
 import { RPC_URL } from "@/utils/constants";
 
 import "@solana/wallet-adapter-react-ui/styles.css";
@@ -39,7 +40,7 @@ export function Providers({ children }: { children: ReactNode }) {
       <WalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider>
           <QueryClientProvider client={queryClient}>
-            {children}
+            <ToastProvider>{children}</ToastProvider>
           </QueryClientProvider>
         </WalletModalProvider>
       </WalletProvider>

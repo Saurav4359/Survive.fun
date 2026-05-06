@@ -1,14 +1,22 @@
 "use client";
 
-import type { Market } from "@survivefun/types";
+import type { ApiResponse, Market } from "@survivefun/types";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { motion } from "framer-motion";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Inbox } from "lucide-react";
 import { useState, type CSSProperties } from "react";
 
+import { EmptyState } from "@/components/EmptyState";
 import { LiveFeed } from "@/components/LiveFeed";
 import { MarketCard } from "@/components/MarketCard";
-import { MARKET_DURATIONS } from "@/utils/constants";
+import { useToast } from "@/components/ToastProvider";
+import { MarketCardSkeleton } from "@/components/ui/skeletons";
+import { fetchActiveMarkets, marketsQueryKey } from "@/hooks/useMarkets";
+import { fetchStats, statsQueryKey } from "@/hooks/useStats";
+import { API_URL, MARKET_DURATIONS } from "@/utils/constants";
+import { formatUSDC } from "@/utils/format";
 
 const DURATION_TABS: { label: string; seconds: (typeof MARKET_DURATIONS)[number] }[] =
   [
@@ -16,130 +24,6 @@ const DURATION_TABS: { label: string; seconds: (typeof MARKET_DURATIONS)[number]
     { label: "6H", seconds: MARKET_DURATIONS[1] },
     { label: "24H", seconds: MARKET_DURATIONS[2] },
   ];
-
-const DEMO_MARKETS: Market[] = [
-  {
-    id: "11111111-1111-1111-1111-111111111111",
-    tokenMint: "So11111111111111111111111111111111111111112",
-    tokenName: "Survive Sendit",
-    tokenTicker: "SND",
-    creatorWallet: "Creator1111111111111111111111111111111111",
-    durationSeconds: 3600,
-    expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-    survivePool: "12450.5",
-    rugPool: "8320.25",
-    openPrice: "0.00042",
-    openLiquidity: "210000",
-    devWallet: null,
-    status: "active",
-    outcome: null,
-    onChainAddress: null,
-    createdAt: new Date().toISOString(),
-    totalBettors: 128,
-  },
-  {
-    id: "22222222-2222-2222-2222-222222222222",
-    tokenMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-    tokenName: "Only Up",
-    tokenTicker: "UP",
-    creatorWallet: "Creator2222222222222222222222222222222222",
-    durationSeconds: 21600,
-    expiresAt: new Date(Date.now() + 45 * 60 * 1000).toISOString(),
-    survivePool: "50200",
-    rugPool: "12800",
-    openPrice: "0.0012",
-    openLiquidity: "480000",
-    devWallet: "Dev2222222222222222222222222222222222222",
-    status: "active",
-    outcome: null,
-    onChainAddress: null,
-    createdAt: new Date().toISOString(),
-    totalBettors: 342,
-  },
-  {
-    id: "33333333-3333-3333-3333-333333333333",
-    tokenMint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
-    tokenName: "Roundtrip Risk",
-    tokenTicker: "RISK",
-    creatorWallet: "Creator3333333333333333333333333333333333",
-    durationSeconds: 86400,
-    expiresAt: new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString(),
-    survivePool: "980",
-    rugPool: "4100",
-    openPrice: "0.0000098",
-    openLiquidity: "12000",
-    devWallet: null,
-    status: "active",
-    outcome: null,
-    onChainAddress: null,
-    createdAt: new Date().toISOString(),
-    totalBettors: 56,
-  },
-  {
-    id: "44444444-4444-4444-4444-444444444444",
-    tokenMint: "bonk111111111111111111111111111111111111111",
-    tokenName: "Bonk Survivors",
-    tokenTicker: "BNK",
-    creatorWallet: "Creator4444444444444444444444444444444444",
-    durationSeconds: 86400,
-    expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
-    survivePool: "8800",
-    rugPool: "2100",
-    openPrice: "0.000022",
-    openLiquidity: "88000",
-    devWallet: null,
-    status: "active",
-    outcome: null,
-    onChainAddress: null,
-    createdAt: new Date().toISOString(),
-    totalBettors: 201,
-  },
-  {
-    id: "55555555-5555-5555-5555-555555555555",
-    tokenMint: "pumpSo111111111111111111111111111111111111112",
-    tokenName: "Fresh Mint Mayhem",
-    tokenTicker: "FMM",
-    creatorWallet: "Creator5555555555555555555555555555555555",
-    durationSeconds: 3600,
-    expiresAt: new Date(Date.now() + 25 * 60 * 1000).toISOString(),
-    survivePool: "1420",
-    rugPool: "980",
-    openPrice: "0.0000014",
-    openLiquidity: "22000",
-    devWallet: null,
-    status: "active",
-    outcome: null,
-    onChainAddress: null,
-    createdAt: new Date().toISOString(),
-    totalBettors: 44,
-  },
-  {
-    id: "66666666-6666-6666-6666-666666666666",
-    tokenMint: "memeSo111111111111111111111111111111111111112",
-    tokenName: "Normie Exit Liquidity",
-    tokenTicker: "NEL",
-    creatorWallet: "Creator6666666666666666666666666666666666",
-    durationSeconds: 21600,
-    expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
-    survivePool: "32100",
-    rugPool: "15400",
-    openPrice: "0.00031",
-    openLiquidity: "310000",
-    devWallet: null,
-    status: "active",
-    outcome: null,
-    onChainAddress: null,
-    createdAt: new Date().toISOString(),
-    totalBettors: 512,
-  },
-];
-
-const STATS = [
-  { label: "Active Markets", value: "12" },
-  { label: "Total Volume", value: "$4,200 USDC" },
-  { label: "Rugs Caught", value: "847" },
-  { label: "Biggest Win", value: "$420 USDC" },
-] as const;
 
 const sectionEase = { duration: 0.35, ease: [0.4, 0, 0.2, 1] as const };
 
@@ -164,11 +48,120 @@ const HERO_GRID_STYLE: CSSProperties = {
   backgroundSize: "28px 28px",
 };
 
+function StatCellSkeleton() {
+  return (
+    <div className="bg-card px-4 py-4 sm:px-5 sm:py-5">
+      <div className="h-3 w-24 animate-pulse rounded bg-border/80" />
+      <div className="mt-3 h-7 w-20 animate-pulse rounded bg-border/80" />
+    </div>
+  );
+}
+
 export default function HomePage() {
+  const { publicKey } = useWallet();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+
+  const marketsQuery = useQuery({
+    queryKey: marketsQueryKey,
+    queryFn: fetchActiveMarkets,
+    staleTime: 15_000,
+  });
+
+  const statsQuery = useQuery({
+    queryKey: statsQueryKey,
+    queryFn: fetchStats,
+    staleTime: 20_000,
+  });
+
+  const markets = marketsQuery.data ?? [];
+  const marketsLoading = marketsQuery.isPending;
+  const marketsError =
+    marketsQuery.error instanceof Error ? marketsQuery.error : null;
+
+  const stats = statsQuery.data;
+  const statsLoading = statsQuery.isPending;
+  const statsError =
+    statsQuery.error instanceof Error ? statsQuery.error : null;
+
   const [tokenMint, setTokenMint] = useState("");
   const [durationSeconds, setDurationSeconds] = useState<number>(
     MARKET_DURATIONS[2],
   );
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const createMarket = useMutation({
+    mutationFn: async (): Promise<Market> => {
+      if (!publicKey) {
+        throw new Error("Connect a wallet to create a market");
+      }
+      const mint = tokenMint.trim();
+      if (!mint) {
+        throw new Error("Enter a token mint address");
+      }
+      const res = await fetch(`${API_URL}/v1/markets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tokenMint: mint,
+          duration: durationSeconds,
+          walletAddress: publicKey.toBase58(),
+        }),
+      });
+      const body = (await res.json()) as ApiResponse<Market>;
+      if (!res.ok || !body.success) {
+        const msg =
+          !body.success ? body.error.message : `Create failed (${res.status})`;
+        throw new Error(msg);
+      }
+      return body.data;
+    },
+    onSuccess: () => {
+      setCreateError(null);
+      setTokenMint("");
+      toast({
+        variant: "success",
+        title: "Market created",
+        message: "It’s live — traders can start betting.",
+      });
+      void queryClient.invalidateQueries({ queryKey: marketsQueryKey });
+      void queryClient.invalidateQueries({ queryKey: statsQueryKey });
+    },
+    onError: (e) => {
+      const msg = e instanceof Error ? e.message : "Create failed";
+      setCreateError(msg);
+      toast({ variant: "error", title: "Couldn’t create market", message: msg });
+    },
+  });
+
+  const statRows = [
+    {
+      label: "Active Markets",
+      value: statsLoading ? "—" : String(stats?.activeMarkets ?? "—"),
+    },
+    {
+      label: "Total Volume",
+      value: statsLoading
+        ? "—"
+        : stats
+          ? `${formatUSDC(Number.parseFloat(stats.totalBetVolumeUsdc))} USDC`
+          : statsError
+            ? "—"
+            : "—",
+    },
+    {
+      label: "Rugs (resolved)",
+      value: statsLoading ? "—" : String(stats?.resolvedRugs ?? "—"),
+    },
+    {
+      label: "Biggest payout",
+      value: statsLoading
+        ? "—"
+        : stats?.largestPayoutUsdc != null
+          ? formatUSDC(Number.parseFloat(stats.largestPayoutUsdc))
+          : "—",
+    },
+  ];
 
   return (
     <div className="min-h-screen pb-16 pt-6 sm:pb-24 sm:pt-10">
@@ -201,19 +194,21 @@ export default function HomePage() {
           aria-label="Platform statistics"
           className="mt-8 grid grid-cols-2 gap-px border border-border bg-border lg:grid-cols-4"
         >
-          {STATS.map((row) => (
-            <div
-              key={row.label}
-              className="bg-card px-4 py-4 sm:px-5 sm:py-5"
-            >
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
-                {row.label}
-              </p>
-              <p className="mt-2 font-mono text-base font-semibold tabular-nums text-foreground sm:text-lg">
-                {row.value}
-              </p>
-            </div>
-          ))}
+          {statsLoading
+            ? Array.from({ length: 4 }).map((_, i) => <StatCellSkeleton key={i} />)
+            : statRows.map((row) => (
+                <div
+                  key={row.label}
+                  className="bg-card px-4 py-4 sm:px-5 sm:py-5"
+                >
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                    {row.label}
+                  </p>
+                  <p className="mt-2 font-mono text-base font-semibold tabular-nums text-foreground sm:text-lg">
+                    {row.value}
+                  </p>
+                </div>
+              ))}
         </motion.section>
 
         <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-12 lg:gap-8 xl:gap-10">
@@ -269,12 +264,20 @@ export default function HomePage() {
 
                   <button
                     type="button"
-                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-accent bg-accent px-6 py-3 font-mono text-xs font-bold uppercase tracking-widest text-ink shadow-glow-sm transition-all duration-200 hover:border-accent-bright hover:bg-transparent hover:text-accent-bright hover:shadow-none"
+                    disabled={createMarket.isPending}
+                    onClick={() => {
+                      setCreateError(null);
+                      void createMarket.mutateAsync();
+                    }}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-accent bg-accent px-6 py-3 font-mono text-xs font-bold uppercase tracking-widest text-ink shadow-glow-sm transition-all duration-200 hover:border-accent-bright hover:bg-transparent hover:text-accent-bright hover:shadow-none disabled:opacity-50"
                   >
                     Create Market
                     <ArrowRight className="h-4 w-4" aria-hidden />
                   </button>
                 </div>
+                {createError ? (
+                  <p className="font-mono text-xs text-rug">{createError}</p>
+                ) : null}
               </div>
             </motion.section>
 
@@ -288,21 +291,42 @@ export default function HomePage() {
                 <h2 className="font-display text-lg font-bold uppercase tracking-widest text-foreground">
                   Active markets
                 </h2>
-                <span className="font-mono text-xs text-muted">Demo</span>
+                {marketsError ? (
+                  <span className="font-mono text-xs text-rug">Load error</span>
+                ) : null}
               </div>
 
-              <motion.div
-                className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3"
-                variants={staggerContainer}
-                initial="hidden"
-                animate="show"
-              >
-                {DEMO_MARKETS.map((market) => (
-                  <motion.div key={market.id} variants={staggerItem}>
-                    <MarketCard market={market} />
-                  </motion.div>
-                ))}
-              </motion.div>
+              {marketsLoading ? (
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <MarketCardSkeleton key={i} />
+                  ))}
+                </div>
+              ) : markets.length === 0 ? (
+                <EmptyState
+                  icon={Inbox}
+                  title="No active markets"
+                  description="Create one with the form above, or seed demo data from the API when you’re developing locally."
+                  action={{ label: "Scroll to create", onClick: () => {
+                    document
+                      .querySelector('[aria-label="Create market"]')
+                      ?.scrollIntoView({ behavior: "smooth" });
+                  } }}
+                />
+              ) : (
+                <motion.div
+                  className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3"
+                  variants={staggerContainer}
+                  initial="hidden"
+                  animate="show"
+                >
+                  {markets.map((market) => (
+                    <motion.div key={market.id} variants={staggerItem}>
+                      <MarketCard market={market} />
+                    </motion.div>
+                  ))}
+                </motion.div>
+              )}
             </motion.section>
           </div>
 

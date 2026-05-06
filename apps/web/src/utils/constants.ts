@@ -8,15 +8,15 @@ export const USDC_MINT = new PublicKey(
   "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
 );
 
-const devnetFallbackProgram = "11111111111111111111111111111112";
+/** Local Anchor `declare_id!` in `contracts/programs/survivefun` until you set env. */
+const localAnchorProgramId =
+  "HB3uE5XQGq1xNtW9RMSrnBegwifeLzk1xyr75ofRPrtH";
 
 const programIdBase58 =
-  process.env.NEXT_PUBLIC_PROGRAM_ID ?? devnetFallbackProgram;
+  process.env.NEXT_PUBLIC_PROGRAM_ID?.trim() || localAnchorProgramId;
 
 /**
- * Deployed Survive.fun program id. Set `NEXT_PUBLIC_PROGRAM_ID` in `.env.local`
- * for real deployments; until then this resolves to a well-known placeholder
- * PublicKey so the bundle type-checks.
+ * Deployed Survive.fun program id. Override with `NEXT_PUBLIC_PROGRAM_ID` in `.env.local`.
  */
 export const PROGRAM_ID = new PublicKey(programIdBase58);
 

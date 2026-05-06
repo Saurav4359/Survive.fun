@@ -44,40 +44,18 @@ function rowOpacity(at: Date, now: number): number {
   return 1 - t * 0.65;
 }
 
-function buildDemoFeedRows(maxRows: number): FeedRow[] {
-  const cap = Math.min(Math.max(maxRows, 1), 40);
-  const t0 = Date.now();
-  const wallets = [
-    "9xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuK9",
-    "Bettor7QmN2fFG7nH9pJkV4xYzAbcDeFgHiJkLmNoPq",
-    "WhaleA1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0",
-    "DemoSo111111111111111111111111111111111111112",
-    "PumpFun9ZZ11111111111111111111111111111111111",
-  ];
-  return Array.from({ length: cap }, (_, i) => ({
-    id: `demo-${i}-${t0}`,
-    wallet: wallets[i % wallets.length]!,
-    side: (i % 5 === 0 ? "rug" : "survive") as BetSide,
-    amountUsdc: Math.round((12 + i * 7.15) * 100) / 100,
-    at: new Date(t0 - i * 55_000),
-  }));
-}
-
 export type LiveFeedProps = {
   marketId?: string;
   /** Cap rows stored (default 80). */
   maxRows?: number;
   /** Section heading (default "Live bet feed"). */
   heading?: string;
-  /** Static demo rows only — no socket. */
-  demoOnly?: boolean;
 };
 
 export function LiveFeed({
   marketId,
   maxRows = 80,
   heading = "Live bet feed",
-  demoOnly = false,
 }: LiveFeedProps) {
   const [rows, setRows] = useState<FeedRow[]>([]);
   const [now, setNow] = useState(() => Date.now());
@@ -100,11 +78,6 @@ export function LiveFeed({
   }, []);
 
   useEffect(() => {
-    if (demoOnly) {
-      setRows(buildDemoFeedRows(maxRows));
-      return undefined;
-    }
-
     let cancelled = false;
     const socket = io(API_URL, {
       transports: ["websocket", "polling"],
@@ -121,21 +94,13 @@ export function LiveFeed({
 
     socket.on("bet_placed", onBetPlaced);
 
-    socket.on("connect_error", () => {
-      if (cancelled) return;
-      setRows((prev) => {
-        if (prev.length > 0) return prev;
-        return buildDemoFeedRows(maxRows);
-      });
-    });
-
     return () => {
       cancelled = true;
       socket.off("bet_placed", onBetPlaced);
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [demoOnly, marketId, maxRows]);
+  }, [marketId, maxRows]);
 
   return (
     <section aria-label="Live bets" className="card-cyber">

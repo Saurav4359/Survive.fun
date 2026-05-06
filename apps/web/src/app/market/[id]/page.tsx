@@ -1,8 +1,10 @@
 "use client";
 
-import type { BetSide, Market, Token } from "@survivefun/types";
+import type { ApiResponse, Bet, BetSide, Market, Token } from "@survivefun/types";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, SearchX } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -12,97 +14,17 @@ import { BetPanel } from "@/components/BetPanel";
 import { LiveFeed } from "@/components/LiveFeed";
 import { PoolBar } from "@/components/PoolBar";
 import { RiskScore } from "@/components/RiskScore";
+import { useToast } from "@/components/ToastProvider";
 import { Timer } from "@/components/Timer";
+import { ChartAreaSkeleton, MarketDetailPageSkeleton } from "@/components/ui/skeletons";
+import { marketQueryKey, useMarket } from "@/hooks/useMarket";
+import { useMarketBetsList, marketBetsQueryKey } from "@/hooks/useMarketBetsList";
+import { useToken } from "@/hooks/useToken";
+import { API_URL } from "@/utils/constants";
 import { formatPool, formatUSDC, formatWallet } from "@/utils/format";
+import { getMarketPDA, placeBet as placeBetOnChain } from "@/utils/transactions";
 
-/** Accent line on dark chart (theme primary). */
 const CHART_LINE = "#86f0ad";
-
-const DEMO_BY_ID: Record<string, Market> = {
-  "11111111-1111-1111-1111-111111111111": {
-    id: "11111111-1111-1111-1111-111111111111",
-    tokenMint: "So11111111111111111111111111111111111111112",
-    tokenName: "Survive Sendit",
-    tokenTicker: "SND",
-    creatorWallet: "Creator1111111111111111111111111111111111",
-    durationSeconds: 3600,
-    expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-    survivePool: "12450.5",
-    rugPool: "8320.25",
-    openPrice: "0.00042",
-    openLiquidity: "210000",
-    devWallet: "DevSo111111111111111111111111111111111111111",
-    status: "active",
-    outcome: null,
-    onChainAddress: null,
-    createdAt: new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString(),
-    totalBettors: 128,
-  },
-  "22222222-2222-2222-2222-222222222222": {
-    id: "22222222-2222-2222-2222-222222222222",
-    tokenMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-    tokenName: "Only Up",
-    tokenTicker: "UP",
-    creatorWallet: "Creator2222222222222222222222222222222222",
-    durationSeconds: 21600,
-    expiresAt: new Date(Date.now() + 45 * 60 * 1000).toISOString(),
-    survivePool: "50200",
-    rugPool: "12800",
-    openPrice: "0.0012",
-    openLiquidity: "480000",
-    devWallet: "Dev2222222222222222222222222222222222222",
-    status: "active",
-    outcome: null,
-    onChainAddress: null,
-    createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-    totalBettors: 342,
-  },
-  "33333333-3333-3333-3333-333333333333": {
-    id: "33333333-3333-3333-3333-333333333333",
-    tokenMint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
-    tokenName: "Roundtrip Risk",
-    tokenTicker: "RISK",
-    creatorWallet: "Creator3333333333333333333333333333333333",
-    durationSeconds: 86400,
-    expiresAt: new Date(Date.now() + 3 * 60 * 1000).toISOString(),
-    survivePool: "980",
-    rugPool: "4100",
-    openPrice: "0.0000098",
-    openLiquidity: "12000",
-    devWallet: null,
-    status: "active",
-    outcome: null,
-    onChainAddress: null,
-    createdAt: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
-    totalBettors: 56,
-  },
-};
-
-function fallbackMarket(id: string): Market {
-  return (
-    DEMO_BY_ID[id] ??
-    Object.values(DEMO_BY_ID)[0] ??
-    ({
-      id,
-      tokenMint: "So11111111111111111111111111111111111111112",
-      tokenName: "Unknown",
-      tokenTicker: "???",
-      creatorWallet: "Creator1111111111111111111111111111111111",
-      durationSeconds: 3600,
-      expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-      survivePool: "1000",
-      rugPool: "1000",
-      openPrice: "0.0001",
-      openLiquidity: "50000",
-      devWallet: null,
-      status: "active",
-      outcome: null,
-      onChainAddress: null,
-      createdAt: new Date().toISOString(),
-      totalBettors: 0,
-    } satisfies Market)
-  );
-}
 
 function parseNum(s: string | null | undefined): number | null {
   if (s == null) return null;
@@ -118,25 +40,6 @@ const TF_CONFIG: Record<ChartTf, { stepSec: number; bars: number }> = {
   "15m": { stepSec: 900, bars: 64 },
   "1h": { stepSec: 3600, bars: 72 },
 };
-
-const DEMO_MARKET_CAP = "$1.24M";
-const DEMO_HOLDERS_COUNT = "3,421";
-
-const DEMO_HOLDERS = [
-  { wallet: "9xKX…TZRu", pct: "6.8%", amt: "$82.4k" },
-  { wallet: "7QmN…NoPq", pct: "4.1%", amt: "$49.2k" },
-  { wallet: "Whal…9t0", pct: "3.2%", amt: "$38.5k" },
-  { wallet: "Pump…1111", pct: "2.4%", amt: "$29.1k" },
-  { wallet: "Demo…2222", pct: "1.9%", amt: "$23.0k" },
-];
-
-const DEMO_TXS = [
-  { time: "14:22:08", kind: "Bet SURVIVE", amt: "$50 USDC" },
-  { time: "14:18:51", kind: "Bet RUG", amt: "$25 USDC" },
-  { time: "14:05:12", kind: "Bet SURVIVE", amt: "$10 USDC" },
-  { time: "13:58:44", kind: "Bet SURVIVE", amt: "$100 USDC" },
-  { time: "13:41:03", kind: "Bet RUG", amt: "$15 USDC" },
-];
 
 function formatTokenAgeShort(createdIso: string): string {
   const t = Date.parse(createdIso);
@@ -157,14 +60,21 @@ export default function MarketPage() {
   const id =
     typeof rawId === "string" ? rawId : Array.isArray(rawId) ? rawId[0] ?? "" : "";
 
-  const [market, setMarket] = useState<Market>(() => fallbackMarket(id));
+  const wallet = useWallet();
+  const queryClient = useQueryClient();
+  const { market, isLoading, error } = useMarket(id || undefined);
+  const tokenHook = useToken(market?.tokenMint);
+  const { bets: marketBets } = useMarketBetsList(id || undefined);
+
   const [detailTab, setDetailTab] = useState<DetailTab>("about");
   const [chartTf, setChartTf] = useState<ChartTf>("1h");
   const [position, setPosition] = useState<{
     side: BetSide;
     amountUsdc: number;
   } | null>(null);
+  const [chartReady, setChartReady] = useState(false);
 
+  const toast = useToast();
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartApiRef = useRef<import("lightweight-charts").IChartApi | null>(null);
   const seriesRef = useRef<import("lightweight-charts").ISeriesApi<"Line"> | null>(
@@ -172,57 +82,124 @@ export default function MarketPage() {
   );
   const chartTfRef = useRef(chartTf);
   chartTfRef.current = chartTf;
-  const openPriceRef = useRef(market.openPrice);
-  openPriceRef.current = market.openPrice;
 
-  useEffect(() => {
-    setMarket(fallbackMarket(id));
-    setPosition(null);
-  }, [id]);
+  const chartPriceRef = useRef(0.0001);
+  const openPriceStr = market?.openPrice ?? null;
+  chartPriceRef.current =
+    tokenHook.price ??
+    parseNum(openPriceStr) ??
+    0.0001;
 
-  const token: Token = useMemo(
-    () => ({
-      address: market.tokenMint,
-      name: market.tokenName ?? "Token",
-      symbol: market.tokenTicker ?? "TKN",
-    }),
-    [market.tokenMint, market.tokenName, market.tokenTicker],
-  );
+  const placeBetMut = useMutation({
+    mutationFn: async ({
+      side,
+      amountUsdc,
+      m,
+    }: {
+      side: BetSide;
+      amountUsdc: number;
+      m: Market;
+    }) => {
+      const marketPda =
+        m.onChainAddress?.trim() ||
+        (await getMarketPDA(m.tokenMint)).toBase58();
+      const sig = await placeBetOnChain(wallet, marketPda, side, amountUsdc);
+      const pk = wallet.publicKey;
+      if (!pk) {
+        throw new Error("Connect a wallet to place a bet");
+      }
+      const res = await fetch(
+        `${API_URL}/v1/markets/${encodeURIComponent(id)}/bets`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            side,
+            amount: amountUsdc,
+            txSignature: sig,
+            walletAddress: pk.toBase58(),
+          }),
+        },
+      );
+      const body = (await res.json()) as ApiResponse<Bet>;
+      if (!res.ok || !body.success) {
+        const msg =
+          !body.success ? body.error.message : `Bet failed (${res.status})`;
+        throw new Error(msg);
+      }
+      return body.data;
+    },
+    onSuccess: () => {
+      toast({
+        variant: "success",
+        title: "Bet placed",
+        message: "Your trade is on-chain and recorded.",
+      });
+      void queryClient.invalidateQueries({ queryKey: marketQueryKey(id) });
+      void queryClient.invalidateQueries({ queryKey: marketBetsQueryKey(id) });
+    },
+    onError: (e) => {
+      const msg = e instanceof Error ? e.message : "Bet failed";
+      toast({ variant: "error", title: "Transaction failed", message: msg });
+    },
+  });
 
-  const survive = parseNum(market.survivePool) ?? 0;
-  const rug = parseNum(market.rugPool) ?? 0;
-  const openLiquidityUsd = parseNum(market.openLiquidity);
-  const pairCreatedAtSeconds = useMemo(() => {
-    const t = Date.parse(market.createdAt);
-    return Number.isFinite(t) ? Math.floor(t / 1000) : null;
-  }, [market.createdAt]);
-
-  const openPx = parseNum(market.openPrice);
-  const demoPriceUsd =
-    openPx != null ? openPx * 1.084 : null;
-  const demoChange24hPct = 8.42;
-
-  const tickerLetter = (market.tokenTicker ?? "?").slice(0, 1).toUpperCase();
-
-  const seedSeries = useCallback((openPrice: string | null, tf: ChartTf) => {
+  const seedFlatSeries = useCallback(() => {
     const series = seriesRef.current;
     if (!series) return;
-    const base = parseNum(openPrice) ?? 0.0001;
-    const { stepSec, bars } = TF_CONFIG[tf];
+    const base = chartPriceRef.current;
+    if (!Number.isFinite(base) || base <= 0) return;
+    const { stepSec, bars } = TF_CONFIG[chartTfRef.current];
     const now = Math.floor(Date.now() / 1000);
     const points: { time: UTCTimestamp; value: number }[] = [];
     for (let i = bars - 1; i >= 0; i -= 1) {
       const t = (now - i * stepSec) as UTCTimestamp;
-      const wobble = 1 + Math.sin(i / 5) * 0.04 + (i % 11) * 0.0015;
-      points.push({ time: t, value: Math.max(1e-9, base * wobble) });
+      points.push({ time: t, value: base });
     }
     series.setData(points);
     chartApiRef.current?.timeScale().fitContent();
   }, []);
 
+  const token: Token = useMemo(
+    () => ({
+      address: market?.tokenMint ?? "",
+      name: market?.tokenName ?? tokenHook.token?.name ?? "Token",
+      symbol: market?.tokenTicker ?? tokenHook.token?.symbol ?? "TKN",
+    }),
+    [
+      market?.tokenMint,
+      market?.tokenName,
+      market?.tokenTicker,
+      tokenHook.token?.name,
+      tokenHook.token?.symbol,
+    ],
+  );
+
+  const survive = parseNum(market?.survivePool) ?? 0;
+  const rug = parseNum(market?.rugPool) ?? 0;
+  const openLiquidityUsd =
+    tokenHook.liquidity ?? parseNum(market?.openLiquidity);
+  const pairCreatedAtSeconds = tokenHook.pair?.pairCreatedAt ?? null;
+
+  const displayPriceUsd = tokenHook.price ?? parseNum(market?.openPrice);
+  const change24 =
+    tokenHook.priceChange24h != null
+      ? `${tokenHook.priceChange24h >= 0 ? "+" : ""}${tokenHook.priceChange24h.toFixed(2)}%`
+      : "—";
+
+  const tickerLetter = (market?.tokenTicker ?? "?").slice(0, 1).toUpperCase();
+
+  const devShown =
+    market?.devWallet ?? tokenHook.devWallet ?? market?.creatorWallet;
+
+  useEffect(() => {
+    setPosition(null);
+    setChartReady(false);
+  }, [id]);
+
   useEffect(() => {
     const el = chartContainerRef.current;
-    if (!el) return undefined;
+    if (!el || !market) return undefined;
 
     let cancelled = false;
     let chart: import("lightweight-charts").IChartApi | null = null;
@@ -267,7 +244,10 @@ export default function MarketPage() {
 
       chartApiRef.current = chart;
       seriesRef.current = series;
-      seedSeries(openPriceRef.current, chartTfRef.current);
+      chartPriceRef.current =
+        tokenHook.price ?? parseNum(market.openPrice) ?? 0.0001;
+      seedFlatSeries();
+      setChartReady(true);
 
       ro = new ResizeObserver(() => {
         if (!chartContainerRef.current || !chart) return;
@@ -283,12 +263,21 @@ export default function MarketPage() {
       chart?.remove();
       chartApiRef.current = null;
       seriesRef.current = null;
+      setChartReady(false);
     };
-  }, [id, seedSeries]);
+  }, [id, market, seedFlatSeries]);
 
   useEffect(() => {
-    seedSeries(market.openPrice, chartTf);
-  }, [market.openPrice, chartTf, seedSeries]);
+    chartPriceRef.current =
+      tokenHook.price ?? parseNum(market?.openPrice) ?? 0.0001;
+    seedFlatSeries();
+  }, [
+    market?.openPrice,
+    tokenHook.price,
+    chartTf,
+    seedFlatSeries,
+    market,
+  ]);
 
   useEffect(() => {
     const raf = window.requestAnimationFrame(() => {
@@ -304,20 +293,49 @@ export default function MarketPage() {
     return () => window.cancelAnimationFrame(raf);
   }, [chartTf]);
 
-  const onBet = useCallback(async (side: BetSide, amountUsdc: number) => {
-    await new Promise((r) => window.setTimeout(r, 450));
-    setPosition({ side, amountUsdc });
-    setMarket((m) => {
-      const s = parseNum(m.survivePool) ?? 0;
-      const ru = parseNum(m.rugPool) ?? 0;
-      if (side === "survive") {
-        return { ...m, survivePool: String(s + amountUsdc) };
-      }
-      return { ...m, rugPool: String(ru + amountUsdc) };
-    });
-  }, []);
+  const onBet = useCallback(
+    async (side: BetSide, amountUsdc: number) => {
+      if (!market) return;
+      await placeBetMut.mutateAsync({ side, amountUsdc, m: market });
+      setPosition({ side, amountUsdc });
+    },
+    [placeBetMut, market],
+  );
 
-  const devShown = market.devWallet ?? market.creatorWallet;
+  if (!id) {
+    return (
+      <div className="mx-auto max-w-[1440px] px-6 py-16 font-mono text-muted">
+        Invalid market id
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return <MarketDetailPageSkeleton />;
+  }
+
+  if (error || !market) {
+    return (
+      <div className="mx-auto max-w-[1440px] px-6 py-16">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-2 font-mono text-sm text-accent-bright"
+        >
+          <ChevronLeft className="h-4 w-4" aria-hidden />
+          Markets
+        </Link>
+        <p className="mt-8 font-display text-xl text-foreground">
+          Market not found
+        </p>
+        <p className="mt-2 font-mono text-sm text-muted">
+          {error?.message ?? "No data for this id."}
+        </p>
+      </div>
+    );
+  }
+
+  const marketCapLabel =
+    tokenHook.marketCap != null ? formatPool(tokenHook.marketCap) : "—";
 
   return (
     <div className="min-h-screen animate-fade-in pb-16 pt-6 sm:pb-24 sm:pt-10">
@@ -340,10 +358,23 @@ export default function MarketPage() {
           </span>
         </motion.div>
 
-        <div className="grid grid-cols-1 gap-10 xl:grid-cols-5 xl:items-start xl:gap-10">
-          {/* LEFT ~60% */}
+        <div
+          className="sticky top-0 z-40 -mx-4 mb-4 flex items-center justify-between gap-3 border-b border-border bg-[var(--bg-primary)]/93 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-10 lg:px-10 xl:hidden"
+          aria-label="Market closes in"
+        >
+          <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted">
+            {(market.tokenTicker ?? "Market").slice(0, 12)}
+            {market.tokenTicker && market.tokenTicker.length > 12 ? "…" : ""}{" "}
+            · closes in
+          </span>
+          <div className="shrink-0 font-mono text-base font-bold tabular-nums text-accent-bright sm:text-lg [&_span]:text-base sm:[&_span]:text-lg">
+            <Timer expiresAt={new Date(market.expiresAt)} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-5 xl:items-start xl:gap-10">
           <motion.div
-            className="min-w-0 space-y-6 xl:col-span-3"
+            className="order-1 min-w-0 space-y-6 xl:col-span-3"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, ease: "easeOut", delay: 0.05 }}
@@ -371,15 +402,24 @@ export default function MarketPage() {
                         Price
                       </p>
                       <p className="font-mono text-xl font-semibold tabular-nums text-foreground sm:text-2xl">
-                        {demoPriceUsd != null ? formatUSDC(demoPriceUsd) : "—"}
+                        {displayPriceUsd != null
+                          ? formatUSDC(displayPriceUsd)
+                          : "—"}
                       </p>
                     </div>
                     <div>
                       <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
                         24h
                       </p>
-                      <p className="font-mono text-lg font-semibold tabular-nums text-survive">
-                        +{demoChange24hPct.toFixed(2)}%
+                      <p
+                        className={`font-mono text-lg font-semibold tabular-nums ${
+                          tokenHook.priceChange24h != null &&
+                          tokenHook.priceChange24h < 0
+                            ? "text-rug"
+                            : "text-survive"
+                        }`}
+                      >
+                        {change24}
                       </p>
                     </div>
                   </div>
@@ -390,8 +430,28 @@ export default function MarketPage() {
                 token={token}
                 liquidityUsd={openLiquidityUsd}
                 pairCreatedAt={pairCreatedAtSeconds}
-                devWalletPctHeld={14.5}
+                devWalletPctHeld={null}
               />
+
+              {tokenHook.notFound && !tokenHook.isLoading ? (
+                <div className="mt-4 rounded-lg border border-warn/40 bg-warn/10 px-4 py-3">
+                  <div className="flex gap-3">
+                    <SearchX
+                      className="mt-0.5 h-5 w-5 shrink-0 text-warn"
+                      aria-hidden
+                    />
+                    <div>
+                      <p className="font-mono text-sm font-semibold text-warn">
+                        Token not found
+                      </p>
+                      <p className="mt-1 font-mono text-xs text-muted">
+                        No DexScreener pair for this mint yet. Price and liquidity
+                        may show as “—” until the token is indexed.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="card-cyber overflow-hidden">
@@ -399,11 +459,7 @@ export default function MarketPage() {
                 <p className="font-display text-xs font-bold uppercase tracking-widest text-foreground">
                   Price (USD)
                 </p>
-                <div
-                  className="flex gap-1"
-                  role="tablist"
-                  aria-label="Chart timeframe"
-                >
+                <div className="flex gap-1" role="tablist" aria-label="Chart timeframe">
                   {(["5m", "15m", "1h"] as const).map((tf) => {
                     const active = chartTf === tf;
                     return (
@@ -419,17 +475,16 @@ export default function MarketPage() {
                             : "rounded-lg border border-transparent px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-muted transition-colors hover:border-border hover:text-fg-soft"
                         }
                       >
-                        {tf === "5m"
-                          ? "5M"
-                          : tf === "15m"
-                            ? "15M"
-                            : "1H"}
+                        {tf === "5m" ? "5M" : tf === "15m" ? "15M" : "1H"}
                       </button>
                     );
                   })}
                 </div>
               </div>
-              <div ref={chartContainerRef} className="h-[280px] w-full sm:h-[340px]" />
+              <div className="relative h-[280px] w-full sm:h-[340px]">
+                {!chartReady ? <ChartAreaSkeleton /> : null}
+                <div ref={chartContainerRef} className="h-full w-full" />
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-px border border-border bg-border">
@@ -476,7 +531,7 @@ export default function MarketPage() {
                       Market cap
                     </dt>
                     <dd className="mt-1 font-mono text-sm font-medium text-foreground">
-                      {DEMO_MARKET_CAP}
+                      {marketCapLabel}
                     </dd>
                   </div>
                   <div>
@@ -497,93 +552,87 @@ export default function MarketPage() {
                   </div>
                   <div className="sm:col-span-2">
                     <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
-                      Holder count
+                      Bettors
                     </dt>
                     <dd className="mt-1 font-mono text-sm font-medium text-foreground">
-                      {DEMO_HOLDERS_COUNT}
+                      {market.totalBettors}
                     </dd>
                   </div>
                 </dl>
               ) : null}
 
               {detailTab === "holders" ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[320px] border-collapse font-mono text-sm">
-                    <thead>
-                      <tr className="border-b border-border text-left text-[10px] uppercase tracking-widest text-muted">
-                        <th className="pb-3 pr-4 font-semibold">Wallet</th>
-                        <th className="pb-3 pr-4 font-semibold">%</th>
-                        <th className="pb-3 font-semibold">Value</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {DEMO_HOLDERS.map((row) => (
-                        <tr
-                          key={row.wallet}
-                          className="border-b border-border/80 transition-colors hover:bg-surface/80"
-                        >
-                          <td className="py-2.5 pr-4 text-fg-soft">{row.wallet}</td>
-                          <td className="py-2.5 pr-4 tabular-nums text-foreground">
-                            {row.pct}
-                          </td>
-                          <td className="py-2.5 tabular-nums text-accent-bright">
-                            {row.amt}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <p className="py-8 text-center font-mono text-sm text-muted">
+                  On-chain holder breakdown is not available in Survive.fun yet.
+                </p>
               ) : null}
 
               {detailTab === "transactions" ? (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[320px] border-collapse font-mono text-sm">
-                    <thead>
-                      <tr className="border-b border-border text-left text-[10px] uppercase tracking-widest text-muted">
-                        <th className="pb-3 pr-4 font-semibold">Time</th>
-                        <th className="pb-3 pr-4 font-semibold">Type</th>
-                        <th className="pb-3 font-semibold">Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {DEMO_TXS.map((row) => (
-                        <tr
-                          key={`${row.time}-${row.kind}`}
-                          className="border-b border-border/80 transition-colors hover:bg-surface/80"
-                        >
-                          <td className="py-2.5 pr-4 tabular-nums text-muted">
-                            {row.time}
-                          </td>
-                          <td className="py-2.5 pr-4 text-fg-soft">{row.kind}</td>
-                          <td className="py-2.5 tabular-nums text-foreground">
-                            {row.amt}
-                          </td>
+                  {marketBets.length === 0 ? (
+                    <p className="py-8 text-center font-mono text-sm text-muted">
+                      No bets recorded for this market yet.
+                    </p>
+                  ) : (
+                    <table className="w-full min-w-[320px] border-collapse font-mono text-sm">
+                      <thead>
+                        <tr className="border-b border-border text-left text-[10px] uppercase tracking-widest text-muted">
+                          <th className="pb-3 pr-4 font-semibold">Time</th>
+                          <th className="pb-3 pr-4 font-semibold">Side</th>
+                          <th className="pb-3 font-semibold">Amount</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {marketBets.map((row) => {
+                          const t = new Date(row.createdAt);
+                          const timeStr = t.toLocaleTimeString(undefined, {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                          });
+                          return (
+                            <tr
+                              key={row.id}
+                              className="border-b border-border/80 transition-colors hover:bg-surface/80"
+                            >
+                              <td className="py-2.5 pr-4 tabular-nums text-muted">
+                                {timeStr}
+                              </td>
+                              <td className="py-2.5 pr-4 text-fg-soft">
+                                {row.side === "survive" ? "SURVIVE" : "RUG"}
+                              </td>
+                              <td className="py-2.5 tabular-nums text-foreground">
+                                {formatUSDC(Number.parseFloat(row.amountUsdc))}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
               ) : null}
             </div>
           </motion.div>
 
-          {/* RIGHT ~40% */}
           <motion.aside
-            className="space-y-5 xl:sticky xl:top-8 xl:col-span-2"
+            className="order-2 space-y-5 xl:sticky xl:top-8 xl:col-span-2"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, ease: "easeOut", delay: 0.08 }}
           >
             <div className="card-cyber p-5 sm:p-6">
-              <p className="text-center text-[10px] font-semibold uppercase tracking-widest text-muted">
+              <p className="hidden text-center text-[10px] font-semibold uppercase tracking-widest text-muted xl:block">
                 Closes in
               </p>
-              <div className="mt-4 flex justify-center [&_span]:text-3xl [&_span]:font-bold [&_span]:tracking-[0.08em] sm:[&_span]:text-4xl">
+              <div className="mt-0 hidden justify-center xl:mt-4 xl:flex [&_span]:text-3xl [&_span]:font-bold [&_span]:tracking-[0.08em] sm:[&_span]:text-4xl">
                 <Timer expiresAt={new Date(market.expiresAt)} />
               </div>
+              <p className="mb-3 text-center font-mono text-[10px] uppercase tracking-widest text-muted xl:hidden">
+                Pool snapshot
+              </p>
 
-              <div className="mt-8">
+              <div className="mt-4 xl:mt-8">
                 <PoolBar survivePool={survive} rugPool={rug} />
               </div>
 
@@ -607,7 +656,11 @@ export default function MarketPage() {
               </div>
             </div>
 
-            <BetPanel market={market} onBet={onBet} position={position} />
+            <BetPanel
+              market={market}
+              onBet={onBet}
+              position={position}
+            />
           </motion.aside>
         </div>
 
@@ -618,12 +671,7 @@ export default function MarketPage() {
           viewport={{ once: true, margin: "-40px" }}
           transition={{ duration: 0.3, ease: "easeOut" }}
         >
-          <LiveFeed
-            marketId={market.id}
-            maxRows={20}
-            heading="Last 20 bets"
-            demoOnly
-          />
+          <LiveFeed marketId={market.id} maxRows={20} heading="Last 20 bets" />
         </motion.section>
       </div>
     </div>

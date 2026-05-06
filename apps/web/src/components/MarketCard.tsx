@@ -1,5 +1,6 @@
 import type { Market } from "@survivefun/types";
 import { Clock, Shield, Skull, TrendingUp } from "lucide-react";
+import Link from "next/link";
 
 import { formatPool, formatUSDC } from "@/utils/format";
 
@@ -89,12 +90,12 @@ export function MarketCard({ market }: { market: Market }) {
 
       <PoolBar survivePool={survive} rugPool={rug} />
 
-      <button
-        type="button"
-        className="rounded-lg border border-accent bg-accent px-4 py-3 text-center text-sm font-semibold uppercase tracking-wide text-ink transition-all duration-200 hover:bg-transparent hover:text-accent-bright hover:shadow-glow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent active:translate-y-px"
+      <Link
+        href={`/market/${market.id}`}
+        className="block rounded-lg border border-accent bg-accent px-4 py-3 text-center text-sm font-semibold uppercase tracking-wide text-ink transition-all duration-200 hover:bg-transparent hover:text-accent-bright hover:shadow-glow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent active:translate-y-px"
       >
         Bet Now
-      </button>
+      </Link>
     </article>
   );
 }

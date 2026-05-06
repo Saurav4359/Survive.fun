@@ -19,11 +19,24 @@ async function fetchMarket(marketId: string): Promise<Market> {
     throw new Error(msg);
   }
 
+  if (res.status === 404) {
+    throw new Error("Market not found");
+  }
+
   let body: unknown;
   try {
     body = await res.json();
   } catch {
     throw new Error("Failed to parse market response");
+  }
+
+  if (!res.ok) {
+    const parsed = body as ApiResponse<Market>;
+    const msg =
+      parsed && typeof parsed === "object" && "success" in parsed && !parsed.success
+        ? parsed.error.message
+        : `Market request failed (${res.status})`;
+    throw new Error(msg);
   }
 
   if (!body || typeof body !== "object") {
@@ -54,6 +67,7 @@ function mergeMarketPatch(
 export function useMarket(marketId: string | undefined): {
   market: Market | undefined;
   isLoading: boolean;
+  isFetching: boolean;
   error: Error | null;
   refetch: () => void;
 } {
@@ -121,6 +135,7 @@ export function useMarket(marketId: string | undefined): {
   return {
     market: query.data,
     isLoading: query.isPending,
+    isFetching: query.isFetching,
     error: query.error instanceof Error ? query.error : null,
     refetch: () => {
       void query.refetch();
