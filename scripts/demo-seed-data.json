@@ -1,0 +1,61 @@
+{
+  "creatorWallet": "DemoCreatorSurviveFun111111111111111",
+  "userWallets": [
+    "DemoUser1SurviveFunWalletAAAAAAAAAAAA",
+    "DemoUser2SurviveFunWalletBBBBBBBBBBBB",
+    "DemoUser3SurviveFunWalletCCCCCCCCCCCC"
+  ],
+  "markets": [
+    {
+      "tokenMint": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+      "tokenName": "Bonk",
+      "tokenTicker": "BONK",
+      "durationSeconds": 3600,
+      "openPrice": "0.000042",
+      "openLiquidity": "4200",
+      "devWallet": "7xKpRandom1DemoDevWalletSurviveFun111",
+      "survivePool": "10",
+      "rugPool": "10"
+    },
+    {
+      "tokenMint": "random_mint_2",
+      "tokenName": "PepeCoin",
+      "tokenTicker": "PEPE2",
+      "durationSeconds": 21600,
+      "openPrice": "0.0000018",
+      "openLiquidity": "800",
+      "devWallet": "8mNqRandom2DemoDevWalletSurviveFun222",
+      "survivePool": "10",
+      "rugPool": "10"
+    },
+    {
+      "tokenMint": "random_mint_3",
+      "tokenName": "MoonDoge",
+      "tokenTicker": "MDOGE",
+      "durationSeconds": 86400,
+      "openPrice": "0.00091",
+      "openLiquidity": "12000",
+      "devWallet": "9pKrRandom3DemoDevWalletSurviveFun333",
+      "survivePool": "10",
+      "rugPool": "10"
+    }
+  ],
+  "betsTemplate": [
+    { "marketIndex": 0, "userIndex": 0, "side": "survive", "amountUsdc": "12.5" },
+    { "marketIndex": 0, "userIndex": 1, "side": "rug", "amountUsdc": "8" },
+    { "marketIndex": 0, "userIndex": 2, "side": "survive", "amountUsdc": "22.25" },
+    { "marketIndex": 0, "userIndex": 0, "side": "rug", "amountUsdc": "15" },
+    { "marketIndex": 0, "userIndex": 1, "side": "survive", "amountUsdc": "40" },
+    { "marketIndex": 1, "userIndex": 2, "side": "rug", "amountUsdc": "6.75" },
+    { "marketIndex": 1, "userIndex": 0, "side": "survive", "amountUsdc": "50" },
+    { "marketIndex": 1, "userIndex": 1, "side": "rug", "amountUsdc": "11" },
+    { "marketIndex": 1, "userIndex": 2, "side": "survive", "amountUsdc": "33.33" },
+    { "marketIndex": 1, "userIndex": 0, "side": "rug", "amountUsdc": "19.99" },
+    { "marketIndex": 2, "userIndex": 1, "side": "survive", "amountUsdc": "5" },
+    { "marketIndex": 2, "userIndex": 2, "side": "rug", "amountUsdc": "27.5" },
+    { "marketIndex": 2, "userIndex": 0, "side": "survive", "amountUsdc": "44" },
+    { "marketIndex": 2, "userIndex": 1, "side": "rug", "amountUsdc": "9.25" },
+    { "marketIndex": 2, "userIndex": 2, "side": "survive", "amountUsdc": "31" }
+  ],
+  "txPrefix": "demo_setup_"
+}

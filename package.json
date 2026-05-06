@@ -6,10 +6,16 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "setup-demo": "prisma generate --schema=apps/api/prisma/schema.prisma && ts-node --project tsconfig.scripts.json scripts/setup-demo.ts"
+    "setup-demo": "prisma generate --schema=apps/api/prisma/schema.prisma && ts-node --project tsconfig.scripts.json scripts/setup-demo.ts",
+    "test-flow": "ts-node --project tsconfig.scripts.json scripts/test-flow.ts",
+    "simulate-rug": "ts-node --project tsconfig.scripts.json scripts/simulate-rug.ts",
+    "simulate-survive": "ts-node --project tsconfig.scripts.json scripts/simulate-survive.ts"
   },
   "devDependencies": {
+    "@survivefun/types": "workspace:^",
     "@prisma/client": "^6.19.3",
+    "@solana/spl-token": "^0.4.13",
+    "@solana/web3.js": "^1.98.4",
     "@types/node": "^20.17.10",
     "dotenv": "^16.4.7",
     "prisma": "^6.19.3",
