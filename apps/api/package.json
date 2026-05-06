@@ -12,15 +12,17 @@
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1",
+    "@helius-labs/helius-sdk": "npm:helius-sdk@^2.2.2",
     "@prisma/client": "^6.19.3",
     "@solana/spl-token": "^0.4.13",
     "@solana/web3.js": "^1.98.4",
     "@survivefun/types": "workspace:*",
     "axios": "^1.12.2",
+    "bullmq": "^5.76.5",
     "cors": "^2.8.6",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "helius-sdk": "^2.2.2",
+    "ioredis": "^5.10.1",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {

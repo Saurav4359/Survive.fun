@@ -5,10 +5,17 @@
     "build": "turbo run build",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
-    "typecheck": "turbo run typecheck"
+    "typecheck": "turbo run typecheck",
+    "setup-demo": "prisma generate --schema=apps/api/prisma/schema.prisma && ts-node --project tsconfig.scripts.json scripts/setup-demo.ts"
   },
   "devDependencies": {
-    "turbo": "^2.5.4"
+    "@prisma/client": "^6.19.3",
+    "@types/node": "^20.17.10",
+    "dotenv": "^16.4.7",
+    "prisma": "^6.19.3",
+    "ts-node": "^10.9.2",
+    "turbo": "^2.5.4",
+    "typescript": "^5.7.2"
   },
   "packageManager": "pnpm@9.15.4",
   "engines": {
