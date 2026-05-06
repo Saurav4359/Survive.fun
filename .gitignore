@@ -1,0 +1,29 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build
+dist
+.next
+out
+build
+.turbo
+*.tsbuildinfo
+
+# Anchor / Rust
+contracts/target
+**/*.rs.bk
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# OS / IDE
+.DS_Store
+.idea
+.vscode
+
+# Debug
+npm-debug.log*
+pnpm-debug.log*
