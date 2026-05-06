@@ -1,20 +1,21 @@
 "use client";
 
 import type { Market } from "@survivefun/types";
-import {
-  Activity,
-  ArrowRight,
-  Layers,
-  PlusCircle,
-  Radio,
-  Search,
-  Users,
-  Zap,
-} from "lucide-react";
-import { useMemo, useState } from "react";
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { motion } from "framer-motion";
+import { ArrowRight } from "lucide-react";
+import { useState, type CSSProperties } from "react";
 
+import { LiveFeed } from "@/components/LiveFeed";
 import { MarketCard } from "@/components/MarketCard";
-import { formatPool, formatWallet } from "@/utils/format";
+import { MARKET_DURATIONS } from "@/utils/constants";
+
+const DURATION_TABS: { label: string; seconds: (typeof MARKET_DURATIONS)[number] }[] =
+  [
+    { label: "1H", seconds: MARKET_DURATIONS[0] },
+    { label: "6H", seconds: MARKET_DURATIONS[1] },
+    { label: "24H", seconds: MARKET_DURATIONS[2] },
+  ];
 
 const DEMO_MARKETS: Market[] = [
   {
@@ -62,7 +63,7 @@ const DEMO_MARKETS: Market[] = [
     tokenTicker: "RISK",
     creatorWallet: "Creator3333333333333333333333333333333333",
     durationSeconds: 86400,
-    expiresAt: new Date(Date.now() + 3 * 60 * 1000).toISOString(),
+    expiresAt: new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString(),
     survivePool: "980",
     rugPool: "4100",
     openPrice: "0.0000098",
@@ -74,233 +75,248 @@ const DEMO_MARKETS: Market[] = [
     createdAt: new Date().toISOString(),
     totalBettors: 56,
   },
+  {
+    id: "44444444-4444-4444-4444-444444444444",
+    tokenMint: "bonk111111111111111111111111111111111111111",
+    tokenName: "Bonk Survivors",
+    tokenTicker: "BNK",
+    creatorWallet: "Creator4444444444444444444444444444444444",
+    durationSeconds: 86400,
+    expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
+    survivePool: "8800",
+    rugPool: "2100",
+    openPrice: "0.000022",
+    openLiquidity: "88000",
+    devWallet: null,
+    status: "active",
+    outcome: null,
+    onChainAddress: null,
+    createdAt: new Date().toISOString(),
+    totalBettors: 201,
+  },
+  {
+    id: "55555555-5555-5555-5555-555555555555",
+    tokenMint: "pumpSo111111111111111111111111111111111111112",
+    tokenName: "Fresh Mint Mayhem",
+    tokenTicker: "FMM",
+    creatorWallet: "Creator5555555555555555555555555555555555",
+    durationSeconds: 3600,
+    expiresAt: new Date(Date.now() + 25 * 60 * 1000).toISOString(),
+    survivePool: "1420",
+    rugPool: "980",
+    openPrice: "0.0000014",
+    openLiquidity: "22000",
+    devWallet: null,
+    status: "active",
+    outcome: null,
+    onChainAddress: null,
+    createdAt: new Date().toISOString(),
+    totalBettors: 44,
+  },
+  {
+    id: "66666666-6666-6666-6666-666666666666",
+    tokenMint: "memeSo111111111111111111111111111111111111112",
+    tokenName: "Normie Exit Liquidity",
+    tokenTicker: "NEL",
+    creatorWallet: "Creator6666666666666666666666666666666666",
+    durationSeconds: 21600,
+    expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+    survivePool: "32100",
+    rugPool: "15400",
+    openPrice: "0.00031",
+    openLiquidity: "310000",
+    devWallet: null,
+    status: "active",
+    outcome: null,
+    onChainAddress: null,
+    createdAt: new Date().toISOString(),
+    totalBettors: 512,
+  },
 ];
 
-const FEED = [
-  {
-    id: "1",
-    title: "Pool rebalance",
-    detail: "SND · survive lead +2.4%",
-    tone: "neutral" as const,
+const STATS = [
+  { label: "Active Markets", value: "12" },
+  { label: "Total Volume", value: "$4,200 USDC" },
+  { label: "Rugs Caught", value: "847" },
+  { label: "Biggest Win", value: "$420 USDC" },
+] as const;
+
+const sectionEase = { duration: 0.35, ease: [0.4, 0, 0.2, 1] as const };
+
+const staggerContainer = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.06, delayChildren: 0.08 },
   },
-  {
-    id: "2",
-    title: "Large SURVIVE bet",
-    detail: formatWallet("Bettor9xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRu") + " · 250 USDC",
-    tone: "survive" as const,
-  },
-  {
-    id: "3",
-    title: "New market",
-    detail: "RISK · 24h window",
-    tone: "accent" as const,
-  },
-  {
-    id: "4",
-    title: "Price update",
-    detail: "UP · +6.2% (DexScreener)",
-    tone: "neutral" as const,
-  },
-];
+};
+
+const staggerItem = {
+  hidden: { opacity: 0, y: 14 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.3, ease: [0.4, 0, 0.2, 1] } },
+};
+
+const HERO_GRID_STYLE: CSSProperties = {
+  backgroundImage: `
+    linear-gradient(rgba(134, 240, 173, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(134, 240, 173, 0.06) 1px, transparent 1px)
+  `,
+  backgroundSize: "28px 28px",
+};
 
 export default function HomePage() {
-  const [tokenQuery, setTokenQuery] = useState("");
-
-  const filtered = useMemo(() => {
-    const q = tokenQuery.trim().toLowerCase();
-    if (!q) return DEMO_MARKETS;
-    return DEMO_MARKETS.filter((m) => {
-      return (
-        m.tokenMint.toLowerCase().includes(q) ||
-        (m.tokenName?.toLowerCase().includes(q) ?? false) ||
-        (m.tokenTicker?.toLowerCase().includes(q) ?? false)
-      );
-    });
-  }, [tokenQuery]);
-
-  const totalVolume = useMemo(
-    () =>
-      DEMO_MARKETS.reduce((sum, m) => {
-        const s = Number.parseFloat(m.survivePool) || 0;
-        const r = Number.parseFloat(m.rugPool) || 0;
-        return sum + s + r;
-      }, 0),
-    [],
-  );
-
-  const totalBettors = useMemo(
-    () => DEMO_MARKETS.reduce((sum, m) => sum + m.totalBettors, 0),
-    [],
+  const [tokenMint, setTokenMint] = useState("");
+  const [durationSeconds, setDurationSeconds] = useState<number>(
+    MARKET_DURATIONS[2],
   );
 
   return (
-    <div className="min-h-screen animate-fade-in pb-24 pt-8 sm:pt-14">
-      <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:pl-12 lg:pr-8">
-        {/* Terminal status strip — data-dense, sharp dividers */}
-        <section
-          aria-label="Platform stats"
-          className="mb-14 grid grid-cols-1 border border-border sm:grid-cols-12"
+    <div className="min-h-screen pb-16 pt-6 sm:pb-24 sm:pt-10">
+      <motion.header
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={sectionEase}
+        className="border-b-2 border-accent"
+      >
+        <div className="mx-auto flex max-w-[1440px] flex-col gap-4 px-4 py-5 sm:flex-row sm:items-end sm:justify-between sm:px-6 lg:px-12">
+          <div>
+            <p className="font-mono text-lg font-semibold tracking-tight text-accent-bright sm:text-xl">
+              survive.fun
+            </p>
+            <p className="mt-1 max-w-md font-display text-sm text-fg-soft sm:text-base">
+              Bet whether memecoins survive or rug
+            </p>
+          </div>
+          <div className="flex shrink-0 justify-start sm:justify-end">
+            <WalletMultiButton className="!rounded-lg !border !border-accent !bg-accent !font-mono !text-xs !font-bold !uppercase !tracking-widest !text-ink transition-colors hover:!border-accent-bright hover:!bg-transparent hover:!text-accent-bright" />
+          </div>
+        </div>
+      </motion.header>
+
+      <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-12">
+        <motion.section
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ ...sectionEase, delay: 0.05 }}
+          aria-label="Platform statistics"
+          className="mt-8 grid grid-cols-2 gap-px border border-border bg-border lg:grid-cols-4"
         >
-          <div className="flex items-center gap-4 border-b border-border bg-card px-5 py-4 transition-colors duration-200 hover:bg-surface sm:col-span-5 sm:border-b-0 sm:border-r">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center border border-border bg-surface text-accent">
-              <Zap className="h-5 w-5" aria-hidden />
-            </div>
-            <div>
+          {STATS.map((row) => (
+            <div
+              key={row.label}
+              className="bg-card px-4 py-4 sm:px-5 sm:py-5"
+            >
               <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
-                Volume (demo)
+                {row.label}
               </p>
-              <p className="font-mono text-lg font-semibold tabular-nums text-foreground">
-                {formatPool(totalVolume)} USDC
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4 border-b border-border bg-card px-5 py-4 transition-colors duration-200 hover:bg-surface sm:col-span-4 sm:border-b-0 sm:border-r">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center border border-border bg-surface text-accent">
-              <Layers className="h-5 w-5" aria-hidden />
-            </div>
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
-                Active markets
-              </p>
-              <p className="font-mono text-lg font-semibold tabular-nums text-foreground">
-                {DEMO_MARKETS.length}
+              <p className="mt-2 font-mono text-base font-semibold tabular-nums text-foreground sm:text-lg">
+                {row.value}
               </p>
             </div>
-          </div>
-          <div className="flex items-center gap-4 bg-card px-5 py-4 transition-colors duration-200 hover:bg-surface sm:col-span-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center border border-border bg-surface text-accent">
-              <Users className="h-5 w-5" aria-hidden />
-            </div>
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
-                Bettors (demo)
-              </p>
-              <p className="font-mono text-lg font-semibold tabular-nums text-foreground">
-                {totalBettors}
-              </p>
-            </div>
-          </div>
-        </section>
+          ))}
+        </motion.section>
 
-        <div className="grid grid-cols-1 gap-14 lg:grid-cols-12 lg:gap-10">
-          <div className="min-w-0 space-y-12 lg:col-span-7 xl:col-span-8">
-            <div className="header-scanline border-l-2 border-accent pl-5 sm:pl-8">
-              <div className="relative z-[1] flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <p className="font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-muted">
-                    Terminal / markets
-                  </p>
-                  <h1 className="font-display mt-2 text-4xl font-extrabold tracking-tight text-foreground sm:text-5xl">
-                    Survive.fun
-                  </h1>
-                  <p className="mt-3 max-w-lg font-mono text-sm leading-relaxed text-fg-soft">
-                    Binary pools on memecoin outcomes. SURVIVE vs RUG. Sharp prices,
-                    sharp risk.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  className="inline-flex shrink-0 items-center justify-center gap-2 self-start rounded-lg border border-accent bg-accent px-6 py-3 font-display text-xs font-bold uppercase tracking-widest text-ink shadow-glow-sm transition-all duration-200 hover:border-accent-bright hover:bg-transparent hover:text-accent-bright hover:shadow-none sm:self-auto"
-                >
-                  <PlusCircle className="h-4 w-4" aria-hidden />
-                  Create Market
-                </button>
-              </div>
-            </div>
-
-            <div className="relative max-w-3xl">
-              <Search
-                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"
+        <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-12 lg:gap-8 xl:gap-10">
+          <div className="min-w-0 space-y-10 lg:col-span-8">
+            <motion.section
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ ...sectionEase, delay: 0.1 }}
+              aria-label="Create market"
+              className="relative overflow-hidden rounded-lg border border-border bg-card"
+            >
+              <div
+                className="pointer-events-none absolute inset-0 opacity-90"
+                style={HERO_GRID_STYLE}
                 aria-hidden
               />
-              <input
-                type="search"
-                value={tokenQuery}
-                onChange={(e) => setTokenQuery(e.target.value)}
-                placeholder="Search or paste token mint…"
-                className="w-full rounded-lg border border-border bg-surface py-3.5 pl-10 pr-4 font-mono text-sm text-foreground placeholder:text-muted transition-all duration-200 focus:border-border-glow focus:outline-none focus:ring-1 focus:ring-accent focus:shadow-glow-sm"
-                aria-label="Search or paste token"
-              />
-            </div>
+              <div className="relative z-[1] space-y-5 p-6 sm:p-8">
+                <label className="block">
+                  <span className="sr-only">Pump.fun token address</span>
+                  <input
+                    type="text"
+                    value={tokenMint}
+                    onChange={(e) => setTokenMint(e.target.value)}
+                    placeholder="Paste Pump.fun token address..."
+                    className="w-full rounded-lg border border-border bg-surface px-4 py-4 font-mono text-sm text-foreground placeholder:text-muted transition-all duration-200 focus:border-border-glow focus:outline-none focus:ring-1 focus:ring-accent focus:shadow-glow-sm sm:text-base"
+                  />
+                </label>
 
-            <section aria-label="Active markets">
-              <div className="mb-6 flex items-end justify-between gap-3 border-b border-border pb-3">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div
+                    className="flex flex-wrap gap-2"
+                    role="group"
+                    aria-label="Market duration"
+                  >
+                    {DURATION_TABS.map(({ label, seconds }) => {
+                      const active = durationSeconds === seconds;
+                      return (
+                        <button
+                          key={label}
+                          type="button"
+                          onClick={() => setDurationSeconds(seconds)}
+                          className={
+                            active
+                              ? "rounded-lg border border-border-glow bg-accent/15 px-4 py-2 font-mono text-xs font-bold uppercase tracking-widest text-accent-bright shadow-glow-sm"
+                              : "rounded-lg border border-border bg-surface px-4 py-2 font-mono text-xs font-bold uppercase tracking-widest text-muted transition-colors duration-200 hover:border-accent/40 hover:text-fg-soft"
+                          }
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-accent bg-accent px-6 py-3 font-mono text-xs font-bold uppercase tracking-widest text-ink shadow-glow-sm transition-all duration-200 hover:border-accent-bright hover:bg-transparent hover:text-accent-bright hover:shadow-none"
+                  >
+                    Create Market
+                    <ArrowRight className="h-4 w-4" aria-hidden />
+                  </button>
+                </div>
+              </div>
+            </motion.section>
+
+            <motion.section
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ ...sectionEase, delay: 0.14 }}
+              aria-label="Active markets"
+            >
+              <div className="mb-5 flex items-end justify-between gap-3 border-b border-border pb-3">
                 <h2 className="font-display text-lg font-bold uppercase tracking-widest text-foreground">
                   Active markets
                 </h2>
-                <span className="font-mono text-xs text-muted">
-                  {filtered.length} shown
-                </span>
+                <span className="font-mono text-xs text-muted">Demo</span>
               </div>
-              {filtered.length === 0 ? (
-                <p className="border border-dashed border-border bg-surface/80 px-4 py-12 text-center font-mono text-sm text-muted">
-                  No markets match that query. Try another mint or ticker.
-                </p>
-              ) : (
-                <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-2">
-                  {filtered.map((market) => (
-                    <MarketCard key={market.id} market={market} />
-                  ))}
-                </div>
-              )}
-            </section>
+
+              <motion.div
+                className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3"
+                variants={staggerContainer}
+                initial="hidden"
+                animate="show"
+              >
+                {DEMO_MARKETS.map((market) => (
+                  <motion.div key={market.id} variants={staggerItem}>
+                    <MarketCard market={market} />
+                  </motion.div>
+                ))}
+              </motion.div>
+            </motion.section>
           </div>
 
-          <aside
-            className="lg:col-span-5 xl:col-span-4 lg:pt-8 xl:pt-20"
-            aria-label="Live feed"
+          <motion.aside
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ ...sectionEase, delay: 0.18 }}
+            className="lg:col-span-4"
+            aria-label="Live bets"
           >
-            <div className="card-cyber sticky top-8 space-y-4 p-5">
-              <div className="header-scanline flex items-center justify-between gap-2 border-b border-border pb-4">
-                <div className="relative z-[1] flex items-center gap-2">
-                  <Radio className="h-4 w-4 text-accent" aria-hidden />
-                  <h2 className="font-display text-xs font-bold uppercase tracking-widest text-foreground">
-                    Live feed
-                  </h2>
-                </div>
-                <span className="relative z-[1] rounded-lg border border-survive/30 bg-survive/10 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-widest text-survive">
-                  Demo
-                </span>
-              </div>
-              <ul className="space-y-2">
-                {FEED.map((item) => (
-                  <li key={item.id}>
-                    <div
-                      className={
-                        item.tone === "survive"
-                          ? "border border-survive/25 bg-survive/5 p-3 transition-colors duration-200 hover:border-survive/45"
-                          : item.tone === "accent"
-                            ? "border border-accent/30 bg-accent/10 p-3 transition-colors duration-200 hover:border-accent/50"
-                            : "border border-border bg-surface p-3 transition-colors duration-200 hover:border-muted"
-                      }
-                    >
-                      <div className="flex items-start gap-2">
-                        <Activity
-                          className={
-                            item.tone === "survive"
-                              ? "mt-0.5 h-4 w-4 shrink-0 text-survive"
-                              : item.tone === "accent"
-                                ? "mt-0.5 h-4 w-4 shrink-0 text-accent"
-                                : "mt-0.5 h-4 w-4 shrink-0 text-muted"
-                          }
-                          aria-hidden
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p className="font-display text-sm font-semibold text-foreground">
-                            {item.title}
-                          </p>
-                          <p className="mt-1 break-words font-mono text-xs text-muted">
-                            {item.detail}
-                          </p>
-                        </div>
-                        <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+            <div className="lg:sticky lg:top-8">
+              <LiveFeed />
             </div>
-          </aside>
+          </motion.aside>
         </div>
       </div>
     </div>

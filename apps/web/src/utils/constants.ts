@@ -32,3 +32,7 @@ export const BET_LIMITS = {
 } as const;
 
 export const MARKET_DURATIONS = [3600, 21600, 86400] as const;
+
+/** DexScreener latest pairs for one or more token addresses (comma-separated). */
+export const DEXSCREENER_TOKENS_URL =
+  "https://api.dexscreener.com/latest/dex/tokens";

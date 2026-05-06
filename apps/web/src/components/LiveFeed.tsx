@@ -44,7 +44,41 @@ function rowOpacity(at: Date, now: number): number {
   return 1 - t * 0.65;
 }
 
-export function LiveFeed({ marketId }: { marketId: string }) {
+function buildDemoFeedRows(maxRows: number): FeedRow[] {
+  const cap = Math.min(Math.max(maxRows, 1), 40);
+  const t0 = Date.now();
+  const wallets = [
+    "9xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuK9",
+    "Bettor7QmN2fFG7nH9pJkV4xYzAbcDeFgHiJkLmNoPq",
+    "WhaleA1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0",
+    "DemoSo111111111111111111111111111111111111112",
+    "PumpFun9ZZ11111111111111111111111111111111111",
+  ];
+  return Array.from({ length: cap }, (_, i) => ({
+    id: `demo-${i}-${t0}`,
+    wallet: wallets[i % wallets.length]!,
+    side: (i % 5 === 0 ? "rug" : "survive") as BetSide,
+    amountUsdc: Math.round((12 + i * 7.15) * 100) / 100,
+    at: new Date(t0 - i * 55_000),
+  }));
+}
+
+export type LiveFeedProps = {
+  marketId?: string;
+  /** Cap rows stored (default 80). */
+  maxRows?: number;
+  /** Section heading (default "Live bet feed"). */
+  heading?: string;
+  /** Static demo rows only — no socket. */
+  demoOnly?: boolean;
+};
+
+export function LiveFeed({
+  marketId,
+  maxRows = 80,
+  heading = "Live bet feed",
+  demoOnly = false,
+}: LiveFeedProps) {
   const [rows, setRows] = useState<FeedRow[]>([]);
   const [now, setNow] = useState(() => Date.now());
   const listRef = useRef<HTMLDivElement>(null);
@@ -66,6 +100,11 @@ export function LiveFeed({ marketId }: { marketId: string }) {
   }, []);
 
   useEffect(() => {
+    if (demoOnly) {
+      setRows(buildDemoFeedRows(maxRows));
+      return undefined;
+    }
+
     let cancelled = false;
     const socket = io(API_URL, {
       transports: ["websocket", "polling"],
@@ -75,9 +114,9 @@ export function LiveFeed({ marketId }: { marketId: string }) {
     socketRef.current = socket;
 
     const onBetPlaced = (payload: BetPlaced) => {
-      if (payload.marketId !== marketId) return;
+      if (marketId && payload.marketId !== marketId) return;
       const row = normalizeBetPayload(payload, `${Date.now()}-${Math.random()}`);
-      setRows((prev) => [row, ...prev].slice(0, 80));
+      setRows((prev) => [row, ...prev].slice(0, maxRows));
     };
 
     socket.on("bet_placed", onBetPlaced);
@@ -86,23 +125,7 @@ export function LiveFeed({ marketId }: { marketId: string }) {
       if (cancelled) return;
       setRows((prev) => {
         if (prev.length > 0) return prev;
-        const t = new Date();
-        return [
-          {
-            id: "demo-1",
-            wallet: "Demo1111111111111111111111111111111111",
-            side: "survive" as const,
-            amountUsdc: 25,
-            at: t,
-          },
-          {
-            id: "demo-2",
-            wallet: "Demo2222222222222222222222222222222222",
-            side: "rug" as const,
-            amountUsdc: 10,
-            at: new Date(t.getTime() - 60_000),
-          },
-        ];
+        return buildDemoFeedRows(maxRows);
       });
     });
 
@@ -112,13 +135,13 @@ export function LiveFeed({ marketId }: { marketId: string }) {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [marketId]);
+  }, [demoOnly, marketId, maxRows]);
 
   return (
     <section aria-label="Live bets" className="card-cyber">
       <div className="header-scanline flex items-center justify-between gap-2 border-b border-border px-5 py-4">
         <h2 className="relative z-[1] font-display text-sm font-bold uppercase tracking-widest text-foreground">
-          Live bet feed
+          {heading}
         </h2>
         <span className="relative z-[1] rounded-lg border border-border-glow/50 bg-accent/10 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-widest text-accent-bright">
           Realtime
