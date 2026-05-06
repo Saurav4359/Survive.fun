@@ -1,6 +1,7 @@
 {
   "name": "survivefun",
   "private": true,
+  "description": "Survive.fun monorepo. Postgres + Redis for local dev: pnpm docker:up (see docker-compose.yml).",
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
@@ -9,7 +10,10 @@
     "setup-demo": "prisma generate --schema=apps/api/prisma/schema.prisma && ts-node --project tsconfig.scripts.json scripts/setup-demo.ts",
     "test-flow": "ts-node --project tsconfig.scripts.json scripts/test-flow.ts",
     "simulate-rug": "ts-node --project tsconfig.scripts.json scripts/simulate-rug.ts",
-    "simulate-survive": "ts-node --project tsconfig.scripts.json scripts/simulate-survive.ts"
+    "simulate-survive": "ts-node --project tsconfig.scripts.json scripts/simulate-survive.ts",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f --tail=200"
   },
   "devDependencies": {
     "@survivefun/types": "workspace:^",

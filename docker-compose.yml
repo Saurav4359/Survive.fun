@@ -1,0 +1,51 @@
+# -----------------------------------------------------------------------------
+# Survive.fun — local dependencies only (Postgres + Redis)
+#
+# You don’t run the Node apps in Docker here; this file just spins up the
+# databases the API expects. After `pnpm docker:up`, point `DATABASE_URL` and
+# `REDIS_URL` at localhost (see apps/api/env.sample) and run the API as usual.
+#
+# Typical flow:
+#   pnpm docker:up
+#   cd apps/api && pnpm exec prisma db push && pnpm dev
+#   pnpm docker:down   # when you’re done
+# -----------------------------------------------------------------------------
+
+services:
+  # Postgres: markets, bets, stats — same DB name/user as env.sample defaults.
+  postgres:
+    image: postgres:16-alpine
+    container_name: survivefun-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: survivefun
+    ports:
+      - "5432:5432"
+    volumes:
+      - survivefun_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d survivefun"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis: optional BullMQ queue for the market resolver (API falls back to
+  # setInterval if REDIS_URL is unset, but Redis matches production closer).
+  redis:
+    image: redis:7-alpine
+    container_name: survivefun-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - survivefun_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  survivefun_pg_data:
+  survivefun_redis_data:
