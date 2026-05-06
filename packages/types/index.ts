@@ -17,6 +17,8 @@ export interface Market {
   openPrice: string | null;
   openLiquidity: string | null;
   devWallet: string | null;
+  /** Optional ratio 0–1 for dev_sell detection (demo / overrides). */
+  devSellThresholdOverride: string | null;
   status: MarketStatus;
   outcome: Outcome | null;
   onChainAddress: string | null;
@@ -40,6 +42,20 @@ export interface Bet {
   payoutAmount: string | null;
   payoutTx: string | null;
   createdAt: string;
+}
+
+/** Bet with joined market (e.g. user portfolio rows). */
+export interface BetWithMarket extends Bet {
+  market: Market;
+}
+
+/** Aggregated dashboard stats from the API (live DB). */
+export interface PlatformSnapshot {
+  activeMarkets: number;
+  totalBetVolumeUsdc: string;
+  resolvedRugs: number;
+  resolvedSurvives: number;
+  largestPayoutUsdc: string | null;
 }
 
 // --- Token types (DexScreener-aligned) ---
@@ -88,6 +104,8 @@ export interface TokenPair {
   fdv: number | null;
   marketCap: number | null;
   pairCreatedAt: number | null;
+  /** Enriched from DexScreener `pair.info` when available. */
+  devWallet?: string | null;
 }
 
 // --- API response types ---
