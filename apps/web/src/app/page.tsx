@@ -3,7 +3,7 @@
 import type { ApiResponse, Market } from "@survivefun/types";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { WalletConnectButton } from "@/components/WalletConnectButton";
 import { motion } from "framer-motion";
 import { ArrowRight, Inbox } from "lucide-react";
 import { useState, type CSSProperties } from "react";
@@ -91,20 +91,22 @@ export default function HomePage() {
   const [createError, setCreateError] = useState<string | null>(null);
 
   const createMarket = useMutation({
-    mutationFn: async (): Promise<Market> => {
+    mutationFn: async ({
+      mint,
+      duration,
+    }: {
+      mint: string;
+      duration: number;
+    }): Promise<Market> => {
       if (!publicKey) {
         throw new Error("Connect a wallet to create a market");
-      }
-      const mint = tokenMint.trim();
-      if (!mint) {
-        throw new Error("Enter a token mint address");
       }
       const res = await fetch(`${API_URL}/v1/markets`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tokenMint: mint,
-          duration: durationSeconds,
+          duration,
           walletAddress: publicKey.toBase58(),
         }),
       });
@@ -181,7 +183,7 @@ export default function HomePage() {
             </p>
           </div>
           <div className="flex shrink-0 justify-start sm:justify-end">
-            <WalletMultiButton className="!rounded-lg !border !border-accent !bg-accent !font-mono !text-xs !font-bold !uppercase !tracking-widest !text-ink transition-colors hover:!border-accent-bright hover:!bg-transparent hover:!text-accent-bright" />
+            <WalletConnectButton className="!rounded-lg !border !border-accent !bg-accent !font-mono !text-xs !font-bold !uppercase !tracking-widest !text-ink transition-colors hover:!border-accent-bright hover:!bg-transparent hover:!text-accent-bright" />
           </div>
         </div>
       </motion.header>
@@ -226,15 +228,24 @@ export default function HomePage() {
                 aria-hidden
               />
               <div className="relative z-[1] space-y-5 p-6 sm:p-8">
-                <label className="block">
-                  <span className="sr-only">Pump.fun token address</span>
+                <label className="block space-y-2">
+                  <span className="block font-mono text-[10px] font-bold uppercase tracking-widest text-muted">
+                    Token mint (SPL)
+                  </span>
                   <input
                     type="text"
                     value={tokenMint}
                     onChange={(e) => setTokenMint(e.target.value)}
-                    placeholder="Paste Pump.fun token address..."
+                    placeholder="e.g. So111… from Solscan / Pump.fun mint"
                     className="w-full rounded-lg border border-border bg-surface px-4 py-4 font-mono text-sm text-foreground placeholder:text-muted transition-all duration-200 focus:border-border-glow focus:outline-none focus:ring-1 focus:ring-accent focus:shadow-glow-sm sm:text-base"
+                    autoComplete="off"
+                    spellCheck={false}
                   />
+                  <p className="font-mono text-[11px] leading-relaxed text-muted">
+                    Paste the token’s{" "}
+                    <span className="text-fg-soft">mint address</span> (base58,
+                    32–44 chars) — the coin you’re betting on, not your wallet.
+                  </p>
                 </label>
 
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -264,10 +275,36 @@ export default function HomePage() {
 
                   <button
                     type="button"
-                    disabled={createMarket.isPending}
+                    disabled={
+                      createMarket.isPending ||
+                      !publicKey ||
+                      !tokenMint.trim()
+                    }
                     onClick={() => {
                       setCreateError(null);
-                      void createMarket.mutateAsync();
+                      const mint = tokenMint.trim();
+                      if (!publicKey) {
+                        toast({
+                          variant: "error",
+                          title: "Wallet required",
+                          message: "Connect a wallet to create a market.",
+                        });
+                        return;
+                      }
+                      if (!mint) {
+                        setCreateError("Paste the token mint address first.");
+                        toast({
+                          variant: "error",
+                          title: "Missing mint",
+                          message:
+                            "Paste the SPL mint for the coin you want a market for.",
+                        });
+                        return;
+                      }
+                      void createMarket.mutateAsync({
+                        mint,
+                        duration: durationSeconds,
+                      });
                     }}
                     className="inline-flex items-center justify-center gap-2 rounded-lg border border-accent bg-accent px-6 py-3 font-mono text-xs font-bold uppercase tracking-widest text-ink shadow-glow-sm transition-all duration-200 hover:border-accent-bright hover:bg-transparent hover:text-accent-bright hover:shadow-none disabled:opacity-50"
                   >
