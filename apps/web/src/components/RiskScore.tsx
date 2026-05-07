@@ -155,7 +155,10 @@ export function RiskScore({
             <Timer className="h-3.5 w-3.5 text-accent" aria-hidden />
             Token age
           </dt>
-          <dd className="mt-2 font-mono text-sm font-medium tabular-nums text-foreground">
+          <dd
+            suppressHydrationWarning
+            className="mt-2 font-mono text-sm font-medium tabular-nums text-foreground"
+          >
             {ageLabel}
           </dd>
         </div>

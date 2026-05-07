@@ -34,6 +34,7 @@ export function Timer({ expiresAt }: { expiresAt: Date }) {
 
   return (
     <span
+      suppressHydrationWarning
       className={
         urgent
           ? "font-mono text-sm font-semibold tabular-nums text-rug"

@@ -546,7 +546,10 @@ export default function MarketPage() {
                     <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
                       Token age
                     </dt>
-                    <dd className="mt-1 font-mono text-sm font-medium text-foreground">
+                    <dd
+                      suppressHydrationWarning
+                      className="mt-1 font-mono text-sm font-medium text-foreground"
+                    >
                       {formatTokenAgeShort(market.createdAt)}
                     </dd>
                   </div>
