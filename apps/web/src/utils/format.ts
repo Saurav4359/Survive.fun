@@ -14,6 +14,16 @@ export function formatUSDC(amount: number): string {
   return usdcFormatter.format(amount);
 }
 
+/** SOL balance for wallet UI (trims trailing zeros). */
+export function formatSolAmount(sol: number): string {
+  if (!Number.isFinite(sol)) return "0";
+  if (sol === 0) return "0";
+  if (sol >= 1) {
+    return sol.toLocaleString("en-US", { maximumFractionDigits: 4 });
+  }
+  return sol.toLocaleString("en-US", { maximumFractionDigits: 6 });
+}
+
 export function formatWallet(address: string): string {
   const trimmed = address.trim();
   if (trimmed.length <= 8) {
