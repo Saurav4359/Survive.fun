@@ -16,7 +16,7 @@ function parseNum(v: unknown): number | null {
   return null;
 }
 
-async function fetchTokenFromApi(mint: string): Promise<{
+export async function fetchTokenFromApi(mint: string): Promise<{
   pair: TokenPair | null;
   notFound: boolean;
 }> {
