@@ -2,8 +2,12 @@ import type { Token } from "@survivefun/types";
 import { AlertTriangle, Droplets, Timer, UserRound } from "lucide-react";
 
 import { formatUSDC } from "@/utils/format";
+import {
+  computeRiskLevel,
+  type RiskLevel,
+} from "@/utils/marketRisk";
 
-export type RiskLevel = "HIGH" | "MEDIUM" | "LOW";
+export type { RiskLevel };
 
 function formatTokenAge(pairCreatedAtSeconds: number | null | undefined): string {
   if (pairCreatedAtSeconds == null || !Number.isFinite(pairCreatedAtSeconds)) {
@@ -18,39 +22,6 @@ function formatTokenAge(pairCreatedAtSeconds: number | null | undefined): string
   if (h > 0) return `${h}h`;
   const m = Math.floor(diff / 60_000);
   return `${Math.max(1, m)}m`;
-}
-
-function computeRiskLevel(input: {
-  devWalletPctHeld: number | null | undefined;
-  liquidityUsd: number | null | undefined;
-  pairCreatedAtSeconds: number | null | undefined;
-}): RiskLevel {
-  const { devWalletPctHeld, liquidityUsd, pairCreatedAtSeconds } = input;
-  const hasAny =
-    devWalletPctHeld != null || liquidityUsd != null || pairCreatedAtSeconds != null;
-  if (!hasAny) return "LOW";
-
-  let score = 0;
-  if (devWalletPctHeld != null && Number.isFinite(devWalletPctHeld)) {
-    if (devWalletPctHeld >= 35) score += 45;
-    else if (devWalletPctHeld >= 20) score += 28;
-    else if (devWalletPctHeld >= 10) score += 12;
-  }
-  if (liquidityUsd != null && Number.isFinite(liquidityUsd)) {
-    if (liquidityUsd < 15_000) score += 40;
-    else if (liquidityUsd < 50_000) score += 22;
-    else if (liquidityUsd < 150_000) score += 10;
-  }
-  if (pairCreatedAtSeconds != null && Number.isFinite(pairCreatedAtSeconds)) {
-    const ageHours = (Date.now() - pairCreatedAtSeconds * 1000) / 3_600_000;
-    if (ageHours < 1) score += 30;
-    else if (ageHours < 6) score += 15;
-    else if (ageHours < 24) score += 6;
-  }
-
-  if (score >= 55) return "HIGH";
-  if (score >= 28) return "MEDIUM";
-  return "LOW";
 }
 
 const badgeStyles: Record<
