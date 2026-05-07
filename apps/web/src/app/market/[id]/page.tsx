@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UTCTimestamp } from "lightweight-charts";
 
 import { BetPanel } from "@/components/BetPanel";
+import { WalletBalancePanel } from "@/components/WalletBalancePanel";
 import { LiveFeed } from "@/components/LiveFeed";
 import { PoolBar } from "@/components/PoolBar";
 import { RiskScore } from "@/components/RiskScore";
@@ -353,9 +354,12 @@ export default function MarketPage() {
             <ChevronLeft className="h-4 w-4" aria-hidden />
             Markets
           </Link>
-          <span className="rounded-lg border border-border bg-surface px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-muted">
-            {market.status}
-          </span>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <WalletBalancePanel />
+            <span className="rounded-lg border border-border bg-surface px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-muted">
+              {market.status}
+            </span>
+          </div>
         </motion.div>
 
         <div

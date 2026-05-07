@@ -3,7 +3,7 @@
 import type { ApiResponse, Market } from "@survivefun/types";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { WalletConnectButton } from "@/components/WalletConnectButton";
+import { WalletBalancePanel } from "@/components/WalletBalancePanel";
 import { motion } from "framer-motion";
 import { ArrowRight, Inbox } from "lucide-react";
 import { useState, type CSSProperties } from "react";
@@ -182,8 +182,8 @@ export default function HomePage() {
               Bet whether memecoins survive or rug
             </p>
           </div>
-          <div className="flex shrink-0 justify-start sm:justify-end">
-            <WalletConnectButton className="!rounded-lg !border !border-accent !bg-accent !font-mono !text-xs !font-bold !uppercase !tracking-widest !text-ink transition-colors hover:!border-accent-bright hover:!bg-transparent hover:!text-accent-bright" />
+          <div className="flex w-full shrink-0 justify-start sm:w-auto sm:justify-end">
+            <WalletBalancePanel />
           </div>
         </div>
       </motion.header>

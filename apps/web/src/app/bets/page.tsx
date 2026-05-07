@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { EmptyState } from "@/components/EmptyState";
+import { WalletBalancePanel } from "@/components/WalletBalancePanel";
 import { useToast } from "@/components/ToastProvider";
 import { Timer } from "@/components/Timer";
 import { BetsPageSkeleton } from "@/components/ui/skeletons";
@@ -151,16 +152,21 @@ export default function BetsPage() {
           initial={{ opacity: 0, y: -6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-          className="mb-10 border-b border-border pb-8"
+          className="mb-10 flex flex-col gap-6 border-b border-border pb-8 sm:flex-row sm:items-start sm:justify-between"
         >
-          <h1 className="font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-            Your bets
-          </h1>
-          <p className="mt-2 font-mono text-sm text-muted">
-            {wallet
-              ? `Wallet ${wallet.slice(0, 4)}…${wallet.slice(-4)}`
-              : "Connect a wallet to see your positions"}
-          </p>
+          <div>
+            <h1 className="font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+              Your bets
+            </h1>
+            <p className="mt-2 font-mono text-sm text-muted">
+              {wallet
+                ? `Wallet ${wallet.slice(0, 4)}…${wallet.slice(-4)}`
+                : "Connect a wallet to see your positions"}
+            </p>
+          </div>
+          <div className="shrink-0 sm:max-w-[min(420px,100%)] sm:pt-1">
+            <WalletBalancePanel />
+          </div>
         </motion.header>
 
         {!wallet ? (
