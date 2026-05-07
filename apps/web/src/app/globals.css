@@ -3,23 +3,24 @@
 @tailwind utilities;
 
 :root {
-  --bg-primary: #000000;
-  --bg-surface: #0a0a0a;
-  --bg-card: #0f0f0f;
-  --border: #1f1f1f;
-  --border-glow: #86f0ad;
-  --accent: #86f0ad;
-  --accent-bright: #b5fad0;
-  --accent-dim: #3d8f62;
-  --survive: #4ade80;
+  --bg-primary: #020b18;
+  --bg-sidebar: #041428;
+  --bg-surface: #061d35;
+  --bg-card: #061d35;
+  --border: #0e3a5c;
+  --border-glow: #38bdf8;
+  --accent: #0ea5e9;
+  --accent-bright: #38bdf8;
+  --accent-dim: #0369a1;
+  --survive: #06d6a0;
   --rug: #ef4444;
   --warning: #f59e0b;
-  --text-primary: #ecfccb;
-  --text-muted: #6b7280;
-  --text-secondary: #a3a3a3;
-  --glow: rgba(134, 240, 173, 0.22);
-  --on-accent: #000000;
-  --inset-glow: rgba(134, 240, 173, 0.1);
+  --text-primary: #e8f4fc;
+  --text-muted: #64748b;
+  --text-secondary: #94a3b8;
+  --glow: rgba(14, 165, 233, 0.22);
+  --on-accent: #020b18;
+  --inset-glow: rgba(14, 165, 233, 0.12);
 }
 
 @layer base {
@@ -45,7 +46,7 @@
   }
 
   ::selection {
-    background-color: rgba(134, 240, 173, 0.35);
+    background-color: rgba(14, 165, 233, 0.35);
     color: var(--text-primary);
   }
 }
@@ -74,7 +75,7 @@
     pointer-events: none;
     position: absolute;
     inset: 0;
-    background-color: rgba(134, 240, 173, 0.04);
+    background-color: rgba(14, 165, 233, 0.04);
   }
 
   .glitch-rug {
@@ -139,5 +140,13 @@
   .wallet-adapter-modal-list .wallet-adapter-button:hover {
     border-color: var(--border-glow) !important;
     box-shadow: 0 0 16px var(--glow) !important;
+  }
+
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 }

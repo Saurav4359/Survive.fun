@@ -6,6 +6,7 @@ const config: Config = {
     extend: {
       colors: {
         bg: "var(--bg-primary)",
+        sidebar: "var(--bg-sidebar)",
         surface: "var(--bg-surface)",
         card: "var(--bg-card)",
         border: "var(--border)",
