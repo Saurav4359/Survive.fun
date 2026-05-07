@@ -70,7 +70,7 @@ export function SidebarNav({ onNavigate }: Props) {
         <Link
           href="/#create-market"
           onClick={onNavigate}
-          className="flex w-full items-center justify-center rounded-lg border border-survive bg-survive px-4 py-3 font-mono text-xs font-bold uppercase tracking-widest text-[#020b18] shadow-[0_0_20px_rgba(6,214,160,0.25)] transition hover:bg-survive/90"
+          className="flex w-full items-center justify-center rounded-lg border border-survive bg-survive px-4 py-3 font-mono text-xs font-bold uppercase tracking-widest text-ink shadow-glow-sm transition hover:bg-transparent hover:text-survive"
         >
           Create Market
         </Link>
