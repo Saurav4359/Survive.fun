@@ -1,6 +1,7 @@
 import { BN } from "@coral-xyz/anchor";
 import type { BetSide } from "@survivefun/types";
 import type { WalletContextState } from "@solana/wallet-adapter-react";
+import { WalletError } from "@solana/wallet-adapter-base";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
@@ -151,26 +152,128 @@ async function assertSufficientUsdc(owner: PublicKey, requiredRaw: bigint): Prom
   }
 }
 
-function mapSendError(err: unknown): Error {
-  if (err instanceof SendTransactionError) {
-    const logs = (err.logs ?? []).join("\n");
-    const msg = err.message || "";
-    const blob = `${msg}\n${logs}`;
+/** Wallet adapters wrap RPC failures in WalletSendTransactionError(message, inner). */
+function unwrapWalletErrors(err: unknown): unknown {
+  let cur: unknown = err;
+  for (let i = 0; i < 14; i++) {
+    if (cur instanceof WalletError && cur.error != null) {
+      cur = cur.error;
+      continue;
+    }
+    if (cur instanceof Error && cur.cause != null) {
+      cur = cur.cause;
+      continue;
+    }
+    break;
+  }
+  return cur;
+}
+
+/**
+ * Bundlers sometimes duplicate `@solana/web3.js`, so `instanceof SendTransactionError` fails.
+ * Fall back on duck typing + constructor name.
+ */
+function asSendTransactionError(err: unknown): SendTransactionError | null {
+  if (err instanceof SendTransactionError) return err;
+  if (typeof err !== "object" || err === null) return null;
+  const ctor = (err as { constructor?: { name?: string } }).constructor?.name;
+  if (ctor === "SendTransactionError") return err as SendTransactionError;
+  const e = err as Record<string, unknown>;
+  if (typeof e.getLogs === "function" && typeof e.message === "string") {
+    return err as SendTransactionError;
+  }
+  return null;
+}
+
+function devnetClusterHint(): string {
+  if (!/\bdevnet\b/i.test(RPC_URL)) return "";
+  return "\n\nTip: This app uses Solana Devnet — set your wallet to Devnet or transactions will fail.";
+}
+
+async function mapSendError(
+  err: unknown,
+  connection: Connection,
+): Promise<Error> {
+  const unwrapped = unwrapWalletErrors(err);
+  const ste = asSendTransactionError(unwrapped);
+
+  if (ste != null) {
+    const te = ste.transactionError;
+    let logLines = te.logs ?? ste.logs;
+    if (
+      (!logLines || logLines.length === 0) &&
+      typeof ste.getLogs === "function"
+    ) {
+      try {
+        logLines = (await ste.getLogs(connection)) ?? undefined;
+      } catch {
+        /* ignore */
+      }
+    }
+    const logText = (logLines ?? []).join("\n");
+    const detail = te.message || ste.message;
+    const blob = `${detail}\n${logText}`;
+
     if (/insufficient funds|InsufficientFunds|insufficient lamports/i.test(blob)) {
       return new Error(
-        "Insufficient SOL for fees or insufficient USDC for this transaction.",
+        "Insufficient SOL for fees or insufficient USDC for this transaction." +
+          devnetClusterHint(),
       );
     }
     if (/Insufficient/i.test(blob)) {
-      return new Error("Insufficient balance for this transaction.");
+      return new Error(
+        "Insufficient balance for this transaction." + devnetClusterHint(),
+      );
     }
-    if (/custom program error|Program log: Error/i.test(blob)) {
-      return new Error(`On-chain program error: ${msg}`);
+    if (/custom program error|Program log: Error|InstructionMissing/i.test(blob)) {
+      const snippet = logLines?.length
+        ? `\n${logLines.slice(-12).join("\n")}`
+        : "";
+      return new Error(
+        `On-chain error: ${detail}${snippet}${devnetClusterHint()}`,
+      );
     }
-    return new Error(`Transaction failed: ${msg}`);
+    const tail = logLines?.length
+      ? `\n--- program logs (last lines) ---\n${logLines.slice(-15).join("\n")}`
+      : "";
+    return new Error(
+      `Transaction failed: ${detail}${tail}${devnetClusterHint()}`,
+    );
   }
-  if (err instanceof Error) return err;
-  return new Error(String(err));
+
+  if (unwrapped instanceof Error) {
+    const text = unwrapped.message || "Unknown error";
+    return new Error(text + devnetClusterHint());
+  }
+
+  return new Error(String(unwrapped ?? err) + devnetClusterHint());
+}
+
+function isVagueTxMessage(msg: string): boolean {
+  const first = msg.split("\n")[0]?.trim().toLowerCase() ?? "";
+  return (
+    first === "unexpected error" ||
+    first === "unknown error" ||
+    first.length < 6
+  );
+}
+
+async function simulateForDebugLogs(
+  connection: Connection,
+  tx: Transaction,
+): Promise<string | null> {
+  try {
+    const sim = await connection.simulateTransaction(tx);
+    const v = sim.value;
+    const errPart = v.err != null ? JSON.stringify(v.err) : null;
+    const logs = v.logs?.length ? v.logs.slice(-25).join("\n") : "";
+    if (!errPart && !logs) return null;
+    return [errPart ? `Simulation err: ${errPart}` : null, logs ? `Logs:\n${logs}` : null]
+      .filter(Boolean)
+      .join("\n");
+  } catch {
+    return null;
+  }
 }
 
 async function sendInstructions(
@@ -205,7 +308,17 @@ async function sendInstructions(
     );
     return signature;
   } catch (e) {
-    throw mapSendError(e);
+    let mapped = await mapSendError(e, connection);
+    if (isVagueTxMessage(mapped.message)) {
+      const extra = await simulateForDebugLogs(connection, tx);
+      if (extra) {
+        mapped = new Error(`${mapped.message}\n\n${extra}`);
+      } else if (process.env.NODE_ENV === "development") {
+        // eslint-disable-next-line no-console -- surfaced when wallet hides RPC details
+        console.error("[survive.fun] Raw transaction failure:", e);
+      }
+    }
+    throw mapped;
   }
 }
 
