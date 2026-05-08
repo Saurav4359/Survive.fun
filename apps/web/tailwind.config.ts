@@ -2,31 +2,68 @@ import type { Config } from "tailwindcss";
 
 const config: Config = {
   content: ["./src/**/*.{js,ts,jsx,tsx,mdx}"],
+  darkMode: "class",
   theme: {
     extend: {
       colors: {
-        bg: "var(--bg-primary)",
-        sidebar: "var(--bg-sidebar)",
-        surface: "var(--bg-surface)",
-        card: "var(--bg-card)",
+        /* shadcn semantic */
+        background: "var(--background)",
+        foreground: "var(--foreground)",
+        card: {
+          DEFAULT: "var(--card)",
+          foreground: "var(--card-foreground)",
+        },
+        popover: {
+          DEFAULT: "var(--popover)",
+          foreground: "var(--popover-foreground)",
+        },
+        primary: {
+          DEFAULT: "var(--primary)",
+          foreground: "var(--primary-foreground)",
+        },
+        secondary: {
+          DEFAULT: "var(--secondary)",
+          foreground: "var(--secondary-foreground)",
+        },
+        muted: {
+          DEFAULT: "var(--muted)",
+          foreground: "var(--muted-foreground)",
+        },
+        accent: {
+          DEFAULT: "var(--accent)",
+          foreground: "var(--accent-foreground)",
+        },
+        destructive: {
+          DEFAULT: "var(--destructive)",
+          foreground: "var(--destructive-foreground)",
+        },
         border: "var(--border)",
-        "border-glow": "var(--border-glow)",
-        accent: "var(--accent)",
+        input: "var(--input)",
+        ring: "var(--ring)",
+
+        /* Survive.fun strict palette */
+        bg: "#000000",
+        surface: "#0a0a0a",
+        "border-accent": "rgba(205, 240, 120, 0.125)",
         "accent-bright": "var(--accent-bright)",
         "accent-dim": "var(--accent-dim)",
-        survive: "var(--survive)",
-        rug: "var(--rug)",
-        warn: "var(--warning)",
-        foreground: "var(--text-primary)",
-        muted: "var(--text-muted)",
-        "fg-soft": "var(--text-secondary)",
-        ink: "var(--on-accent)",
-        glow: "var(--glow)",
+        survive: "#cdf078",
+        rug: "#ef4444",
+        warn: "#facc15",
+        "fg-soft": "#a3a3a3",
+        "fg-muted": "#525252",
+        ink: "#000000",
+        glow: "rgba(205, 240, 120, 0.22)",
       },
       fontFamily: {
         sans: ["var(--font-display)", "system-ui", "sans-serif"],
         display: ["var(--font-display)", "system-ui", "sans-serif"],
-        mono: ["var(--font-mono)", "ui-monospace", "monospace"],
+        mono: [
+          "var(--font-mono)",
+          "ui-monospace",
+          "SFMono-Regular",
+          "monospace",
+        ],
       },
       borderRadius: {
         none: "0",
@@ -34,43 +71,12 @@ const config: Config = {
         DEFAULT: "4px",
         md: "6px",
         lg: "8px",
+        xl: "12px",
       },
       boxShadow: {
-        glow: "0 0 28px var(--glow), 0 0 1px var(--border-glow)",
+        glow: "0 0 28px var(--glow), 0 0 1px var(--accent)",
         "glow-sm": "0 0 16px var(--glow)",
-        "inset-glow": "inset 0 0 20px var(--inset-glow)",
-      },
-      keyframes: {
-        "fade-in": {
-          "0%": { opacity: "0" },
-          "100%": { opacity: "1" },
-        },
-        "enter-up": {
-          "0%": { opacity: "0", transform: "translateY(10px)" },
-          "100%": { opacity: "1", transform: "translateY(0)" },
-        },
-        "flash-up": {
-          "0%": { backgroundColor: "transparent" },
-          "35%": { backgroundColor: "rgba(45, 212, 191, 0.22)" },
-          "100%": { backgroundColor: "transparent" },
-        },
-        "flash-down": {
-          "0%": { backgroundColor: "transparent" },
-          "35%": { backgroundColor: "rgba(251, 113, 133, 0.26)" },
-          "100%": { backgroundColor: "transparent" },
-        },
-        "flash-accent": {
-          "0%": { color: "var(--text-primary)" },
-          "40%": { color: "var(--accent-bright)" },
-          "100%": { color: "var(--text-primary)" },
-        },
-      },
-      animation: {
-        "fade-in": "fade-in 0.3s ease forwards",
-        "enter-up": "enter-up 0.3s ease forwards",
-        "flash-up": "flash-up 0.45s ease-out",
-        "flash-down": "flash-down 0.45s ease-out",
-        "flash-accent": "flash-accent 0.5s ease-out",
+        "glow-lg": "0 0 48px var(--glow)",
       },
     },
   },
