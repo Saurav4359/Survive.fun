@@ -1,0 +1,733 @@
+# Frontend.md — Survive.fun Web App
+
+Single source of truth for the `apps/web` frontend: what it does, how it's
+built, and exactly which file is responsible for each behavior.
+
+> **Design DNA** — pure black `#000000` + lime `#cdf078` only. Zero
+> gradients, zero purple, zero white backgrounds. Space Grotesk for display,
+> JetBrains Mono for every number. Sharp, precise, intentional. Reads like a
+> $50M trading terminal, not a friendly memecoin app.
+
+---
+
+## 1. Tech Stack
+
+### Core framework
+
+| Tool                                | Version  | Why it's here                                                                           |
+| ----------------------------------- | -------- | --------------------------------------------------------------------------------------- |
+| **Next.js**                         | `14.2.x` | App Router, RSC + client components, SSG/ISR for static pages, dynamic for `/market/:id`. |
+| **React**                           | `18.3.x` | Concurrent rendering, `useSyncExternalStore` for socket store.                         |
+| **TypeScript**                      | `5.9.x`  | `strict` everywhere; types shared from `@survivefun/types` workspace package.          |
+| **Node**                            | `>=20`   | pnpm 9.15.4 monorepo via Turborepo.                                                     |
+
+### Styling
+
+| Tool                | Use                                                                |
+| ------------------- | ------------------------------------------------------------------ |
+| **TailwindCSS 3.4** | Utility-first layout + design tokens via CSS variables.            |
+| **shadcn/ui**       | Base primitives (Button), composable into the strict palette.      |
+| **clsx + tailwind-merge** | `cn()` helper at `src/lib/utils.ts`.                          |
+| **CSS variables**   | Single palette in `globals.css` so shadcn semantic tokens stay in sync. |
+
+### Animation & 3D
+
+| Tool                | Use                                                                                          |
+| ------------------- | -------------------------------------------------------------------------------------------- |
+| **framer-motion 12** | Every interaction (hover, tap, page transitions, slide-in feeds, layoutId underline tabs).  |
+| **three.js 0.184**  | 3D layer: hero `ParticleField` and `LeaderboardHeader3D` (lazy-loaded via dynamic import).   |
+| **lightweight-charts 4.2** | Price chart on Market Detail (lime line, pure black bg, custom crosshair).            |
+| **lucide-react**    | Every icon. No emojis baked into JSX.                                                        |
+
+### Data & realtime
+
+| Tool                                | Use                                                                                       |
+| ----------------------------------- | ----------------------------------------------------------------------------------------- |
+| **TanStack Query 5**                | All server state (markets, stats, bets, token metadata from API, DexScreener bulk pairs). |
+| **socket.io-client 4.8**            | Real-time `bet_placed`, `pool_update`, `market_resolved` events from API.                 |
+| **zustand 5**                       | Tiny client state — currently `marketSearchStore` (search query shared between TopBar + HomePage). |
+| **axios 1.12**                      | A few outbound API calls (most still use `fetch`).                                        |
+
+### Solana / wallet
+
+| Tool                                                                                          | Use                                                              |
+| --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| **@solana/wallet-adapter-react** + **react-ui** + **wallets** + **base**                      | Phantom integration, modal, autoconnect.                         |
+| **@solana/web3.js 1.98**                                                                      | RPC client, `Transaction`, `PublicKey`, error mapping.            |
+| **@solana/spl-token 0.4**                                                                     | USDC ATA helpers and idempotent ATA creation.                    |
+| **@coral-xyz/anchor 0.31**                                                                    | `BN` for u64 encoding of instruction data.                        |
+
+### Build / quality
+
+- `pnpm` workspaces + `turbo` orchestration.
+- ESLint via `eslint-config-next` (zero warnings on green).
+- `tsc --noEmit` typecheck (zero errors on green).
+
+---
+
+## 2. Visual System
+
+All tokens live as CSS variables in `apps/web/src/app/globals.css` and are
+exposed to Tailwind in `apps/web/tailwind.config.ts`.
+
+### Palette
+
+| Token            | Value                          | Tailwind class              | Used for                          |
+| ---------------- | ------------------------------ | --------------------------- | --------------------------------- |
+| `--bg`           | `#000000`                      | `bg-bg`                     | Page background, sidebar, topbar  |
+| `--bg-surface`   | `#0a0a0a`                      | `bg-surface`                | Inset wells, chart fallback bg    |
+| `--bg-card`      | `#111111`                      | `bg-card`                   | Cards, panels, popovers           |
+| `--border`       | `#1a1a1a`                      | `border-border`             | Default 1px borders               |
+| `--border-accent`| `rgba(205,240,120,0.125)` (`#cdf07820`) | `border-border-accent` | Subtle lime hint divider          |
+| `--accent`       | `#cdf078`                      | `text-accent` / `bg-accent` | Lime — sole accent color          |
+| `--survive`      | `#cdf078`                      | `text-survive`              | SURVIVE side                      |
+| `--rug`          | `#ef4444`                      | `text-rug`                  | RUG side                          |
+| `--warning`      | `#facc15`                      | `text-warn`                 | Medium-risk badge                 |
+| `--text`         | `#ffffff`                      | `text-white`                | Primary text                      |
+| `--text-soft`    | `#a3a3a3`                      | `text-fg-soft`              | Secondary text                    |
+| `--text-muted`   | `#525252`                      | `text-fg-muted`             | Tertiary / labels                 |
+| `--on-accent`    | `#000000`                      | `text-ink`                  | Black text on lime button         |
+| `--glow`         | `rgba(205,240,120,0.22)`       | `shadow-glow*`              | Glow shadows (no gradients)       |
+
+Three custom shadow tokens ship lime glows without any gradient fill:
+`shadow-glow-sm` (16px), `shadow-glow` (28px + 1px ring), `shadow-glow-lg` (48px).
+
+### Typography
+
+- **Display** — Space Grotesk via `next/font/google`, exposed as `--font-display`.
+  Mapped to Tailwind `font-sans` and `font-display`.
+- **Mono** — JetBrains Mono via `next/font/google`, exposed as `--font-mono`.
+  Mapped to Tailwind `font-mono`. **All numbers, prices, timers, mints, wallet
+  truncations** use `font-mono` + `tabular-nums` so digits never jitter.
+
+Both are loaded with `display: "swap"` and weights `400/500/600/700`.
+
+### Borders / radii
+
+Sharp, terminal-grade corners: `2px / 4px / 6px / 8px / 12px`. Most cards
+intentionally use the default `4px` or no radius for the trading-terminal feel.
+
+### Animation primitives
+
+`apps/web/src/app/globals.css` defines two utilities used everywhere:
+
+- `.glow-lime` / `.glow-lime-soft` — solid box-shadow rings (no gradients).
+- `.pulse-rug` — 1s opacity pulse used on timers under 5 minutes.
+
+Plus `.hide-scrollbar` for the trending strip and feed lists.
+
+---
+
+## 3. App Shell & Routing
+
+### Root layout — `src/app/layout.tsx`
+
+- Loads Space Grotesk + JetBrains Mono via `next/font/google` and binds them
+  to `--font-display` / `--font-mono` on `<html>`.
+- Forces `dark` class so shadcn semantic tokens resolve to our palette.
+- Wraps everything in `<Providers>` then `<AppShell>`.
+- Sets metadata: `survive.fun — rug or survive`.
+
+### Providers — `src/app/providers.tsx`
+
+Single client boundary that mounts:
+
+1. `ConnectionProvider` (Solana web3.js connection, default cluster: **devnet**, override via `NEXT_PUBLIC_RPC_URL`).
+2. `WalletProvider` with `PhantomWalletAdapter` and `autoConnect`.
+3. `WalletModalProvider` — drives the wallet picker modal (themed in `globals.css`).
+4. `QueryClientProvider` — TanStack Query, default `staleTime: 30_000ms`.
+5. `ToastProvider` — custom framer-motion toast stack used for tx success / error / market resolves.
+
+### AppShell — `src/components/layout/AppShell.tsx`
+
+- Fixed **240px** left sidebar on `lg` (≥1024px), animated in with framer
+  (`x: -32 → 0`, `opacity: 0 → 1`, custom cubic-bezier).
+- Below `lg`, sidebar collapses into a left drawer triggered by the topbar
+  hamburger. Drawer + scrim use `AnimatePresence` (slide-in from `-100%`,
+  scrim fades).
+- Main column has `lg:pl-[240px]` and contains `<TopBar>` + `<main>`.
+
+### Routing map (App Router)
+
+| Route              | File                                  | Mode                               |
+| ------------------ | ------------------------------------- | ---------------------------------- |
+| `/`                | `src/app/page.tsx`                    | Static (homepage / hero / markets) |
+| `/market/[id]`     | `src/app/market/[id]/page.tsx`        | Dynamic SSR (per-market detail)    |
+| `/bets`            | `src/app/bets/page.tsx`               | Static (My Bets dashboard)         |
+| `/leaderboard`     | `src/app/leaderboard/page.tsx`        | Static                             |
+| `/live-rugs`       | `src/app/live-rugs/page.tsx`          | Static                             |
+| `/live`            | `src/app/live/page.tsx`               | Static                             |
+| `/profile`         | `src/app/profile/page.tsx`            | Static                             |
+| `/chat`            | `src/app/chat/page.tsx`               | Static (placeholder)               |
+
+Every page that can throw has a sibling `error.tsx` (`/`, `/bets`,
+`/market/[id]`) — themed with framer-motion fade-in and a single "Try again"
+button.
+
+---
+
+## 4. Sidebar & TopBar
+
+### `src/components/layout/SidebarNav.tsx`
+
+- Logo: `Skull` lucide icon in lime + "survive`.fun`" wordmark (`.fun` lime).
+- Nav items use `lucide-react` (Home, Skull, Flame, User, Trophy, Zap) — **no
+  emojis**.
+- Active state: lime 3px left border + lime icon + lime text + `#0a0a0a` bg.
+- Hover state: framer animates a 1px lime bar from `x: -100% → 0` on the left
+  edge, plus background fades to `#0a0a0a`.
+- Bottom section:
+  - `+ Create Market` lime button (`bg-accent text-ink`), framer
+    `whileHover: scale 1.02` + `whileTap: scale 0.98`.
+  - Holdings card (USDC + SOL balance + truncated wallet) sourced from
+    `useWalletBalances`.
+
+### `src/components/layout/TopBar.tsx`
+
+- Sticky `top-0`, 56–64px tall.
+- Search input writes to a zustand store (`marketSearchStore`) so the home
+  page filters markets reactively as you type. Input gets
+  `focus:border-accent focus:shadow-glow-sm` (the lime glow on focus).
+- Right side: when disconnected, `<WalletConnectButton>` (outlined lime →
+  fills lime on hover). When connected, a balance pill (mono USDC) opens a
+  dropdown with deposit / withdraw / history / copy address / switch wallet
+  via `AnimatePresence` slide-down.
+
+### Mobile
+
+- TopBar shows a `Menu` button only `<lg`, which opens the sidebar drawer.
+- All grids collapse to single column at `375px` minimum width.
+
+---
+
+## 5. Three.js Layer
+
+### `src/components/three/ParticleField.tsx`
+
+Hero background on the homepage.
+
+- Lazy-loaded via `await import("three")` inside `useEffect` so `three` ships
+  only to the client.
+- 200 particles distributed on a spherical shell (`r = 2 + rand*4`), pure
+  lime (`0xcdf078`), `size: 0.04`, `transparent + depthWrite: false`.
+- Continuous slow rotation (`y: t * 0.04`) plus mouse parallax (`x/y` lerped
+  toward normalized cursor coords with `0.04` ease).
+- `ResizeObserver` keeps the renderer in sync with the container.
+- Cleans up `renderer.dispose()`, geometry/material disposal, RAF cancel,
+  mousemove listener, and removes the canvas on unmount.
+- Uses `setClearColor(0x000000, 0)` so the canvas is transparent over the
+  page's pure black.
+
+### `src/components/three/LeaderboardHeader3D.tsx`
+
+3D pixel-font "LEADERBOARD" wordmark on `/leaderboard`.
+
+- Builds each character from cubes using a tiny pixel-font map.
+- Cubes are lime (`MeshBasicMaterial 0xcdf078`), wrapped in a translucent
+  lime wireframe (`LineBasicMaterial`, opacity 0.55).
+- Slow oscillation: `rotation.y = sin(t*0.4)*0.4`, `rotation.x = sin(t*0.3)*0.1`.
+- Same lazy-load + dispose lifecycle as `ParticleField`.
+
+---
+
+## 6. Pages — What Each One Does
+
+### Homepage — `src/app/page.tsx`
+
+```
+[ Hero w/ ParticleField ]
+[ Trending strip ] [ Create Market form ]
+[ Stats bar (4) ]
+[ Filter tabs ]
+[ Markets grid (3 col) ]   [ Live Feed ]
+```
+
+- **Trending strip** — horizontal scroll of pill cards sorted by total pool;
+  uses `hide-scrollbar`. Each pill links to `/market/:id`.
+- **Create market form** — Pump.fun mint input (lime border on focus, glow
+  shadow), three duration pills `[1H] [6H] [24H]` backed by
+  `MARKET_DURATIONS = [3600, 21600, 86400]`. Submit runs **`createMarket` on
+  chain first** (`utils/transactions.ts`), then **POST `/v1/markets`** with
+  `createMarketTxSignature` so the backend can verify and persist the market.
+- **Stats bar** — 4 cards (Active Markets, Total Volume, Rugs Caught, Biggest
+  Win). Each number wrapped in `<CountUp>` for animated rollup on mount.
+- **Filter tabs** — `🔥 Hot` / `💀 High Risk` / `✅ Likely Survive` / `⚡ New`
+  / `⭐ Watch`. Active indicator uses framer `layoutId="filter-pill"` so the
+  underline slides between tabs. Logic in `applyFilter()`.
+- **Markets grid** — `MarketCard` × N with staggered fade+slide entry
+  (`staggerChildren: 0.06`). Search query from zustand filters by name /
+  ticker / mint.
+- **Live Feed** — sticky right column on `xl`, full width below.
+
+Loading state uses `Skeletons` (`src/components/ui/skeletons.tsx`) — flat
+`bg-surface` blocks with `animate-pulse`, no gradients.
+
+Empty / error state via `<EmptyState>` with framer button hover/tap.
+
+### Market Detail — `src/app/market/[id]/page.tsx`
+
+Two-column layout (60/40 on `lg`):
+
+**Left (60%)**
+- **Header**: token avatar (first letter on a black square, lime border),
+  name, ticker, large mono price, 24h change colored lime/rug, risk pill,
+  `[⭐ Watch]` button toggling `useWatchlist`.
+- **Price chart** — `lightweight-charts` line series, lime stroke
+  `#cdf078`, pure black background, `#1a1a1a` grid + crosshair, custom mono
+  font in axis labels. OHLCV comes from **`GET /v1/markets/:id/chart`**
+  (Birdeye when configured on the API). Timeframe pills `5m / 15m / 1h` select
+  the interval.
+- **Signals row** — Liquidity, Token age, Bettors (from market record). Each
+  signal is a `motion.div` with staggered `delay = index * 0.07`. A footnote
+  can mention holder metrics when the backend has Birdeye enabled.
+- **Tabs**: About / Holders / Transactions. Active underline uses
+  `layoutId="market-tab"`. Content swaps with framer fade.
+
+**Right (40%, sticky on `lg`)**
+- **Timer card** with circular SVG progress ring (`<ProgressTimerRing>`,
+  framer-animated `strokeDashoffset`). Timer value goes lime → rug + pulses
+  under 5 minutes.
+- **Pool card** — animated `<PoolBar>` ratio + total pool + bettor count.
+- **Bet panel** (see §7 below).
+- **Your position** card (only if user has bet).
+
+**Below, full width** — `<LiveFeed>` scoped to this `marketId`.
+
+### My Bets — `src/app/bets/page.tsx`
+
+- 4 summary cards: Total Bet, Won, Win Rate, Open. All numbers via
+  `<CountUp>`.
+- Filter tabs: `[All] [Active] [Won] [Lost]` with `layoutId` underline.
+- Bets table: black bg, 1px `#1a1a1a` borders, monospace amounts, lime
+  outlined `SURVIVE` and rug outlined `RUG` badges. Won rows expand to a
+  small subtable with claim payout button (calls `claimPayout` on chain).
+- Rows enter staggered (`framer-motion stagger`).
+
+### Leaderboard — `src/app/leaderboard/page.tsx`
+
+- Three.js 3D `LEADERBOARD` header (slow rotation).
+- Tabs: `Top Winners | Top Rug Callers | Biggest Payouts` — `layoutId`
+  underline. Data from **`useLeaderboard`** → `GET /v1/leaderboard?tab=…`
+  with loading / error / empty states.
+- Table: `Rank | Wallet | Won | Win Rate | Best`. #1 row highlight, rank
+  coloring (#1 lime, #2 white, #3 soft, rest muted). Rows animate in with
+  stagger.
+
+### Live Rugs / Live / Profile / Chat
+
+Refactored to the strict theme — header animates in with framer, content
+either renders `MarketCard`s (live / live-rugs filtered subsets) or simple
+placeholder copy in pure-black panels.
+
+### Error pages
+
+`src/app/error.tsx`, `src/app/bets/error.tsx`, `src/app/market/[id]/error.tsx`
+all share the same shape: rug-bordered card, `AlertTriangle` icon, mono
+error message, "Try again" button (framer `whileTap: 0.97`).
+
+---
+
+## 7. Component Library (`src/components`)
+
+### Trading-specific
+
+| File                     | Responsibility                                                                             |
+| ------------------------ | ------------------------------------------------------------------------------------------ |
+| `MarketCard.tsx`         | Token avatar, risk badge (HIGH/MED/LOW), price + 24h, `<PoolBar>`, SURVIVE/RUG totals, timer, "Bet" CTA. `whileHover: scale 1.01`, `hover:shadow-glow-sm`. |
+| `PoolBar.tsx`            | Animated SURVIVE/RUG ratio bar. `motion.div` width animates from 0 → target with cubic-bezier. Labels are mono, side-coded lime/rug. |
+| `Timer.tsx`              | Live HH:MM:SS countdown using `setInterval`. Lime when active → rug + `.pulse-rug` under 5m → `text-fg-muted` when ended. `suppressHydrationWarning` for SSR. |
+| `BetPanel.tsx`           | SURVIVE / RUG toggle (framer spring on switch), `$` amount input ($1–$50), quick amounts `[$5][$10][$25][$50]`, parimutuel payout calc with `<CountUp>`, Place Bet button with loading spinner. |
+| `LiveFeed.tsx`           | `socket.io-client` listener for `bet_placed`. New rows slide in from top via `AnimatePresence`, side-coded lime/rug left border, fade-out after 30s. Optionally scoped to a `marketId`. |
+| `RiskScore.tsx`          | Risk panel with HIGH/MEDIUM/LOW badge + Dev held / Liquidity / Token age stats. Logic in `utils/marketRisk.ts`. |
+| `WalletConnectButton.tsx`| Wraps `WalletMultiButton` and applies our outlined lime → fill on hover style. |
+| `WalletBalancePanel.tsx` | Big balance card (USDC big, SOL secondary, copy address pill, deposit/withdraw/buy/history grid, view on Solscan, switch / disconnect). |
+
+### Animation utilities
+
+| File                  | What it does                                                                                |
+| --------------------- | ------------------------------------------------------------------------------------------- |
+| `CountUp.tsx`         | `useInView` + framer `animate(motionVal, to, …)` driving a `useTransform` formatted span. Supports `prefix`, `suffix`, `decimals`, `format`, `delay`. |
+| `EmptyState.tsx`      | Themed empty / error placeholder with framer button hover/tap.                              |
+| `ToastProvider.tsx`   | Toast stack (success / error / info) with framer slide-in. Also renders the **fullscreen lime/rug flash** on `market_resolved` events. |
+
+### Layout
+
+| File                       | What it does                                                                  |
+| -------------------------- | ----------------------------------------------------------------------------- |
+| `layout/AppShell.tsx`      | Fixed sidebar + topbar + main column + mobile drawer.                         |
+| `layout/SidebarNav.tsx`    | Sidebar contents — logo, nav, create-market button, holdings.                 |
+| `layout/TopBar.tsx`        | Search + connect/balance dropdown.                                            |
+| `layout/TrendingMarketsStrip.tsx` | Reusable horizontal token strip (variant of the homepage strip).       |
+
+### Three.js
+
+| File                                  | What it does                                              |
+| ------------------------------------- | --------------------------------------------------------- |
+| `three/ParticleField.tsx`             | Lime particles, mouse parallax, hero background.          |
+| `three/LeaderboardHeader3D.tsx`       | 3D pixel-font wordmark with slow rotation.                |
+
+### shadcn / primitives
+
+| File                            | What it does                                                              |
+| ------------------------------- | ------------------------------------------------------------------------- |
+| `components.json`               | shadcn registry config (style: new-york, base: zinc, css vars).           |
+| `ui/button.tsx`                 | shadcn Button — variants `default | destructive | outline | secondary | ghost | link`. |
+| `ui/skeletons.tsx`              | Flat `bg-surface` skeletons with `animate-pulse` for loading states.       |
+| `lib/utils.ts`                  | `cn()` = `twMerge(clsx(...))`.                                            |
+
+---
+
+## 8. Hooks (`src/hooks`)
+
+| Hook                       | Returns                                                                | Source                                     |
+| -------------------------- | ---------------------------------------------------------------------- | ------------------------------------------ |
+| `useMarkets`               | Active markets list                                                    | `GET /v1/markets/active` via TanStack      |
+| `useMarket(id)`            | Single market detail                                                   | `GET /v1/markets/:id`                      |
+| `useToken(mint)`           | Normalized token + primary pair (price, liquidity, etc.)                 | `GET /v1/tokens/:mint`                     |
+| `useLeaderboard(tab)`      | Ranked wallets for winners / rug-callers / biggest-payouts              | `GET /v1/leaderboard?tab=…`               |
+| `useMarketBetsList(id)`    | All bets for a market                                                  | `GET /v1/markets/:id/bets`                 |
+| `useMarketPairsMap`        | Bulk DexScreener pair lookup keyed by mint                             | DexScreener                                |
+| `useUserBets(wallet)`      | Bets placed by a wallet                                                | `GET /v1/users/:wallet/bets`               |
+| `useStats`                 | Platform-wide aggregate stats                                          | `GET /v1/stats`                            |
+| `useWalletBalances`        | `{ usdc, sol }` for the connected wallet                               | RPC + SPL token program (USDC mint)        |
+| `useWatchlist`             | localStorage-backed star/unstar list                                   | Local                                      |
+| `useWebSocket`             | Per-market scoped snapshot — `{ isConnected, latestBet, poolUpdate, marketResolved, subscribeToMarket }`. Only events for the subscribed market populate the snapshot. | shared singleton |
+| `useWebSocketEvents`       | Global callbacks `{ onBetPlaced?, onPoolUpdate?, onMarketResolved? }` that fire for **every** validated event, ref-stable handlers. | shared singleton |
+| `useMarketsLiveSync`       | Patches `marketsQueryKey` and any hot `marketQueryKey(id)` cache slices in place from socket events so all pages stay live without polling. Mounted once at the provider root. | wraps `useWebSocketEvents` |
+
+Every TanStack query exports a `…QueryKey` constant so mutations can
+`queryClient.invalidateQueries()` against the right cache slice.
+
+### Realtime architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Providers (root)                                             │
+│   QueryClientProvider                                        │
+│     ToastProvider           ← useWebSocketEvents (resolve flash)
+│       <GlobalSocketSync>    ← useMarketsLiveSync (cache patch)
+│         …pages…                                              │
+│           useMarket(id)     ← useWebSocket per-market snap   │
+│           LiveFeed          ← useWebSocketEvents(onBetPlaced)│
+│                                                              │
+│ All consumers share ONE refcounted socket.io connection.     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+`bet_placed` / `pool_update` / `market_resolved` mutate the right TanStack
+caches in place, the live feed slides new rows in, and the fullscreen lime
+or rug flash plays — all from a single underlying socket.
+
+---
+
+## 9. State Stores (`src/stores`)
+
+- **`marketSearchStore.ts`** — zustand store: `{ query: string; setQuery }`.
+  TopBar writes; HomePage reads + filters. Keeps the URL clean and avoids
+  prop drilling.
+
+(More zustand stores can plug in here as needed — `useWebSocket` itself uses
+a hand-rolled singleton + `useSyncExternalStore`, not zustand.)
+
+---
+
+## 10. On-Chain Wiring (`src/utils/transactions.ts`)
+
+The frontend talks to the Anchor program (`HB3uE5XQGq1xNtW9RMSrnBegwifeLzk1xyr75ofRPrtH`
+in dev, override via `NEXT_PUBLIC_PROGRAM_ID`):
+
+- **`createMarket(wallet, mint, duration)`** — encodes
+  `IX_CREATE_MARKET (8B disc) || mint (32B) || duration_le (8B u64)`,
+  derives `[b"market", mint]` PDA, ensures platform USDC ATA, and signs
+  via wallet adapter. Validates duration is in `MARKET_DURATIONS`. The homepage
+  mutation submits this first, then **POST `/v1/markets`** with the returned
+  signature so the indexer persists the market.
+- **`placeBet(wallet, marketPda, side, amountUsdc)`** — encodes
+  `IX_PLACE_BET (8B) || side (1B) || amount_le (8B u64)`, idempotently
+  creates the bettor's USDC ATA if missing, derives `[b"bet", market, bettor]`
+  PDA, and submits.
+- **`claimPayout(wallet, marketPda, betPda)`** — single instruction, 8-byte
+  discriminator only.
+- **Error mapping** — `unwrapWalletErrors` peels nested `WalletError.cause`,
+  `asSendTransactionError` duck-types around bundler-duplicated web3.js,
+  `mapSendError` extracts program logs and re-throws human-readable strings
+  with a "Tip: app uses devnet" hint.
+
+USDC mint defaults to Circle devnet (`4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`).
+
+---
+
+## 11. Configuration
+
+### Environment (`apps/web/env.sample`)
+
+| Variable                          | Default                       | Purpose                                        |
+| --------------------------------- | ----------------------------- | ---------------------------------------------- |
+| `NEXT_PUBLIC_RPC_URL`             | devnet via `clusterApiUrl`    | Solana RPC endpoint                            |
+| `NEXT_PUBLIC_API_URL`             | `http://localhost:3001`       | Backend origin (Socket.IO + REST host)         |
+| `NEXT_PUBLIC_API_V1_PREFIX`       | `/v1`                         | REST prefix; use `/api/v1` if the server mounts routes there |
+| `NEXT_PUBLIC_PROGRAM_ID`          | `HB3uE5...` (dev)             | Anchor program id                              |
+| `NEXT_PUBLIC_PLATFORM_AUTHORITY`  | unset (falls back to creator) | Platform USDC vault authority                  |
+
+### Constants (`src/utils/constants.ts`)
+
+- `API_URL`, `API_V1_PREFIX`, **`apiV1Url(path)`** — full REST URLs, e.g.
+  `apiV1Url("/markets/active")` → `{API_URL}{prefix}/markets/active`.
+- `BET_LIMITS = { min: 1, max: 50 }` USDC
+- `MARKET_DURATIONS = [3600, 21600, 86400]` seconds = 1H / 6H / 24H
+
+### Format helpers (`src/utils/format.ts`)
+
+- `formatUSDC` — `$X,XXX.XX`
+- `formatSolAmount` — adaptive decimals
+- `formatWallet` — `abcd…wxyz`
+- `formatTimeLeft` — `Xd Xh Xm Xs` for human times
+- `formatPool` — compact (`12.5K`, `2.4M`) for tight grid cells
+
+---
+
+## 12. Animation Spec — Implementation Map
+
+| Spec                                            | Where                                                       |
+| ----------------------------------------------- | ----------------------------------------------------------- |
+| Sidebar slides in from left (0.3s)              | `AppShell.tsx` `motion.aside initial x:-32`                 |
+| Stats count up (0.8s delay)                     | `<CountUp delay={…}>` on home stats bar                     |
+| Cards fade + slide up staggered (0.1s)          | Home grid / My Bets rows / Leaderboard rows                 |
+| All buttons: `scale(0.97)` on click             | `motion.button whileTap={{ scale: 0.97 }}`                  |
+| Cards: `scale(1.01)` on hover                   | `MarketCard` `whileHover={{ scale: 1.01 }}`                 |
+| Tabs: slide indicator (framer layout)           | `layoutId="filter-pill" / "market-tab" / "bets-tab"`        |
+| Bet toggle: spring animation                    | `BetPanel.tsx` `transition={{ type: "spring", stiffness, damping }}` |
+| New bets in feed: slide from top + fade in      | `LiveFeed.tsx` `AnimatePresence + initial y:-16`            |
+| Market resolve: full screen flash               | `ToastProvider.tsx` lime/rug solid overlay on `market_resolved` |
+| Pool updates: number rolls up/down              | `<CountUp>` re-driven on TanStack data refresh              |
+| Timer smooth transition                         | `Timer.tsx` second-tick interval, `tabular-nums`            |
+| Price flash lime/rug                            | Market detail price node uses `motion.span animate={{ color }}` on change |
+
+---
+
+## 13. Build & Run
+
+```bash
+# from repo root
+pnpm install
+
+# web only
+pnpm --filter web dev          # next dev on :3000
+pnpm --filter web build        # production build
+pnpm --filter web start        # serve build
+
+# quality
+pnpm --filter web typecheck    # tsc --noEmit
+pnpm --filter web lint         # next lint
+```
+
+Current state of green:
+
+- `pnpm --filter web typecheck` → `0 errors`.
+- `pnpm --filter web lint` → `No ESLint warnings or errors`.
+- `pnpm --filter web build` → 10 routes built (1 dynamic `/market/[id]`,
+  9 static), homepage `7.63 kB / 264 kB First Load JS`, market detail
+  `10.5 kB / 310 kB`.
+- Only build warning is the third-party `viem`/`ox` dynamic require deep in
+  `@reown/appkit`'s walletconnect adapter chain — not from our code.
+
+---
+
+## 14. Strict Rules — Enforcement Checklist
+
+These rules are codified in CSS + Tailwind tokens and **must stay green**
+across the codebase. To verify:
+
+```bash
+# from repo root — should all return zero matches
+rg -n "card-cyber|glitch-rug|atmosphere-mesh|atmosphere-grain|header-scanline|section-rail" apps/web/src
+rg -n "bg-gradient|from-violet|via-violet|to-violet|purple|fuchsia" apps/web/src
+rg -n "border-glow|shadow-inset-glow|text-text-muted|bg-bg-card|bg-bg-surface" apps/web/src
+```
+
+Rules:
+
+1. **`#000000` background everywhere.** No off-blacks.
+2. **Lime `#cdf078` is the only accent.** Rug `#ef4444` and warn `#facc15`
+   exist solely for state — never decoration.
+3. **Zero gradients.** Solid fills only. Glow uses single-color
+   `box-shadow`.
+4. **Zero purple / fuchsia / violet.**
+5. **Zero white backgrounds.** White is text only.
+6. **Space Grotesk for all text.**
+7. **JetBrains Mono + `tabular-nums` for every number / data field.**
+8. **shadcn/ui** for primitives, **framer-motion** for motion,
+   **three.js** for 3D, **TailwindCSS** for layout, **lucide-react** for
+   icons. No emoji icons in JSX.
+9. **Mobile responsive at 375px min.**
+
+---
+
+## 15. Directory Map
+
+```
+apps/web/
+├── components.json                         # shadcn registry config
+├── env.sample
+├── next.config.mjs                         # transpilePackages: workspace types + wallet adapters
+├── package.json
+├── postcss.config.mjs
+├── tailwind.config.ts                      # palette + fontFamily + boxShadow tokens
+├── tsconfig.json
+└── src/
+    ├── app/
+    │   ├── layout.tsx                      # fonts + Providers + AppShell
+    │   ├── providers.tsx                   # Solana + TanStack + Toasts
+    │   ├── globals.css                     # CSS vars + glow utils + wallet modal theme
+    │   ├── error.tsx
+    │   ├── page.tsx                        # Homepage
+    │   ├── market/[id]/{page,error}.tsx    # Market Detail
+    │   ├── bets/{page,error}.tsx           # My Bets
+    │   ├── leaderboard/page.tsx
+    │   ├── live/page.tsx
+    │   ├── live-rugs/page.tsx
+    │   ├── profile/page.tsx
+    │   └── chat/page.tsx
+    ├── components/
+    │   ├── BetPanel.tsx
+    │   ├── CountUp.tsx
+    │   ├── EmptyState.tsx
+    │   ├── LiveFeed.tsx
+    │   ├── MarketCard.tsx
+    │   ├── PoolBar.tsx
+    │   ├── RiskScore.tsx
+    │   ├── Timer.tsx
+    │   ├── ToastProvider.tsx
+    │   ├── WalletBalancePanel.tsx
+    │   ├── WalletConnectButton.tsx
+    │   ├── layout/
+    │   │   ├── AppShell.tsx
+    │   │   ├── SidebarNav.tsx
+    │   │   ├── TopBar.tsx
+    │   │   └── TrendingMarketsStrip.tsx
+    │   ├── three/
+    │   │   ├── ParticleField.tsx
+    │   │   └── LeaderboardHeader3D.tsx
+    │   └── ui/
+    │       ├── button.tsx                  # shadcn
+    │       └── skeletons.tsx
+    ├── hooks/
+    │   ├── useLeaderboard.ts
+    │   ├── useMarket.ts
+    │   ├── useMarketBetsList.ts
+    │   ├── useMarketPairsMap.ts
+    │   ├── useMarkets.ts
+    │   ├── useMarketsLiveSync.ts            # cache patcher mounted in Providers
+    │   ├── useStats.ts
+    │   ├── useToken.ts
+    │   ├── useUserBets.ts
+    │   ├── useWalletBalances.ts
+    │   ├── useWatchlist.ts
+    │   └── useWebSocket.ts                  # exports useWebSocket + useWebSocketEvents
+    ├── stores/
+    │   └── marketSearchStore.ts            # zustand
+    ├── lib/
+    │   └── utils.ts                        # cn()
+    └── utils/
+        ├── constants.ts                    # USDC mint, RPC, API URL, BET_LIMITS, durations
+        ├── format.ts                       # USDC / SOL / wallet / time / pool formatters
+        ├── marketRisk.ts                   # HIGH/MEDIUM/LOW scoring
+        └── transactions.ts                 # Anchor instruction builders + error mapping
+```
+
+---
+
+## 16. Animation library
+
+All UI motion is **framer-motion** (tabs, sliding indicators, list staggers,
+page transitions, modal/drawer/scrim, toasts, market-resolve flash,
+`whileHover` / `whileTap` button feedback). **three.js** drives the hero
+particle field and the leaderboard 3D headline. GSAP is no longer used —
+the legacy `lib/gsap/*` files are orphaned and can be removed.
+
+---
+
+## 17. Frontend Agent — Session Log
+
+### 2026-05-09 (this session)
+
+**Completed**
+
+- ✅ **Real API everywhere.** Audited the codebase: every page (`/`,
+  `/market/[id]`, `/bets`, `/leaderboard`, `/live`, `/live-rugs`, `/profile`,
+  `/chat`) and every hook now talks to the real backend through `apiV1Url()`.
+  No mock objects, no stubbed lists, no hand-rolled fixtures. Verified by
+  ripgrep across `apps/web/src` — only `Math.random()` usage left is the
+  legitimate three.js particle scatter and toast/feed id generation.
+- ✅ **`BetPanel` calls `transactions.ts`.** `apps/web/src/app/market/[id]/page.tsx`
+  invokes `placeBet as placeBetOnChain` from `utils/transactions.ts` (Anchor
+  `place_bet` discriminator `de3e43dc3fa67e21` matches the IDL exactly), then
+  POSTs `txSignature` + amount to `/v1/markets/:id/bets` for backend
+  recording.
+- ✅ **`MarketCard` shows real pool data.** Reads `survivePool` / `rugPool`
+  / `totalBettors` / `expiresAt` directly from the API record; 24h change
+  comes from `useToken(market.tokenMint)` (DexScreener via `/v1/tokens/:mint`).
+- ✅ **`Timer` syncs with real `expires_at`.** Every `<Timer>` consumer
+  (`MarketCard`, `BetsPage` table + mobile cards, market detail
+  `<ProgressTimerRing>`) passes `new Date(market.expiresAt)` from the API
+  record. Lime → rug + `pulse-rug` once `< 5min`.
+- ✅ **`LiveFeed` shows real bets from socket.** Rebuilt
+  `components/LiveFeed.tsx` to consume the singleton via `useWebSocketEvents`
+  instead of opening its own `io()` client. New rows slide in from the top,
+  fade after 30s, with a connection dot in the header.
+- ✅ **`useWebSocket` rewrite.** `hooks/useWebSocket.ts` now exports two
+  hooks sharing **one refcounted `socket.io-client` connection**:
+  - `useWebSocket()` — per-market scoped snapshot for the market detail page
+    (existing API preserved).
+  - `useWebSocketEvents({ onBetPlaced, onPoolUpdate, onMarketResolved })` —
+    global listeners that fire for **every** validated event.
+  The socket auto-reconnects and re-subscribes on `connect`. Strict payload
+  validation (`isBetPlaced` / `isPoolUpdate` / `isMarketResolved`) prevents a
+  malformed broadcast from corrupting the cache.
+- ✅ **Global cache sync.** New `hooks/useMarketsLiveSync.ts` mounted in
+  `providers.tsx` (`<GlobalSocketSync />`) patches `marketsQueryKey` and
+  any hot `marketQueryKey(id)` cache slices in place on every event, so the
+  homepage grid, `/live`, `/live-rugs`, market detail, and the live feed all
+  stay in sync with **one** WebSocket and **zero** polling.
+- ✅ **`ToastProvider` consolidation.** No longer opens its own socket — uses
+  `useWebSocketEvents({ onMarketResolved })` to drive the lime/rug
+  fullscreen flash and the "Market resolved" toast.
+- ✅ **BetPanel "Your position" persists.** `apps/web/src/app/market/[id]/page.tsx`
+  now derives `position` from `useUserBets(wallet)` instead of local state,
+  so reloading the page still shows the user's open side + amount on this
+  market. Place-bet success also invalidates `userBetsQueryKey(wallet)` so
+  the panel updates immediately.
+- ✅ **Typecheck + lint + build green.**
+  `pnpm --filter web typecheck` → no errors.
+  `pnpm --filter web lint`      → no warnings.
+  `pnpm --filter web build`     → all 10 routes compile, only acknowledged
+  third-party `viem`/`ox` `Critical dependency` warning remains (upstream).
+
+**Blocked / waiting on backend**
+
+- ⏳ **Holders breakdown tab** on the market detail page. Requires backend
+  to surface a Birdeye holders endpoint (or proxy on-chain holders
+  enumeration). UI already renders the `tokenHook.holderCount` count when
+  available, with a fallback string otherwise.
+- ⏳ **Chat page (`/chat`)** is intentionally a "coming soon" placeholder.
+  Will swap to a real channels API + socket room when backend ships.
+
+**Needs backend ready first (no frontend change required)**
+
+- 🔌 `/v1/markets/active`, `/v1/markets/:id`, `/v1/markets/:id/bets`,
+  `/v1/markets/:id/chart`, `/v1/users/:wallet/bets`, `/v1/stats`,
+  `/v1/leaderboard`, `/v1/tokens/:mint`, `POST /v1/markets`,
+  `POST /v1/markets/:id/bets` — all referenced by the frontend right now.
+- 🔌 Socket.IO events from `apps/api`: `bet_placed`, `pool_update`,
+  `market_resolved` (payload shapes per `@survivefun/types`'s `SocketEvents`,
+  `BetPlaced`, `MarketResolved`). The frontend revalidates payloads
+  defensively but expects these field names.
+- 🔌 Anchor program at `HB3uE5XQGq1xNtW9RMSrnBegwifeLzk1xyr75ofRPrtH` (override
+  via `NEXT_PUBLIC_PROGRAM_ID`). Discriminators in `utils/transactions.ts`
+  (`create_market`, `place_bet`, `claim_payout`, `resolve_market`) are
+  byte-for-byte identical to `contracts/target/idl/survivefun.json`.
+
+---
+
+That's the entire frontend, end-to-end. If something is rendered on the
+screen, its file lives in this map.
