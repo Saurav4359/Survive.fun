@@ -25,7 +25,7 @@ import { API_URL } from "@/utils/constants";
 import { formatPool, formatUSDC, formatWallet } from "@/utils/format";
 import { getMarketPDA, placeBet as placeBetOnChain } from "@/utils/transactions";
 
-const CHART_LINE = "#86f0ad";
+const CHART_LINE = "#22d3ee";
 
 function parseNum(s: string | null | undefined): number | null {
   if (s == null) return null;

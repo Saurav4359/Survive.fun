@@ -42,10 +42,11 @@ const staggerItem = {
 
 const HERO_GRID_STYLE: CSSProperties = {
   backgroundImage: `
-    linear-gradient(rgba(134, 240, 173, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(134, 240, 173, 0.06) 1px, transparent 1px)
+    linear-gradient(rgba(34, 211, 238, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 211, 238, 0.07) 1px, transparent 1px),
+    radial-gradient(ellipse 90% 70% at 50% -10%, rgba(6, 182, 212, 0.14), transparent 52%)
   `,
-  backgroundSize: "28px 28px",
+  backgroundSize: "24px 24px, 24px 24px, 100% 100%",
 };
 
 function StatCellSkeleton() {
@@ -166,23 +167,37 @@ export default function HomePage() {
   ];
 
   return (
-    <div className="min-h-screen pb-16 pt-6 sm:pb-24 sm:pt-10">
+    <div className="min-h-screen pb-20 pt-2 sm:pb-28 sm:pt-4">
       <motion.header
-        initial={{ opacity: 0, y: -8 }}
+        initial={{ opacity: 0, y: -12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={sectionEase}
-        className="border-b-2 border-accent"
+        className="relative overflow-hidden border-b border-border/90"
       >
-        <div className="mx-auto flex max-w-[1440px] flex-col gap-4 px-4 py-5 sm:flex-row sm:items-end sm:justify-between sm:px-6 lg:px-12">
-          <div>
-            <p className="font-mono text-lg font-semibold tracking-tight text-accent-bright sm:text-xl">
-              survive.fun
+        <div
+          className="pointer-events-none absolute -right-20 top-1/2 h-56 w-56 -translate-y-1/2 rounded-full bg-accent/20 blur-3xl"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-accent/70 to-transparent"
+          aria-hidden
+        />
+        <div className="relative mx-auto flex max-w-[1440px] flex-col gap-6 px-4 py-8 sm:flex-row sm:items-end sm:justify-between sm:px-6 lg:px-12 lg:py-10">
+          <div className="max-w-xl">
+            <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.32em] text-accent-bright/90">
+              survival markets
             </p>
-            <p className="mt-1 max-w-md font-display text-sm text-fg-soft sm:text-base">
-              Bet whether memecoins survive or rug
+            <h1 className="font-display mt-3 text-4xl font-extrabold tracking-tighter text-foreground sm:text-5xl lg:text-6xl">
+              survive<span className="text-accent-bright">.</span>fun
+            </h1>
+            <p className="mt-3 max-w-md font-mono text-sm leading-relaxed text-fg-soft sm:text-base">
+              Bet whether memecoins{" "}
+              <span className="font-semibold text-survive">survive</span> or{" "}
+              <span className="font-semibold text-rug">rug</span> — pooled odds, live
+              tape, countdown to resolution.
             </p>
           </div>
-          <div className="flex w-full shrink-0 justify-start sm:w-auto sm:justify-end">
+          <div className="flex w-full shrink-0 justify-start sm:w-auto sm:max-w-md sm:justify-end">
             <WalletBalancePanel />
           </div>
         </div>
@@ -194,7 +209,7 @@ export default function HomePage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ ...sectionEase, delay: 0.05 }}
           aria-label="Platform statistics"
-          className="mt-8 grid grid-cols-2 gap-px border border-border bg-border lg:grid-cols-4"
+          className="mt-10 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border shadow-[0_0_0_1px_rgba(6,182,212,0.12)] lg:grid-cols-4"
         >
           {statsLoading
             ? Array.from({ length: 4 }).map((_, i) => <StatCellSkeleton key={i} />)
@@ -220,7 +235,7 @@ export default function HomePage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ ...sectionEase, delay: 0.1 }}
               aria-label="Create market"
-              className="relative overflow-hidden rounded-lg border border-border bg-card"
+              className="relative overflow-hidden rounded-xl border border-border bg-card shadow-[0_20px_60px_-24px_rgba(6,182,212,0.25)]"
             >
               <div
                 className="pointer-events-none absolute inset-0 opacity-90"
@@ -325,7 +340,7 @@ export default function HomePage() {
               aria-label="Active markets"
             >
               <div className="mb-5 flex items-end justify-between gap-3 border-b border-border pb-3">
-                <h2 className="font-display text-lg font-bold uppercase tracking-widest text-foreground">
+                <h2 className="section-rail font-display text-lg font-bold uppercase tracking-[0.2em] text-foreground">
                   Active markets
                 </h2>
                 {marketsError ? (

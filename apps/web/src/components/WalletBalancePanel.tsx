@@ -90,7 +90,7 @@ export function WalletBalancePanel({
   const explorerUrl = `https://solscan.io/account/${encodeURIComponent(addr)}?cluster=${rpcCluster()}`;
 
   return (
-    <div className="w-full max-w-[420px] rounded-2xl border border-border bg-card p-5 shadow-[0_0_24px_rgba(0,0,0,0.35)] sm:p-6">
+    <div className="w-full max-w-[420px] rounded-2xl border border-border bg-card/95 p-5 shadow-[0_0_48px_-12px_rgba(6,182,212,0.22)] backdrop-blur-sm sm:p-6">
       <div className="flex items-start justify-between gap-3">
         <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-muted">
           Your balance

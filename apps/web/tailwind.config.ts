@@ -51,12 +51,12 @@ const config: Config = {
         },
         "flash-up": {
           "0%": { backgroundColor: "transparent" },
-          "35%": { backgroundColor: "rgba(74, 222, 128, 0.28)" },
+          "35%": { backgroundColor: "rgba(45, 212, 191, 0.22)" },
           "100%": { backgroundColor: "transparent" },
         },
         "flash-down": {
           "0%": { backgroundColor: "transparent" },
-          "35%": { backgroundColor: "rgba(239, 68, 68, 0.28)" },
+          "35%": { backgroundColor: "rgba(251, 113, 133, 0.26)" },
           "100%": { backgroundColor: "transparent" },
         },
         "flash-accent": {
