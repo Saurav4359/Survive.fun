@@ -49,6 +49,16 @@ export interface BetWithMarket extends Bet {
   market: Market;
 }
 
+/** Recent payout row for dashboard / stats. */
+export interface RecentPayout {
+  bettorWallet: string;
+  payoutAmountUsdc: string;
+  marketId: string;
+  tokenTicker: string | null;
+  payoutTx: string | null;
+  createdAt: string;
+}
+
 /** Aggregated dashboard stats from the API (live DB). */
 export interface PlatformSnapshot {
   activeMarkets: number;
@@ -56,6 +66,7 @@ export interface PlatformSnapshot {
   resolvedRugs: number;
   resolvedSurvives: number;
   largestPayoutUsdc: string | null;
+  recentPayouts: RecentPayout[];
 }
 
 // --- Token types (DexScreener-aligned) ---
@@ -106,6 +117,49 @@ export interface TokenPair {
   pairCreatedAt: number | null;
   /** Enriched from DexScreener `pair.info` when available. */
   devWallet?: string | null;
+  /** Birdeye: holder count (when API key configured). */
+  holderCount?: number | null;
+  /** Birdeye: top traders / liquidity depth hints. */
+  birdeyePriceChange24hPercent?: number | null;
+}
+
+/** Single OHLCV bar (chart endpoint). */
+export interface OhlcvBar {
+  /** Unix seconds (candle open). */
+  t: number;
+  o: string;
+  h: string;
+  l: string;
+  c: string;
+  /** Volume in USD where available. */
+  v: string;
+}
+
+export interface MarketChartResponse {
+  tokenMint: string;
+  interval: string;
+  bars: OhlcvBar[];
+  source: "birdeye" | "none";
+}
+
+/** Paginated active/all markets list. */
+export interface MarketListPage {
+  items: Market[];
+  page: number;
+  limit: number;
+  total: number;
+}
+
+export type LeaderboardTab = "winners" | "rug-callers" | "biggest-payouts";
+
+/** Row for `/v1/leaderboard` (matches leaderboard page columns). */
+export interface LeaderboardRow {
+  wallet: string;
+  /** Sum of payouts won (USDC, decimal string). */
+  totalWon: string;
+  winRatePct: number;
+  /** Largest single payout for this wallet (USDC, decimal string). */
+  bestPayout: string;
 }
 
 // --- API response types ---
@@ -128,7 +182,11 @@ export interface PaginatedResponse<T> {
 
 // --- Rug detection types (used by socket payloads) ---
 
-export type RugEventType = "dev_sell" | "price_drop" | "liquidity_removed";
+export type RugEventType =
+  | "dev_sell"
+  | "price_drop"
+  | "liquidity_removed"
+  | "graduation_stall";
 
 export interface RugEvent {
   id: string;
@@ -143,7 +201,8 @@ export interface RugEvent {
 export type RugCondition =
   | "dev_sold_over_25_percent"
   | "price_dropped_over_90_percent"
-  | "liquidity_removed_over_80_percent";
+  | "liquidity_removed_over_80_percent"
+  | "bonding_stalled_before_graduation";
 
 export interface RugDetectionResult {
   isRug: boolean;
