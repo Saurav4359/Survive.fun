@@ -14,3 +14,9 @@ url = "https://api.apr.dev"
 [provider]
 cluster = "Devnet"
 wallet = "~/.config/solana/id.json"
+
+[scripts]
+# Run from repo root or contracts/. Targets DEVNET (the IDL hardcodes Circle's
+# devnet USDC mint, so local-validator tests aren't possible without forking).
+# Use:  anchor test --skip-build --skip-deploy --skip-local-validator --provider.cluster devnet
+test = "ts-mocha -p ./tsconfig.json -t 1000000 'tests/**/*.ts'"

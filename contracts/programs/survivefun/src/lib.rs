@@ -10,6 +10,9 @@ pub use state::market::Outcome;
 
 declare_id!("HB3uE5XQGq1xNtW9RMSrnBegwifeLzk1xyr75ofRPrtH");
 
+/// Devnet USDC mint pinned by spec.
+pub const USDC_MINT: Pubkey = anchor_lang::solana_program::pubkey!("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
+
 #[program]
 pub mod survivefun {
     use super::*;
@@ -50,6 +53,7 @@ pub struct CreateMarket<'info> {
     )]
     pub platform_usdc: Account<'info, TokenAccount>,
 
+    #[account(address = USDC_MINT)]
     pub usdc_mint: Account<'info, Mint>,
 
     #[account(
@@ -106,6 +110,7 @@ pub struct PlaceBet<'info> {
     )]
     pub market_escrow: Account<'info, TokenAccount>,
 
+    #[account(address = USDC_MINT)]
     pub usdc_mint: Account<'info, Mint>,
 
     pub token_program: Program<'info, Token>,
@@ -159,6 +164,7 @@ pub struct ClaimPayout<'info> {
     )]
     pub market_escrow: Account<'info, TokenAccount>,
 
+    #[account(address = USDC_MINT)]
     pub usdc_mint: Account<'info, Mint>,
 
     pub token_program: Program<'info, Token>,
