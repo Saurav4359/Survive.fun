@@ -46,16 +46,26 @@
     { "marketIndex": 0, "userIndex": 2, "side": "survive", "amountUsdc": "22.25" },
     { "marketIndex": 0, "userIndex": 0, "side": "rug", "amountUsdc": "15" },
     { "marketIndex": 0, "userIndex": 1, "side": "survive", "amountUsdc": "40" },
+    { "marketIndex": 0, "userIndex": 2, "side": "rug", "amountUsdc": "3.5" },
+    { "marketIndex": 0, "userIndex": 0, "side": "survive", "amountUsdc": "7" },
+    { "marketIndex": 0, "userIndex": 1, "side": "rug", "amountUsdc": "25" },
     { "marketIndex": 1, "userIndex": 2, "side": "rug", "amountUsdc": "6.75" },
     { "marketIndex": 1, "userIndex": 0, "side": "survive", "amountUsdc": "50" },
     { "marketIndex": 1, "userIndex": 1, "side": "rug", "amountUsdc": "11" },
     { "marketIndex": 1, "userIndex": 2, "side": "survive", "amountUsdc": "33.33" },
     { "marketIndex": 1, "userIndex": 0, "side": "rug", "amountUsdc": "19.99" },
+    { "marketIndex": 1, "userIndex": 1, "side": "survive", "amountUsdc": "4.5" },
+    { "marketIndex": 1, "userIndex": 2, "side": "rug", "amountUsdc": "9" },
+    { "marketIndex": 1, "userIndex": 0, "side": "survive", "amountUsdc": "13" },
     { "marketIndex": 2, "userIndex": 1, "side": "survive", "amountUsdc": "5" },
     { "marketIndex": 2, "userIndex": 2, "side": "rug", "amountUsdc": "27.5" },
     { "marketIndex": 2, "userIndex": 0, "side": "survive", "amountUsdc": "44" },
     { "marketIndex": 2, "userIndex": 1, "side": "rug", "amountUsdc": "9.25" },
-    { "marketIndex": 2, "userIndex": 2, "side": "survive", "amountUsdc": "31" }
+    { "marketIndex": 2, "userIndex": 2, "side": "survive", "amountUsdc": "31" },
+    { "marketIndex": 2, "userIndex": 0, "side": "rug", "amountUsdc": "16.5" },
+    { "marketIndex": 2, "userIndex": 1, "side": "survive", "amountUsdc": "21" },
+    { "marketIndex": 2, "userIndex": 2, "side": "rug", "amountUsdc": "37" },
+    { "marketIndex": 2, "userIndex": 0, "side": "survive", "amountUsdc": "2" }
   ],
   "txPrefix": "demo_setup_"
 }

@@ -158,7 +158,9 @@ async function main(): Promise<void> {
       mint: row.tokenMint,
       decimals,
       transferRaw: transferAmount.toString(),
+      transferUi: (Number(transferAmount) / 10 ** decimals).toFixed(decimals),
       sink: sinkKp.publicKey.toBase58(),
+      devWallet,
     });
 
     const ixs = [
@@ -224,6 +226,35 @@ async function main(): Promise<void> {
       rugPoolRaw: decimalStringToRaw6(resolved.rugPool).toString(),
     };
     log("Pool snapshot used for payout math (from DB at resolution).", poolNote);
+
+    // Pull the RugEvent persisted by the resolver to surface the on-chain
+    // `resolve_market` signature alongside the dev-sell transfer signature.
+    const rugEvents = await prisma.rugEvent.findMany({
+      where: { marketId },
+      orderBy: { detectedAt: "desc" },
+      take: 1,
+    });
+    const rugEvent = rugEvents[0];
+
+    const winners = bets.filter((b) =>
+      (resolved.outcome === "rug" && b.side === "rug") ||
+      (resolved.outcome === "survive" && b.side === "survive"),
+    );
+    const losers = bets.length - winners.length;
+
+    log("─────────────── DEMO RUG SUMMARY ───────────────");
+    log("Market", { id: resolved.id, ticker: resolved.tokenTicker, mint: resolved.tokenMint });
+    log("Outcome", {
+      outcome: resolved.outcome,
+      winners: winners.length,
+      losers,
+    });
+    log("On-chain signatures", {
+      devSellTransfer: sig,
+      resolveMarket: rugEvent?.txSignature ?? "(resolver did not record on-chain tx — check PLATFORM_WALLET_SECRET_KEY)",
+      rugEventCondition: rugEvent?.eventType ?? null,
+    });
+    log("───────────────────────────────────────────────");
   } finally {
     log("Restoring dev_sell threshold override on market.", {
       restoredTo: prevOverride?.toString() ?? "null",

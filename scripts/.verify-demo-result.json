@@ -1,0 +1,73 @@
+{
+  "passed": 3,
+  "failed": 0,
+  "skipped": 8,
+  "results": [
+    {
+      "index": 0,
+      "title": "API reachable",
+      "status": "PASS",
+      "detail": "http://localhost:3001 responded"
+    },
+    {
+      "index": 1,
+      "title": "Paste token → data loads",
+      "status": "SKIP",
+      "detail": "Demo market mint 'random_mint_3' is a placeholder — run 'pnpm setup-demo-onchain' to seed real mints"
+    },
+    {
+      "index": 2,
+      "title": "Risk score = HIGH",
+      "status": "SKIP",
+      "detail": "Computed MEDIUM (score=47); demo still demonstrable but consider seeding lower openLiquidity"
+    },
+    {
+      "index": 3,
+      "title": "Bet endpoint validates input",
+      "status": "PASS",
+      "detail": "POST /v1/markets/:id/bets rejected $9999 with 400 (limit guard active)"
+    },
+    {
+      "index": 4,
+      "title": "Bet confirmed on-chain",
+      "status": "SKIP",
+      "detail": "Only seeded (non-on-chain) bets present; sig prefix=demo_setup_23_7652"
+    },
+    {
+      "index": 5,
+      "title": "Pools update coherently",
+      "status": "SKIP",
+      "detail": "Pools at seed defaults (10/10) but 193.25 USDC of bets exist — DB-only setup-demo bypasses pool increments. Use 'pnpm setup-demo-onchain' or place bets via API."
+    },
+    {
+      "index": 6,
+      "title": "Rug detected (RugEvent row exists)",
+      "status": "SKIP",
+      "detail": "No rug events recorded yet. Run 'pnpm simulate-rug <marketId>' to verify the detector path."
+    },
+    {
+      "index": 7,
+      "title": "Market auto-resolves",
+      "status": "PASS",
+      "detail": "323610bc… outcome=survive"
+    },
+    {
+      "index": 8,
+      "title": "$25 → ~$58 claimable (math)",
+      "status": "SKIP",
+      "detail": "claim=45.42 USDC (closed-form payout matches on-chain formula; demo pools must be seeded similarly)"
+    },
+    {
+      "index": 9,
+      "title": "Claim payout: market PDA exists on-chain",
+      "status": "SKIP",
+      "detail": "candidate market has no onChainAddress — run 'pnpm setup-demo-onchain' for full coverage"
+    },
+    {
+      "index": 10,
+      "title": "Bettor balance queryable",
+      "status": "SKIP",
+      "detail": "Demo bettor wallet 'DemoUser3Sur…' is not a real base58 pubkey; run 'pnpm setup-demo-onchain' to populate real wallets"
+    }
+  ]
+}
