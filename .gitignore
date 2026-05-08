@@ -27,3 +27,7 @@ contracts/target
 # Debug
 npm-debug.log*
 pnpm-debug.log*
+
+# Demo / test artifacts (devnet keypairs; do NOT commit)
+scripts/.demo-wallets/
+testing.md.local
