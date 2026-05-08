@@ -3,6 +3,10 @@ import { Router } from "express";
 import { z } from "zod";
 
 import {
+  birdeyeTokenOverview,
+  enrichTokenPairFromBirdeye,
+} from "../lib/birdeye";
+import {
   fetchDexTokenJson,
   firstPairFromDexBody,
 } from "../lib/dexscreener";
@@ -47,7 +51,11 @@ router.get("/:mint", async (req, res, next) => {
       throw new AppError("TOKEN_NOT_FOUND", "Token not found on DexScreener", 404);
     }
 
-    const data = mapDexRecordToTokenPair(pair, mint);
+    let data = mapDexRecordToTokenPair(pair, mint);
+    const overview = await birdeyeTokenOverview(mint);
+    if (overview) {
+      data = enrichTokenPairFromBirdeye(data, overview);
+    }
     void cacheSet(cacheKey, JSON.stringify(data), CACHE_TTL_SEC);
 
     const body: ApiResponse<TokenPair> = { success: true, data };

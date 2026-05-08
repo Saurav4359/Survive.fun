@@ -3,11 +3,14 @@ import { Prisma } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 
+import { connection } from "../config/solana";
 import { prisma } from "../config/database";
 import { toBetDto, toBetWithMarketDto, toMarketDto } from "../lib/dto";
+import { marketPdaBase58ForDbRow } from "../lib/marketOnChain";
+import { verifyPlaceBetTransaction } from "../lib/solanaTxVerify";
 import { parseBody, parseQuery } from "../lib/zodUtil";
 import { AppError } from "../middleware/errorHandler";
-import { emitBetPlaced } from "../websocket/socketHandler";
+import { emitBetPlaced, emitPoolUpdate } from "../websocket/socketHandler";
 
 const marketBetsRouter = Router({ mergeParams: true });
 const userBetsRouter = Router();
@@ -52,10 +55,38 @@ function potentialPayoutUsdc(
   return (amount * (ts + tr)) / tr;
 }
 
+function skipTxVerification(): boolean {
+  return process.env.SKIP_TX_VERIFICATION === "true";
+}
+
 marketBetsRouter.post("/:id/bets", async (req, res, next) => {
   try {
     const { id: marketId } = parseQuery(marketIdParamSchema, req.params);
     const input = parseBody(placeBetBodySchema, req.body);
+
+    const marketRow = await prisma.market.findUnique({ where: { id: marketId } });
+    if (!marketRow) {
+      throw new AppError("NOT_FOUND", "Market not found", 404);
+    }
+    if (marketRow.status !== "active") {
+      throw new AppError(
+        "MARKET_NOT_ACTIVE",
+        "Market is not accepting bets",
+        400,
+      );
+    }
+
+    if (!skipTxVerification()) {
+      const marketPk = marketPdaBase58ForDbRow(marketRow);
+      await verifyPlaceBetTransaction(
+        connection,
+        input.txSignature,
+        input.walletAddress,
+        marketPk,
+        input.side,
+        input.amount,
+      );
+    }
 
     const result = await prisma.$transaction(async (tx) => {
       const market = await tx.market.findUnique({ where: { id: marketId } });
@@ -146,6 +177,11 @@ marketBetsRouter.post("/:id/bets", async (req, res, next) => {
       survivePool: marketDto.survivePool,
       rugPool: marketDto.rugPool,
       timestamp: dto.createdAt,
+    });
+    emitPoolUpdate({
+      marketId,
+      survivePool: marketDto.survivePool,
+      rugPool: marketDto.rugPool,
     });
 
     const body: ApiResponse<Bet> = { success: true, data: dto };

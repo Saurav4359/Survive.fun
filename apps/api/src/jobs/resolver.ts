@@ -1,6 +1,7 @@
 /**
- * Periodic market resolver: rug detection vs expiry survival.
- * Prefers BullMQ + Redis; falls back to setInterval when REDIS_URL is unset.
+ * Periodic market resolver: full `detectRug()` (dev sell, price drop, liquidity,
+ * graduation stall) vs expiry → survive. Runs every 30s via BullMQ when
+ * REDIS_URL is set, else setInterval. Emits `market_resolved` via Socket.IO.
  */
 
 import { createHash } from "node:crypto";
@@ -9,7 +10,6 @@ import type { Market as DbMarket, Prisma } from "@prisma/client";
 import type { Market, Outcome as MarketOutcome } from "@survivefun/types";
 import { Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
-import type { Server } from "socket.io";
 import {
   Keypair,
   PublicKey,
@@ -18,9 +18,10 @@ import {
   TransactionInstruction,
 } from "@solana/web3.js";
 
-import { connection, programId } from "../config/solana";
+import { connection, getProgramId } from "../config/solana";
 import { prisma } from "../config/database";
 import { detectRug } from "../services/rugDetector";
+import { emitMarketResolved } from "../websocket/socketHandler";
 
 const LOG_PREFIX = "[resolver]";
 const QUEUE_NAME = "survive-market-resolver";
@@ -95,7 +96,7 @@ function toMarketDto(row: DbMarket): Market {
 function marketPda(tokenMint: PublicKey): PublicKey {
   const [pda] = PublicKey.findProgramAddressSync(
     [Buffer.from("market"), tokenMint.toBuffer()],
-    programId,
+    getProgramId(),
   );
   return pda;
 }
@@ -122,7 +123,7 @@ export async function resolveOnChain(
   const data = Buffer.concat([disc, Buffer.from([outcomeU8])]);
 
   const ix = new TransactionInstruction({
-    programId,
+    programId: getProgramId(),
     keys: [
       { pubkey: marketPk, isSigner: false, isWritable: true },
       { pubkey: platform.publicKey, isSigner: true, isWritable: false },
@@ -147,15 +148,19 @@ export async function resolveOnChain(
 
 function rugEventType(
   condition: Awaited<ReturnType<typeof detectRug>>["condition"],
-): "dev_sell" | "price_drop" | "liquidity_removed" {
-  if (condition === "dev_sell" || condition === "price_drop" || condition === "liquidity_removed") {
+): "dev_sell" | "price_drop" | "liquidity_removed" | "graduation_stall" {
+  if (
+    condition === "dev_sell" ||
+    condition === "price_drop" ||
+    condition === "liquidity_removed" ||
+    condition === "graduation_stall"
+  ) {
     return condition;
   }
   return "price_drop";
 }
 
 async function handleRugResolution(
-  io: Server,
   row: DbMarket,
   dto: Market,
   rug: Awaited<ReturnType<typeof detectRug>>,
@@ -193,9 +198,9 @@ async function handleRugResolution(
     });
   }
 
-  io.emit("market_resolved", {
+  emitMarketResolved({
     marketId: updated.id,
-    outcome: "rug" as const,
+    outcome: "rug",
     survivePool: updated.survivePool.toString(),
     rugPool: updated.rugPool.toString(),
     timestamp: new Date().toISOString(),
@@ -210,7 +215,6 @@ async function handleRugResolution(
 }
 
 async function handleSurviveResolution(
-  io: Server,
   row: DbMarket,
   dto: Market,
 ): Promise<void> {
@@ -229,9 +233,9 @@ async function handleSurviveResolution(
     });
   }
 
-  io.emit("market_resolved", {
+  emitMarketResolved({
     marketId: updated.id,
-    outcome: "survive" as const,
+    outcome: "survive",
     survivePool: updated.survivePool.toString(),
     rugPool: updated.rugPool.toString(),
     timestamp: new Date().toISOString(),
@@ -245,7 +249,7 @@ async function handleSurviveResolution(
   });
 }
 
-async function runResolverCycle(io: Server): Promise<void> {
+async function runResolverCycle(): Promise<void> {
   let active: DbMarket[];
   try {
     active = await prisma.market.findMany({
@@ -266,12 +270,12 @@ async function runResolverCycle(io: Server): Promise<void> {
       const rug = await detectRug(dto);
 
       if (rug.isRug) {
-        await handleRugResolution(io, row, dto, rug);
+        await handleRugResolution(row, dto, rug);
         continue;
       }
 
       if (row.expiresAt.getTime() <= now) {
-        await handleSurviveResolution(io, row, dto);
+        await handleSurviveResolution(row, dto);
       }
     } catch (e) {
       console.log(`${LOG_PREFIX} market iteration error`, {
@@ -284,9 +288,8 @@ async function runResolverCycle(io: Server): Promise<void> {
 
 /**
  * Starts the resolver loop (BullMQ repeatable job when REDIS_URL is set, otherwise setInterval).
- * Pass the Socket.IO server used to broadcast `market_resolved`.
  */
-export function startResolver(io: Server): void {
+export function startResolver(): void {
   if (resolverStarted) {
     console.log(`${LOG_PREFIX} startResolver called again; ignoring`);
     return;
@@ -319,7 +322,7 @@ export function startResolver(io: Server): void {
     const worker = new Worker(
       QUEUE_NAME,
       async () => {
-        await runResolverCycle(io);
+        await runResolverCycle();
       },
       { connection: workerConnection, concurrency: 1 },
     );
@@ -345,7 +348,7 @@ export function startResolver(io: Server): void {
     `${LOG_PREFIX} REDIS_URL not set; using setInterval (${TICK_MS}ms)`,
   );
   fallbackInterval = setInterval(() => {
-    void runResolverCycle(io);
+    void runResolverCycle();
   }, TICK_MS);
-  void runResolverCycle(io);
+  void runResolverCycle();
 }

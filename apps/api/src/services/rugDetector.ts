@@ -5,6 +5,11 @@
 
 import type { Market } from "@survivefun/types";
 import axios from "axios";
+
+import {
+  birdeyeTokenOverview,
+  detectPumpGraduationStall,
+} from "../lib/birdeye";
 import { createHelius } from "@helius-labs/helius-sdk";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import {
@@ -331,9 +336,30 @@ async function conditionLiquidityRemoved(market: Market): Promise<{
   return { triggered, detail };
 }
 
+/** Spec §1 condition 4: bonding curve ≥80% progress but token not graduated (Birdeye pump extension). */
+async function conditionGraduationStall(market: Market): Promise<{
+  triggered: boolean;
+  detail: Record<string, unknown>;
+}> {
+  const overview = await birdeyeTokenOverview(market.tokenMint);
+  if (!overview) {
+    return {
+      triggered: false,
+      detail: { skipped: true, reason: "no_birdeye_overview" },
+    };
+  }
+  const { stall, detail } = detectPumpGraduationStall(overview);
+  return { triggered: stall, detail: { ...detail, tokenMint: market.tokenMint } };
+}
+
 export async function detectRug(market: Market): Promise<{
   isRug: boolean;
-  condition: "dev_sell" | "price_drop" | "liquidity_removed" | null;
+  condition:
+    | "dev_sell"
+    | "price_drop"
+    | "liquidity_removed"
+    | "graduation_stall"
+    | null;
   data: Record<string, any>;
 }> {
   const data: Record<string, any> = {
@@ -344,6 +370,7 @@ export async function detectRug(market: Market): Promise<{
   let devTriggered = false;
   let priceTriggered = false;
   let liqTriggered = false;
+  let gradTriggered = false;
 
   try {
     try {
@@ -400,15 +427,40 @@ export async function detectRug(market: Market): Promise<{
       };
     }
 
-    const isRug = devTriggered || priceTriggered || liqTriggered;
-    const condition: "dev_sell" | "price_drop" | "liquidity_removed" | null =
-      devTriggered
+    try {
+      const { triggered, detail } = await conditionGraduationStall(market);
+      data.graduationStall = detail;
+      gradTriggered = triggered;
+      if (triggered) {
+        console.log(`${LOG_PREFIX} detection`, {
+          condition: "graduation_stall",
+          marketId: market.id,
+          detail,
+        });
+      }
+    } catch (e) {
+      console.log(`${LOG_PREFIX} graduation_stall condition error`, e);
+      data.graduationStall = {
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+
+    const isRug =
+      devTriggered || priceTriggered || liqTriggered || gradTriggered;
+    const condition:
+      | "dev_sell"
+      | "price_drop"
+      | "liquidity_removed"
+      | "graduation_stall"
+      | null = devTriggered
       ? "dev_sell"
       : priceTriggered
         ? "price_drop"
         : liqTriggered
           ? "liquidity_removed"
-          : null;
+          : gradTriggered
+            ? "graduation_stall"
+            : null;
 
     console.log(`${LOG_PREFIX} evaluation`, {
       marketId: market.id,
@@ -428,4 +480,30 @@ export async function detectRug(market: Market): Promise<{
       },
     };
   }
+}
+
+/**
+ * Individual rug signals (same heuristics as inside `detectRug`).
+ * The resolver runs full `detectRug` every 30s per active market; these are
+ * exported for tests, admin tooling, or future per-signal schedulers.
+ */
+export async function checkDevSell(market: Market): Promise<{
+  triggered: boolean;
+  detail: Record<string, unknown>;
+}> {
+  return conditionDevSell(market);
+}
+
+export async function checkPriceDrop(market: Market): Promise<{
+  triggered: boolean;
+  detail: Record<string, unknown>;
+}> {
+  return conditionPriceDrop(market);
+}
+
+export async function checkLiquidityRemoved(market: Market): Promise<{
+  triggered: boolean;
+  detail: Record<string, unknown>;
+}> {
+  return conditionLiquidityRemoved(market);
 }

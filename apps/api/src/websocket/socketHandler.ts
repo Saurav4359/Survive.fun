@@ -3,7 +3,7 @@
  * No database access — callers pass data in from routes/jobs/services.
  */
 
-import type { BetPlaced, Market, Outcome } from "@survivefun/types";
+import type { BetPlaced, Market, MarketResolved } from "@survivefun/types";
 import type { Server, Socket } from "socket.io";
 
 /** All connected clients are joined here on connect (platform-wide feed). */
@@ -15,11 +15,6 @@ export const ROOM_STATS = "stats";
 export function roomForMarket(marketId: string): string {
   return `market:${marketId}`;
 }
-
-export type MarketResolvedSocketPayload = {
-  marketId: string;
-  outcome: Outcome;
-};
 
 export type StatsUpdatePayload = {
   totalMarkets: number;
@@ -101,25 +96,26 @@ export function emitMarketCreated(market: Market): void {
   getIo().to(ROOM_PLATFORM_FEED).emit("market_created", { market });
 }
 
-/** Emits only to subscribers of that market room. */
+/**
+ * Broadcasts `bet_placed` to all clients (home LiveFeed + market subscribers).
+ * Clients filter by `marketId` as needed.
+ */
 export function emitBetPlaced(payload: BetPlaced): void {
-  getIo()
-    .to(roomForMarket(payload.marketId))
-    .emit("bet_placed", payload);
+  getIo().emit("bet_placed", payload);
 }
 
-/** Emits only to subscribers of that market room. */
+/** Broadcasts pool totals after bets / external updates. */
 export function emitPoolUpdate(payload: {
   marketId: string;
   survivePool: string;
   rugPool: string;
 }): void {
-  getIo().to(roomForMarket(payload.marketId)).emit("pool_update", payload);
+  getIo().emit("pool_update", payload);
 }
 
-/** Emits only to subscribers of that market room. */
-export function emitMarketResolved(payload: MarketResolvedSocketPayload): void {
-  getIo().to(roomForMarket(payload.marketId)).emit("market_resolved", payload);
+/** Full `MarketResolved` payload (matches `@survivefun/types` / frontend guards). */
+export function emitMarketResolved(payload: MarketResolved): void {
+  getIo().emit("market_resolved", payload);
 }
 
 /** Emits only to `ROOM_PLATFORM_FEED`. */

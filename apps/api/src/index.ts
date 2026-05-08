@@ -7,9 +7,10 @@ import cors from "cors";
 import express, { Router } from "express";
 import { Server } from "socket.io";
 
-import { startResolver } from "./jobs/resolver";
+import { startBackgroundJobs } from "./jobs/backgroundJobs";
 import { errorHandler } from "./middleware/errorHandler";
 import { marketBetsRouter, userBetsRouter } from "./routes/bets";
+import leaderboardRouter from "./routes/leaderboard";
 import marketsRouter from "./routes/markets";
 import statsRouter from "./routes/stats";
 import tokensRouter from "./routes/tokens";
@@ -55,7 +56,9 @@ const webhookRawBody = express.raw({
   type: "application/json",
   limit: "2mb",
 });
+app.use("/webhook", webhookRawBody, createHeliusWebhookRouter());
 app.use("/v1/webhook", webhookRawBody, createHeliusWebhookRouter());
+app.use("/api/v1/webhook", webhookRawBody, createHeliusWebhookRouter());
 
 app.use(express.json({ limit: "1mb" }));
 
@@ -69,8 +72,10 @@ apiRouter.use("/markets", marketsRouter);
 apiRouter.use("/users", userBetsRouter);
 apiRouter.use("/tokens", tokensRouter);
 apiRouter.use("/stats", statsRouter);
+apiRouter.use("/leaderboard", leaderboardRouter);
 
 app.use("/v1", apiRouter);
+app.use("/api/v1", apiRouter);
 
 app.use((_req, res) => {
   const body: ApiResponse<never> = {
@@ -82,8 +87,8 @@ app.use((_req, res) => {
 
 app.use(errorHandler);
 
-startResolver(io);
-console.log("✅ Resolver started");
+startBackgroundJobs();
+console.log("✅ Background jobs started (resolver + OHLCV + stats)");
 
 httpServer.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);

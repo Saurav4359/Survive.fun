@@ -191,11 +191,12 @@ function prismaRowToMarket(row: DbMarket): Market {
 
 function rugEventType(
   condition: Awaited<ReturnType<typeof detectRug>>["condition"],
-): "dev_sell" | "price_drop" | "liquidity_removed" {
+): "dev_sell" | "price_drop" | "liquidity_removed" | "graduation_stall" {
   if (
     condition === "dev_sell" ||
     condition === "price_drop" ||
-    condition === "liquidity_removed"
+    condition === "liquidity_removed" ||
+    condition === "graduation_stall"
   ) {
     return condition;
   }
@@ -244,6 +245,9 @@ async function resolveActiveMarketAsRug(
     emitMarketResolved({
       marketId: updated.id,
       outcome: "rug",
+      survivePool: updated.survivePool.toString(),
+      rugPool: updated.rugPool.toString(),
+      timestamp: new Date().toISOString(),
     });
   } catch (e) {
     console.log(`${LOG_PREFIX} emitMarketResolved failed`, {

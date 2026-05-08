@@ -11,22 +11,34 @@ export const connection = new Connection(
 /** Default from `contracts/programs/survivefun` Anchor `declare_id!` (local dev). */
 const DEFAULT_DEV_PROGRAM_ID = "HB3uE5XQGq1xNtW9RMSrnBegwifeLzk1xyr75ofRPrtH";
 
-function readProgramId(): PublicKey {
+let programIdMemo: PublicKey | null = null;
+
+/**
+ * Program id for on-chain instructions. Resolved lazily so the process can boot
+ * (markets, stats, health) even when `SURVIVEFUN_PROGRAM_ID` is missing; resolution
+ * jobs log errors if they cannot sign or resolve.
+ */
+export function getProgramId(): PublicKey {
+  if (programIdMemo) return programIdMemo;
+
   const raw = process.env.SURVIVEFUN_PROGRAM_ID?.trim();
   if (raw) {
-    return new PublicKey(raw);
+    programIdMemo = new PublicKey(raw);
+    return programIdMemo;
   }
+
   if (process.env.NODE_ENV === "production") {
-    throw new Error("SURVIVEFUN_PROGRAM_ID must be set in production");
+    throw new Error(
+      "SURVIVEFUN_PROGRAM_ID must be set when submitting on-chain transactions",
+    );
   }
+
   console.warn(
     "[solana] SURVIVEFUN_PROGRAM_ID unset; using local dev program id (set env for your deployment)",
   );
-  return new PublicKey(DEFAULT_DEV_PROGRAM_ID);
+  programIdMemo = new PublicKey(DEFAULT_DEV_PROGRAM_ID);
+  return programIdMemo;
 }
-
-/** On-chain program public key (from env). */
-export const programId = readProgramId();
 
 /**
  * Server-side signer for Anchor `Provider` wiring only; replace with a funded
