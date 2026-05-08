@@ -3,14 +3,14 @@
 import type { ApiResponse, Bet } from "@survivefun/types";
 import { useQuery } from "@tanstack/react-query";
 
-import { API_URL } from "@/utils/constants";
+import { apiV1Url } from "@/utils/constants";
 
 export const marketBetsQueryKey = (marketId: string) =>
   ["market-bets", marketId] as const;
 
 async function fetchMarketBets(marketId: string): Promise<Bet[]> {
   const res = await fetch(
-    `${API_URL}/v1/markets/${encodeURIComponent(marketId)}/bets`,
+    apiV1Url(`/markets/${encodeURIComponent(marketId)}/bets`),
   );
   if (!res.ok) {
     throw new Error(`Market bets request failed (${res.status})`);

@@ -3,12 +3,12 @@
 import type { ApiResponse, PlatformSnapshot } from "@survivefun/types";
 import { useQuery } from "@tanstack/react-query";
 
-import { API_URL } from "@/utils/constants";
+import { apiV1Url } from "@/utils/constants";
 
 export const statsQueryKey = ["platform-stats"] as const;
 
 export async function fetchStats(): Promise<PlatformSnapshot> {
-  const res = await fetch(`${API_URL}/v1/stats`);
+  const res = await fetch(apiV1Url("/stats"));
   if (!res.ok) {
     throw new Error(`Stats request failed (${res.status})`);
   }

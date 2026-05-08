@@ -26,6 +26,18 @@ export const RPC_URL =
 export const API_URL =
   process.env.NEXT_PUBLIC_API_URL?.trim() || "http://localhost:3001";
 
+/**
+ * REST prefix mounted by the API (`/v1` or `/api/v1`). Socket.IO still uses `API_URL` origin only.
+ */
+export const API_V1_PREFIX =
+  process.env.NEXT_PUBLIC_API_V1_PREFIX?.trim() || "/v1";
+
+/** Build a full URL for REST endpoints, e.g. `apiV1Url("/markets/active")`. */
+export function apiV1Url(path: string): string {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return `${API_URL}${API_V1_PREFIX}${p}`;
+}
+
 export const BET_LIMITS = {
   min: 1,
   max: 50,

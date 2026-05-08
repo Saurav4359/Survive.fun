@@ -4,7 +4,7 @@ import type { ApiResponse, Market } from "@survivefun/types";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 
-import { API_URL } from "@/utils/constants";
+import { apiV1Url } from "@/utils/constants";
 
 import { useWebSocket } from "./useWebSocket";
 
@@ -13,7 +13,7 @@ export const marketQueryKey = (marketId: string) => ["market", marketId] as cons
 async function fetchMarket(marketId: string): Promise<Market> {
   let res: Response;
   try {
-    res = await fetch(`${API_URL}/v1/markets/${encodeURIComponent(marketId)}`);
+    res = await fetch(apiV1Url(`/markets/${encodeURIComponent(marketId)}`));
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Network error";
     throw new Error(msg);

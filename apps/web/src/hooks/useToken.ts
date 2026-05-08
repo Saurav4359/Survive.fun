@@ -3,7 +3,7 @@
 import type { ApiResponse, Token, TokenPair } from "@survivefun/types";
 import { useQuery } from "@tanstack/react-query";
 
-import { API_URL } from "@/utils/constants";
+import { apiV1Url } from "@/utils/constants";
 
 export const tokenQueryKey = (mint: string) => ["api-token", mint] as const;
 
@@ -20,7 +20,7 @@ export async function fetchTokenFromApi(mint: string): Promise<{
   pair: TokenPair | null;
   notFound: boolean;
 }> {
-  const res = await fetch(`${API_URL}/v1/tokens/${encodeURIComponent(mint)}`);
+  const res = await fetch(apiV1Url(`/tokens/${encodeURIComponent(mint)}`));
   if (res.status === 404) {
     return { pair: null, notFound: true };
   }
@@ -40,6 +40,7 @@ export type UseTokenResult = {
   priceChange24h: number | null;
   liquidity: number | null;
   devWallet: string | null;
+  holderCount: number | null;
   marketCap: number | null;
   pair: TokenPair | null;
   isLoading: boolean;
@@ -77,6 +78,7 @@ export function useToken(mint: string | undefined): UseTokenResult {
   const liquidity =
     pair?.liquidity?.usd != null ? pair.liquidity.usd : null;
   const devWallet = pair?.devWallet ?? null;
+  const holderCount = pair?.holderCount ?? null;
   const marketCap = pair?.marketCap ?? null;
 
   return {
@@ -85,6 +87,7 @@ export function useToken(mint: string | undefined): UseTokenResult {
     priceChange24h,
     liquidity,
     devWallet,
+    holderCount,
     marketCap,
     pair,
     isLoading: query.isPending,

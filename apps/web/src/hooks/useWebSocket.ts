@@ -5,15 +5,28 @@ import type {
   MarketResolved,
   SocketEvents,
 } from "@survivefun/types";
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { io, type Socket } from "socket.io-client";
 
 import { API_URL } from "@/utils/constants";
 
 export type PoolUpdatePayload = SocketEvents["pool_update"];
 
+/**
+ * Single, refcounted Socket.IO connection shared by every consumer.
+ *
+ * Two access patterns are supported:
+ *   1. {@link useWebSocket} — scoped per-market: call `subscribeToMarket(id)` and
+ *      read `latestBet` / `poolUpdate` / `marketResolved` from the snapshot
+ *      (only events for the subscribed market populate it).
+ *   2. {@link useWebSocketEvents} — global callbacks for ALL `bet_placed`,
+ *      `pool_update` and `market_resolved` events regardless of subscription.
+ *      Used to keep TanStack caches (markets list, my bets) live across the app.
+ */
+
 type WsSnapshot = {
   isConnected: boolean;
+  /** Most recent event for the currently subscribed market (or null). */
   latestBet: BetPlaced | null;
   poolUpdate: PoolUpdatePayload | null;
   marketResolved: MarketResolved | null;
@@ -27,36 +40,43 @@ const INITIAL_SNAPSHOT: WsSnapshot = {
 };
 
 let snapshot: WsSnapshot = { ...INITIAL_SNAPSHOT };
-const listeners = new Set<() => void>();
+const snapshotListeners = new Set<() => void>();
 
 let socketInstance: Socket | null = null;
 let connectionRefCount = 0;
 
-/** When set, only events for this market update `latestBet` / `poolUpdate` / `marketResolved`. */
+/** When set, only events for this market update the snapshot fields. */
 let subscribedMarketId: string | null = null;
 
-function emit(): void {
-  listeners.forEach((fn) => fn());
+/** Global event listeners — fire for EVERY validated event regardless of subscription. */
+const betListeners = new Set<(b: BetPlaced) => void>();
+const poolListeners = new Set<(p: PoolUpdatePayload) => void>();
+const resolvedListeners = new Set<(r: MarketResolved) => void>();
+
+function emitSnapshot(): void {
+  snapshotListeners.forEach((fn) => fn());
 }
 
 function patchSnapshot(partial: Partial<WsSnapshot>): void {
   snapshot = { ...snapshot, ...partial };
-  emit();
+  emitSnapshot();
 }
 
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
+function subscribeSnapshot(listener: () => void): () => void {
+  snapshotListeners.add(listener);
+  return () => snapshotListeners.delete(listener);
 }
 
 function getSnapshot(): WsSnapshot {
   return snapshot;
 }
 
+function getServerSnapshot(): WsSnapshot {
+  return INITIAL_SNAPSHOT;
+}
+
 function matchesSubscription(marketId: string): boolean {
-  return (
-    subscribedMarketId !== null && subscribedMarketId === marketId
-  );
+  return subscribedMarketId !== null && subscribedMarketId === marketId;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -98,6 +118,10 @@ function isMarketResolved(v: unknown): v is MarketResolved {
 
 function onSocketConnect(): void {
   patchSnapshot({ isConnected: true });
+  // Re-subscribe after reconnect so the API resumes scoped delivery.
+  if (subscribedMarketId && socketInstance) {
+    socketInstance.emit("subscribe_market", { marketId: subscribedMarketId });
+  }
 }
 
 function onSocketDisconnect(): void {
@@ -106,20 +130,44 @@ function onSocketDisconnect(): void {
 
 function onBetPlaced(raw: unknown): void {
   if (!isBetPlaced(raw)) return;
-  if (!matchesSubscription(raw.marketId)) return;
-  patchSnapshot({ latestBet: raw });
+  betListeners.forEach((fn) => {
+    try {
+      fn(raw);
+    } catch {
+      /* ignore listener throw */
+    }
+  });
+  if (matchesSubscription(raw.marketId)) {
+    patchSnapshot({ latestBet: raw });
+  }
 }
 
 function onPoolUpdate(raw: unknown): void {
   if (!isPoolUpdate(raw)) return;
-  if (!matchesSubscription(raw.marketId)) return;
-  patchSnapshot({ poolUpdate: raw });
+  poolListeners.forEach((fn) => {
+    try {
+      fn(raw);
+    } catch {
+      /* ignore listener throw */
+    }
+  });
+  if (matchesSubscription(raw.marketId)) {
+    patchSnapshot({ poolUpdate: raw });
+  }
 }
 
 function onMarketResolved(raw: unknown): void {
   if (!isMarketResolved(raw)) return;
-  if (!matchesSubscription(raw.marketId)) return;
-  patchSnapshot({ marketResolved: raw });
+  resolvedListeners.forEach((fn) => {
+    try {
+      fn(raw);
+    } catch {
+      /* ignore listener throw */
+    }
+  });
+  if (matchesSubscription(raw.marketId)) {
+    patchSnapshot({ marketResolved: raw });
+  }
 }
 
 function bindHandlers(socket: Socket): void {
@@ -160,12 +208,13 @@ function releaseSocket(): void {
   socketInstance = null;
   subscribedMarketId = null;
   snapshot = { ...INITIAL_SNAPSHOT };
-  emit();
+  emitSnapshot();
 }
 
 /**
- * Focus socket-driven updates on a single market (required before events populate).
- * Clears the last event payloads when switching markets.
+ * Focus the per-market snapshot fields on a single market. Required before the
+ * scoped `latestBet` / `poolUpdate` / `marketResolved` slots populate.
+ * Clears prior payloads when switching markets.
  */
 export function subscribeToMarket(marketId: string): void {
   subscribedMarketId = marketId;
@@ -177,6 +226,11 @@ export function subscribeToMarket(marketId: string): void {
   socketInstance?.emit("subscribe_market", { marketId });
 }
 
+/**
+ * Per-market socket hook (legacy). Returns the snapshot scoped to the market
+ * passed to `subscribeToMarket`. Use {@link useWebSocketEvents} for global
+ * cache invalidation.
+ */
 export function useWebSocket(): {
   isConnected: boolean;
   subscribeToMarket: (marketId: string) => void;
@@ -184,7 +238,11 @@ export function useWebSocket(): {
   poolUpdate: PoolUpdatePayload | null;
   marketResolved: MarketResolved | null;
 } {
-  const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const state = useSyncExternalStore(
+    subscribeSnapshot,
+    getSnapshot,
+    getServerSnapshot,
+  );
 
   useEffect(() => {
     connectionRefCount += 1;
@@ -209,4 +267,58 @@ export function useWebSocket(): {
     poolUpdate: state.poolUpdate,
     marketResolved: state.marketResolved,
   };
+}
+
+/**
+ * Subscribes to ALL `bet_placed`, `pool_update` and `market_resolved` events
+ * regardless of which market the snapshot is scoped to. Use this to drive
+ * cache invalidation, global toasts, top-level live feeds, etc.
+ *
+ * Each callback is held in a ref internally so consumers can pass inline
+ * functions without thrashing the subscription set.
+ */
+export function useWebSocketEvents(handlers: {
+  onBetPlaced?: (b: BetPlaced) => void;
+  onPoolUpdate?: (p: PoolUpdatePayload) => void;
+  onMarketResolved?: (r: MarketResolved) => void;
+}): { isConnected: boolean } {
+  const handlersRef = useRef(handlers);
+  handlersRef.current = handlers;
+
+  const state = useSyncExternalStore(
+    subscribeSnapshot,
+    getSnapshot,
+    getServerSnapshot,
+  );
+
+  useEffect(() => {
+    connectionRefCount += 1;
+    acquireSocket();
+    return () => {
+      connectionRefCount -= 1;
+      if (connectionRefCount <= 0) {
+        releaseSocket();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const onBet = (b: BetPlaced) => handlersRef.current.onBetPlaced?.(b);
+    const onPool = (p: PoolUpdatePayload) =>
+      handlersRef.current.onPoolUpdate?.(p);
+    const onResolved = (r: MarketResolved) =>
+      handlersRef.current.onMarketResolved?.(r);
+
+    betListeners.add(onBet);
+    poolListeners.add(onPool);
+    resolvedListeners.add(onResolved);
+
+    return () => {
+      betListeners.delete(onBet);
+      poolListeners.delete(onPool);
+      resolvedListeners.delete(onResolved);
+    };
+  }, []);
+
+  return { isConnected: state.isConnected };
 }

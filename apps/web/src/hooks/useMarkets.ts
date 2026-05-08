@@ -1,22 +1,28 @@
 "use client";
 
-import type { ApiResponse, Market } from "@survivefun/types";
+import type { ApiResponse, Market, MarketListPage } from "@survivefun/types";
 import { useQuery } from "@tanstack/react-query";
 
-import { API_URL } from "@/utils/constants";
+import { apiV1Url } from "@/utils/constants";
 
 export const marketsQueryKey = ["markets", "active"] as const;
 
+const DEFAULT_LIST_LIMIT = 100;
+
 export async function fetchActiveMarkets(): Promise<Market[]> {
-  const res = await fetch(`${API_URL}/v1/markets`);
+  const params = new URLSearchParams({
+    page: "1",
+    limit: String(DEFAULT_LIST_LIMIT),
+  });
+  const res = await fetch(`${apiV1Url("/markets/active")}?${params}`);
   if (!res.ok) {
     throw new Error(`Markets request failed (${res.status})`);
   }
-  const body = (await res.json()) as ApiResponse<Market[]>;
+  const body = (await res.json()) as ApiResponse<MarketListPage>;
   if (!body.success) {
     throw new Error(body.error.message || "Markets request failed");
   }
-  return body.data;
+  return body.data.items;
 }
 
 export function useMarkets(): {

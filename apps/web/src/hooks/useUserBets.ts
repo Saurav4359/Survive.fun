@@ -3,14 +3,14 @@
 import type { ApiResponse, BetWithMarket } from "@survivefun/types";
 import { useQuery } from "@tanstack/react-query";
 
-import { API_URL } from "@/utils/constants";
+import { apiV1Url } from "@/utils/constants";
 
 export const userBetsQueryKey = (wallet: string) =>
   ["user-bets", wallet] as const;
 
 async function fetchUserBets(wallet: string): Promise<BetWithMarket[]> {
   const res = await fetch(
-    `${API_URL}/v1/users/${encodeURIComponent(wallet)}/bets`,
+    apiV1Url(`/users/${encodeURIComponent(wallet)}/bets`),
   );
   if (!res.ok) {
     throw new Error(`Bets request failed (${res.status})`);

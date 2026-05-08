@@ -4,7 +4,11 @@ export type MarketStatus = "active" | "resolved" | "expired";
 
 export type Outcome = "survive" | "rug";
 
-export type RugEventType = "dev_sell" | "price_drop" | "liquidity_removed";
+export type RugEventType =
+  | "dev_sell"
+  | "price_drop"
+  | "liquidity_removed"
+  | "graduation_stall";
 
 export interface Market {
   id: string;
