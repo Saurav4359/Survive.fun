@@ -1,17 +1,16 @@
 "use client";
 
+import { AnimatePresence, motion } from "framer-motion";
+import { AlertCircle, CheckCircle2, Info, X } from "lucide-react";
 import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useState,
   type ReactNode,
 } from "react";
-import { io, type Socket } from "socket.io-client";
-import { AlertCircle, CheckCircle2, Info, X } from "lucide-react";
 
-import { API_URL } from "@/utils/constants";
+import { useWebSocketEvents } from "@/hooks/useWebSocket";
 
 export type ToastVariant = "success" | "error" | "info";
 
@@ -28,16 +27,21 @@ const ToastContext = createContext<(t: ToastInput) => void>(() => {});
 function toastIcon(variant: ToastVariant) {
   switch (variant) {
     case "success":
-      return <CheckCircle2 className="h-5 w-5 shrink-0 text-survive" aria-hidden />;
+      return (
+        <CheckCircle2 className="h-4 w-4 shrink-0 text-survive" aria-hidden />
+      );
     case "error":
-      return <AlertCircle className="h-5 w-5 shrink-0 text-rug" aria-hidden />;
+      return <AlertCircle className="h-4 w-4 shrink-0 text-rug" aria-hidden />;
     default:
-      return <Info className="h-5 w-5 shrink-0 text-accent-bright" aria-hidden />;
+      return <Info className="h-4 w-4 shrink-0 text-accent" aria-hidden />;
   }
 }
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [resolvedFlash, setResolvedFlash] = useState<{
+    outcome: "survive" | "rug";
+  } | null>(null);
 
   const push = useCallback((t: ToastInput) => {
     const id =
@@ -54,64 +58,78 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setToasts((prev) => prev.filter((x) => x.id !== id));
   }, []);
 
-  useEffect(() => {
-    let socket: Socket | null = null;
-    try {
-      socket = io(API_URL, {
-        transports: ["websocket", "polling"],
-        autoConnect: true,
-        reconnection: true,
+  useWebSocketEvents({
+    onMarketResolved: (r) => {
+      setResolvedFlash({ outcome: r.outcome });
+      window.setTimeout(() => setResolvedFlash(null), 700);
+      push({
+        variant: "info",
+        title: "Market resolved",
+        message: `Outcome: ${r.outcome.toUpperCase()}`,
       });
-      const onResolved = (raw: unknown) => {
-        if (!raw || typeof raw !== "object") return;
-        const o = raw as Record<string, unknown>;
-        if (o.outcome !== "survive" && o.outcome !== "rug") return;
-        push({
-          variant: "info",
-          title: "Market resolved",
-          message: `Outcome: ${String(o.outcome).toUpperCase()}`,
-        });
-      };
-      socket.on("market_resolved", onResolved);
-    } catch {
-      /* ignore */
-    }
-    return () => {
-      socket?.disconnect();
-    };
-  }, [push]);
+    },
+  });
 
   return (
     <ToastContext.Provider value={push}>
       {children}
+
+      {/* Full-screen flash on market resolve (NO gradient — solid color overlay) */}
+      <AnimatePresence>
+        {resolvedFlash ? (
+          <motion.div
+            key={resolvedFlash.outcome}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.85 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+            style={{
+              backgroundColor:
+                resolvedFlash.outcome === "survive" ? "#cdf078" : "#ef4444",
+            }}
+            className="pointer-events-none fixed inset-0 z-[150]"
+            aria-hidden
+          />
+        ) : null}
+      </AnimatePresence>
+
       <div
-        className="pointer-events-none fixed bottom-0 right-0 z-[200] flex max-h-[50vh] w-full max-w-[min(100vw-1rem,380px)] flex-col gap-2 p-3 sm:bottom-4 sm:right-4 sm:p-0"
+        className="pointer-events-none fixed bottom-0 right-0 z-[200] flex max-h-[50vh] w-full max-w-[min(100vw-1rem,380px)] flex-col gap-2 p-3 sm:bottom-4 sm:right-4"
         aria-live="polite"
       >
-        {toasts.map((t) => (
-          <div
-            key={t.id}
-            className="pointer-events-auto flex gap-3 rounded-lg border border-border-glow/40 bg-[var(--bg-card)]/95 px-4 py-3 shadow-glow backdrop-blur-md"
-          >
-            {toastIcon(t.variant)}
-            <div className="min-w-0 flex-1">
-              <p className="font-display text-sm font-semibold text-foreground">
-                {t.title}
-              </p>
-              {t.message ? (
-                <p className="mt-0.5 font-mono text-xs text-muted">{t.message}</p>
-              ) : null}
-            </div>
-            <button
-              type="button"
-              onClick={() => dismiss(t.id)}
-              className="shrink-0 rounded p-1 text-muted transition-colors hover:bg-surface hover:text-foreground"
-              aria-label="Dismiss"
+        <AnimatePresence initial={false}>
+          {toasts.map((t) => (
+            <motion.div
+              key={t.id}
+              layout
+              initial={{ opacity: 0, x: 32 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 32 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
+              className="pointer-events-auto flex gap-3 rounded-md border border-border bg-card px-4 py-3 shadow-glow-sm"
             >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        ))}
+              {toastIcon(t.variant)}
+              <div className="min-w-0 flex-1">
+                <p className="font-display text-sm font-semibold text-white">
+                  {t.title}
+                </p>
+                {t.message ? (
+                  <p className="mt-0.5 font-mono text-xs text-fg-muted">
+                    {t.message}
+                  </p>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => dismiss(t.id)}
+                className="shrink-0 rounded p-1 text-fg-muted transition-colors hover:bg-surface hover:text-white"
+                aria-label="Dismiss"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </motion.div>
+          ))}
+        </AnimatePresence>
       </div>
     </ToastContext.Provider>
   );

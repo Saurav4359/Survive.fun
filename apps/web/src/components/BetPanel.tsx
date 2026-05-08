@@ -2,9 +2,10 @@
 
 import type { BetSide, Market } from "@survivefun/types";
 import { motion } from "framer-motion";
-import { Coins, Shield, Skull } from "lucide-react";
+import { Shield, Skull } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { CountUp } from "@/components/CountUp";
 import { BET_LIMITS } from "@/utils/constants";
 import { formatUSDC } from "@/utils/format";
 
@@ -57,7 +58,6 @@ export function BetPanel({ market, onBet, position = null }: BetPanelProps) {
     () => potentialPayoutUsdc(side, survive, rug, amount),
     [side, survive, rug, amount],
   );
-  const profit = payout - amount;
 
   const setClamped = (n: number) => setAmount(clampAmount(n));
 
@@ -71,143 +71,178 @@ export function BetPanel({ market, onBet, position = null }: BetPanelProps) {
     }
   }
 
+  const sideLabel = side === "survive" ? "SURVIVE" : "RUG";
+
   return (
-    <motion.div layout className="card-cyber space-y-5 p-5">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-foreground">
-          <Shield className="h-4 w-4 text-accent" aria-hidden />
-          <h3 className="font-display text-sm font-bold uppercase tracking-widest">
-            Place a bet
-          </h3>
-        </div>
-        <span className="font-mono text-[10px] font-medium uppercase tracking-widest text-muted">
+    <div className="border border-border bg-card">
+      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <h3 className="font-display text-xs font-bold uppercase tracking-[0.2em] text-white">
+          Place a bet
+        </h3>
+        <span className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-fg-muted">
           USDC · devnet
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-2" role="tablist" aria-label="Bet side">
-        <motion.button
-          type="button"
-          role="tab"
-          aria-selected={side === "survive"}
-          onClick={() => setSide("survive")}
-          whileTap={{ scale: 0.99 }}
-          className={
-            side === "survive"
-              ? "flex items-center justify-center gap-2 rounded-lg border-2 border-survive bg-survive py-3 font-display text-sm font-bold uppercase tracking-wide text-ink shadow-glow-sm transition-all duration-200"
-              : "flex items-center justify-center gap-2 rounded-lg border-2 border-survive bg-transparent py-3 font-display text-sm font-bold uppercase tracking-wide text-survive transition-all duration-200 hover:bg-survive hover:text-ink hover:shadow-glow-sm"
-          }
-        >
-          <Shield className="h-4 w-4" aria-hidden />
-          SURVIVE
-        </motion.button>
-        <motion.button
-          type="button"
-          role="tab"
-          aria-selected={side === "rug"}
-          onClick={() => setSide("rug")}
-          whileTap={{ scale: 0.99 }}
-          className={
-            side === "rug"
-              ? "flex items-center justify-center gap-2 rounded-lg border-2 border-rug bg-rug py-3 font-display text-sm font-bold uppercase tracking-wide text-ink shadow-[0_0_20px_rgba(239,68,68,0.25)] transition-all duration-200"
-              : "flex items-center justify-center gap-2 rounded-lg border-2 border-rug bg-transparent py-3 font-display text-sm font-bold uppercase tracking-wide text-rug transition-all duration-200 hover:bg-rug hover:text-ink hover:shadow-[0_0_20px_rgba(239,68,68,0.2)]"
-          }
-        >
-          <Skull className="h-4 w-4" aria-hidden />
-          RUG
-        </motion.button>
-      </div>
-
-      <div className="space-y-2">
-        <label
-          htmlFor="bet-amount"
-          className="text-xs font-semibold uppercase tracking-widest text-muted"
-        >
-          Amount ({formatUSDC(BET_LIMITS.min)} – {formatUSDC(BET_LIMITS.max)})
-        </label>
-        <div className="relative">
-          <Coins
-            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"
+      <div className="space-y-4 p-4">
+        {/* Side toggle */}
+        <div className="relative grid grid-cols-2 gap-0 border border-border bg-bg p-1">
+          <motion.div
+            layout
+            transition={{ type: "spring", stiffness: 380, damping: 30 }}
             aria-hidden
-          />
-          <input
-            id="bet-amount"
-            type="number"
-            inputMode="decimal"
-            min={BET_LIMITS.min}
-            max={BET_LIMITS.max}
-            step={1}
-            value={Number.isFinite(amount) ? amount : BET_LIMITS.min}
-            onChange={(e) => {
-              const v = Number.parseFloat(e.target.value);
-              if (!Number.isFinite(v)) {
-                setAmount(BET_LIMITS.min);
-                return;
-              }
-              setClamped(v);
+            className="pointer-events-none absolute top-1 bottom-1 w-[calc(50%-4px)]"
+            style={{
+              left: side === "survive" ? 4 : "calc(50% + 0px)",
+              backgroundColor: side === "survive" ? "#cdf078" : "#ef4444",
             }}
-            className="w-full rounded-lg border border-border bg-surface py-3 pl-10 pr-3 font-mono text-sm font-medium tabular-nums text-foreground transition-all duration-200 focus:border-border-glow focus:outline-none focus:ring-2 focus:ring-accent/35 focus:shadow-glow-sm"
           />
+          <button
+            type="button"
+            onClick={() => setSide("survive")}
+            className="relative z-[1] flex items-center justify-center gap-2 py-2.5 font-display text-xs font-bold uppercase tracking-[0.15em] transition-colors"
+            aria-pressed={side === "survive"}
+          >
+            <Shield
+              className={`h-3.5 w-3.5 ${side === "survive" ? "text-ink" : "text-survive"}`}
+              aria-hidden
+            />
+            <span className={side === "survive" ? "text-ink" : "text-survive"}>
+              SURVIVE
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSide("rug")}
+            className="relative z-[1] flex items-center justify-center gap-2 py-2.5 font-display text-xs font-bold uppercase tracking-[0.15em] transition-colors"
+            aria-pressed={side === "rug"}
+          >
+            <Skull
+              className={`h-3.5 w-3.5 ${side === "rug" ? "text-white" : "text-rug"}`}
+              aria-hidden
+            />
+            <span className={side === "rug" ? "text-white" : "text-rug"}>
+              RUG
+            </span>
+          </button>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {QUICK_AMOUNTS.map((q) => (
-            <motion.button
-              key={q}
-              type="button"
-              whileTap={{ scale: 0.98 }}
-              onClick={() => setClamped(q)}
-              className="rounded-lg border border-border bg-surface px-3 py-1.5 font-mono text-xs font-semibold tabular-nums text-fg-soft transition-all duration-200 hover:border-border-glow hover:text-accent-bright hover:shadow-glow-sm"
+
+        {/* Amount */}
+        <div className="space-y-2">
+          <label
+            htmlFor="bet-amount"
+            className="block font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-fg-muted"
+          >
+            Amount ({formatUSDC(BET_LIMITS.min)} – {formatUSDC(BET_LIMITS.max)})
+          </label>
+          <div className="relative">
+            <span
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-base font-bold text-fg-muted"
+              aria-hidden
             >
-              {formatUSDC(q)}
-            </motion.button>
-          ))}
+              $
+            </span>
+            <input
+              id="bet-amount"
+              type="number"
+              inputMode="decimal"
+              min={BET_LIMITS.min}
+              max={BET_LIMITS.max}
+              step={1}
+              value={Number.isFinite(amount) ? amount : BET_LIMITS.min}
+              onChange={(e) => {
+                const v = Number.parseFloat(e.target.value);
+                if (!Number.isFinite(v)) {
+                  setAmount(BET_LIMITS.min);
+                  return;
+                }
+                setClamped(v);
+              }}
+              className="w-full rounded-md border border-border bg-bg py-3 pl-8 pr-3 font-mono text-base font-semibold tabular-nums text-white transition-shadow focus:border-accent focus:outline-none focus:shadow-glow-sm"
+            />
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {QUICK_AMOUNTS.map((q) => {
+              const active = amount === q;
+              return (
+                <motion.button
+                  key={q}
+                  type="button"
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setClamped(q)}
+                  className={
+                    active
+                      ? "rounded-md bg-accent px-3 py-1.5 font-mono text-[10px] font-bold tabular-nums text-ink"
+                      : "rounded-md border border-accent/60 bg-bg px-3 py-1.5 font-mono text-[10px] font-bold tabular-nums text-accent transition-colors hover:border-accent hover:bg-accent hover:text-ink"
+                  }
+                >
+                  ${q}
+                </motion.button>
+              );
+            })}
+          </div>
         </div>
-      </div>
 
-      <div className="rounded-lg border border-border-glow/40 bg-accent/5 px-4 py-4 shadow-inset-glow">
-        <p className="text-xs font-semibold uppercase tracking-widest text-muted">
-          Potential win (est.)
-        </p>
-        <p className="mt-2 font-mono text-2xl font-bold tabular-nums text-accent-bright">
-          {formatUSDC(profit)}
-        </p>
-        <p className="mt-2 font-mono text-[11px] text-fg-soft">
-          Gross return {formatUSDC(payout)} if {side === "survive" ? "SURVIVE" : "RUG"}{" "}
-          resolves in your favor (simplified pool model).
-        </p>
-      </div>
+        {/* Potential win */}
+        <div className="border border-border bg-bg px-4 py-3">
+          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+            If {sideLabel} wins:
+          </p>
+          <p className="mt-1 font-mono text-2xl font-bold tabular-nums text-accent">
+            <CountUp
+              key={`${side}-${amount}-${survive}-${rug}`}
+              to={payout}
+              duration={0.5}
+              format={(n) => formatUSDC(n)}
+            />
+          </p>
+          <p className="mt-1 font-mono text-[10px] text-fg-muted">
+            ${amount} → {formatUSDC(payout)} (gross)
+          </p>
+        </div>
 
-      {position ? (
-        <motion.div
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, ease: "easeOut" }}
-          className={
-            position.side === "survive"
-              ? "rounded-lg border border-survive/40 bg-survive/10 px-4 py-3"
-              : "glitch-rug rounded-lg border border-rug/40 bg-rug/10 px-4 py-3"
-          }
+        {/* Place bet */}
+        <motion.button
+          type="button"
+          whileHover={market.status === "active" && !pending ? { scale: 1.01 } : undefined}
+          whileTap={{ scale: 0.97 }}
+          disabled={pending || market.status !== "active"}
+          onClick={() => void handlePlaceBet()}
+          className="flex w-full items-center justify-center rounded-md bg-accent px-4 py-3 font-display text-xs font-bold uppercase tracking-[0.2em] text-ink transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <p className="text-xs font-semibold uppercase tracking-widest text-muted">
-            Your position
-          </p>
-          <p className="mt-1 font-mono text-sm font-semibold text-foreground">
-            {position.side === "survive" ? "SURVIVE" : "RUG"} ·{" "}
-            {formatUSDC(position.amountUsdc)}
-          </p>
-        </motion.div>
-      ) : null}
+          {pending ? (
+            <span className="flex items-center gap-2">
+              <span
+                className="h-3 w-3 animate-spin rounded-full border-2 border-ink/30 border-t-ink"
+                aria-hidden
+              />
+              Placing…
+            </span>
+          ) : (
+            "Place Bet"
+          )}
+        </motion.button>
 
-      <motion.button
-        type="button"
-        layout
-        disabled={pending || market.status !== "active"}
-        whileTap={{ scale: market.status === "active" && !pending ? 0.99 : 1 }}
-        onClick={() => void handlePlaceBet()}
-        className="w-full rounded-lg border border-accent bg-accent py-3 font-display text-sm font-bold uppercase tracking-widest text-ink transition-all duration-200 hover:bg-transparent hover:text-accent-bright hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        {pending ? "Placing…" : "Place Bet"}
-      </motion.button>
-    </motion.div>
+        {position ? (
+          <motion.div
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={
+              position.side === "survive"
+                ? "border border-border border-l-[3px] border-l-survive bg-bg px-3 py-2.5"
+                : "border border-border border-l-[3px] border-l-rug bg-bg px-3 py-2.5"
+            }
+          >
+            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+              Your position
+            </p>
+            <p className="mt-1 font-mono text-sm font-semibold text-white">
+              {position.side === "survive" ? "SURVIVE" : "RUG"} ·{" "}
+              {formatUSDC(position.amountUsdc)}
+            </p>
+          </motion.div>
+        ) : null}
+      </div>
+    </div>
   );
 }

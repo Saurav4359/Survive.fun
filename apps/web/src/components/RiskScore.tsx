@@ -2,10 +2,7 @@ import type { Token } from "@survivefun/types";
 import { AlertTriangle, Droplets, Timer, UserRound } from "lucide-react";
 
 import { formatUSDC } from "@/utils/format";
-import {
-  computeRiskLevel,
-  type RiskLevel,
-} from "@/utils/marketRisk";
+import { computeRiskLevel, type RiskLevel } from "@/utils/marketRisk";
 
 export type { RiskLevel };
 
@@ -26,22 +23,22 @@ function formatTokenAge(pairCreatedAtSeconds: number | null | undefined): string
 
 const badgeStyles: Record<
   RiskLevel,
-  { wrap: string; dot: string; label: string }
+  { wrap: string; label: string; Icon: typeof AlertTriangle }
 > = {
   HIGH: {
-    wrap: "border-rug/40 bg-rug/10 text-rug",
-    dot: "bg-rug",
+    wrap: "border-rug text-rug",
     label: "High risk",
+    Icon: AlertTriangle,
   },
   MEDIUM: {
-    wrap: "border-warn/40 bg-warn/10 text-warn",
-    dot: "bg-warn",
+    wrap: "border-warn text-warn",
     label: "Medium risk",
+    Icon: AlertTriangle,
   },
   LOW: {
-    wrap: "border-survive/40 bg-survive/10 text-survive",
-    dot: "bg-survive",
+    wrap: "border-accent text-accent",
     label: "Lower risk",
+    Icon: AlertTriangle,
   },
 };
 
@@ -79,69 +76,58 @@ export function RiskScore({
   const ageLabel = formatTokenAge(pairCreatedAt ?? null);
 
   return (
-    <div className="card-cyber space-y-4 p-5">
+    <div className="border border-border bg-card p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-widest text-muted">
+          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-fg-muted">
             Risk profile
           </p>
-          <p className="font-display mt-1 truncate text-lg font-bold text-foreground">
+          <p className="mt-1 truncate font-display text-base font-bold text-white">
             {token.name}
           </p>
-          <p className="font-mono text-sm font-semibold text-accent-bright">
-            {token.symbol}
+          <p className="font-mono text-xs font-semibold text-accent">
+            ${token.symbol}
           </p>
         </div>
         <div
-          className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1 font-mono text-xs font-bold uppercase tracking-widest ${badge.wrap} ${level === "HIGH" ? "glitch-rug" : ""}`}
+          className={`inline-flex items-center gap-1.5 rounded-sm border bg-bg px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.15em] ${badge.wrap}`}
         >
-          <span className={`h-2 w-2 ${badge.dot}`} />
+          <badge.Icon className="h-3 w-3" aria-hidden />
           {level}
         </div>
       </div>
 
-      <p className="text-[11px] leading-relaxed text-muted">{badge.label}</p>
+      <p className="mt-3 font-mono text-[11px] text-fg-muted">{badge.label}</p>
 
-      <dl className="grid gap-2 sm:grid-cols-3 sm:gap-px sm:bg-border sm:ring-1 sm:ring-border">
-        <div className="border border-border bg-surface p-3 sm:border-0">
-          <dt className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
-            <UserRound className="h-3.5 w-3.5 text-accent" aria-hidden />
+      <dl className="mt-4 grid gap-2 sm:grid-cols-3">
+        <div className="border border-border bg-bg p-3">
+          <dt className="flex items-center gap-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+            <UserRound className="h-3 w-3 text-accent" aria-hidden />
             Dev held
           </dt>
-          <dd className="mt-2 font-mono text-sm font-medium tabular-nums text-foreground">
+          <dd className="mt-2 font-mono text-sm font-medium tabular-nums text-white">
             {devLabel}
           </dd>
         </div>
-        <div className="border border-border bg-surface p-3 sm:border-0">
-          <dt className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
-            <Droplets className="h-3.5 w-3.5 text-accent" aria-hidden />
+        <div className="border border-border bg-bg p-3">
+          <dt className="flex items-center gap-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+            <Droplets className="h-3 w-3 text-accent" aria-hidden />
             Liquidity
           </dt>
-          <dd className="mt-2 font-mono text-sm font-medium tabular-nums text-foreground">
+          <dd className="mt-2 font-mono text-sm font-medium tabular-nums text-white">
             {liqLabel}
           </dd>
         </div>
-        <div className="border border-border bg-surface p-3 sm:border-0">
-          <dt className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
-            <Timer className="h-3.5 w-3.5 text-accent" aria-hidden />
+        <div className="border border-border bg-bg p-3">
+          <dt className="flex items-center gap-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+            <Timer className="h-3 w-3 text-accent" aria-hidden />
             Token age
           </dt>
-          <dd
-            suppressHydrationWarning
-            className="mt-2 font-mono text-sm font-medium tabular-nums text-foreground"
-          >
+          <dd className="mt-2 font-mono text-sm font-medium tabular-nums text-white">
             {ageLabel}
           </dd>
         </div>
       </dl>
-
-      <div className="flex items-start gap-2 border border-warn/30 bg-warn/5 px-3 py-2 font-mono text-[11px] text-warn">
-        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-        <p className="leading-relaxed">
-          Heuristic only — not financial advice. Wire real supply + holder data before
-          relying on this in production.
-        </p>
-      </div>
     </div>
   );
 }

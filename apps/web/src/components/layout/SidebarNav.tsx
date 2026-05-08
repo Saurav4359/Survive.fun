@@ -1,19 +1,36 @@
 "use client";
 
 import { useWallet } from "@solana/wallet-adapter-react";
+import { motion } from "framer-motion";
+import {
+  Flame,
+  Home,
+  Plus,
+  Skull,
+  Trophy,
+  User,
+  Zap,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { ComponentType, SVGProps } from "react";
 
 import { useWalletBalances } from "@/hooks/useWalletBalances";
 import { formatSolAmount, formatUSDC, formatWallet } from "@/utils/format";
 
-const NAV: { href: string; label: string; emoji: string }[] = [
-  { href: "/", label: "Home", emoji: "🏠" },
-  { href: "/live-rugs", label: "Live Rugs", emoji: "📢" },
-  { href: "/live", label: "Live", emoji: "⚡" },
-  { href: "/profile", label: "Profile", emoji: "👤" },
-  { href: "/leaderboard", label: "Leaderboard", emoji: "🏆" },
-  { href: "/chat", label: "Chat", emoji: "💬" },
+type NavItem = {
+  href: string;
+  label: string;
+  Icon: ComponentType<SVGProps<SVGSVGElement>>;
+};
+
+const NAV: NavItem[] = [
+  { href: "/", label: "Home", Icon: Home },
+  { href: "/live-rugs", label: "Live Rugs", Icon: Skull },
+  { href: "/live", label: "Hot Markets", Icon: Flame },
+  { href: "/profile", label: "Profile", Icon: User },
+  { href: "/leaderboard", label: "Leaderboard", Icon: Trophy },
+  { href: "/bets", label: "My Bets", Icon: Zap },
 ];
 
 type Props = {
@@ -27,74 +44,116 @@ export function SidebarNav({ onNavigate }: Props) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {/* Logo */}
       <Link
         href="/"
         onClick={onNavigate}
-        className="mb-8 block shrink-0 px-1"
+        className="mb-7 flex shrink-0 items-center gap-2 px-1"
       >
-        <p className="font-mono text-lg font-bold tracking-tight text-accent-bright">
-          survive.fun
-        </p>
-        <p className="mt-0.5 font-mono text-[10px] uppercase tracking-widest text-muted">
-          Survival markets
-        </p>
+        <Skull className="h-6 w-6 text-accent" strokeWidth={2} aria-hidden />
+        <div className="leading-tight">
+          <p className="font-display text-base font-bold tracking-tight text-white">
+            survive<span className="text-accent">.fun</span>
+          </p>
+          <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-fg-soft">
+            Survival markets
+          </p>
+        </div>
       </Link>
 
-      <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto hide-scrollbar">
-        {NAV.map((item) => {
+      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto pb-4 hide-scrollbar">
+        {NAV.map(({ href, label, Icon }) => {
           const active =
-            item.href === "/"
-              ? pathname === "/"
-              : pathname.startsWith(item.href);
+            href === "/" ? pathname === "/" : pathname.startsWith(href);
+
           return (
             <Link
-              key={item.href}
-              href={item.href}
+              key={href}
+              href={href}
               onClick={onNavigate}
-              className={
-                active
-                  ? "flex items-center gap-3 rounded-lg border border-accent/40 bg-accent/10 px-3 py-2.5 font-mono text-sm font-medium text-accent-bright"
-                  : "flex items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 font-mono text-sm text-fg-soft transition-colors hover:border-border hover:bg-surface/60 hover:text-foreground"
-              }
+              className="group relative block"
             >
-              <span className="text-base" aria-hidden>
-                {item.emoji}
-              </span>
-              {item.label}
+              <motion.div
+                initial={false}
+                animate={{
+                  backgroundColor: active ? "#0a0a0a" : "rgba(0,0,0,0)",
+                }}
+                whileHover={!active ? { backgroundColor: "#0a0a0a" } : undefined}
+                transition={{ duration: 0.18, ease: "easeOut" }}
+                className="relative flex items-center gap-3 overflow-hidden rounded-md px-3 py-2.5"
+              >
+                {/* Sliding lime bg from left on hover */}
+                {!active ? (
+                  <motion.span
+                    aria-hidden
+                    initial={{ x: "-100%" }}
+                    whileHover={{ x: 0 }}
+                    transition={{ duration: 0.22, ease: "easeOut" }}
+                    className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-accent"
+                  />
+                ) : null}
+                {active ? (
+                  <span
+                    aria-hidden
+                    className="absolute inset-y-0 left-0 w-[3px] bg-accent"
+                  />
+                ) : null}
+                <Icon
+                  className={
+                    active
+                      ? "h-4 w-4 shrink-0 text-accent"
+                      : "h-4 w-4 shrink-0 text-fg-soft transition-colors group-hover:text-accent"
+                  }
+                  aria-hidden
+                />
+                <span
+                  className={
+                    active
+                      ? "font-display text-sm font-medium text-accent"
+                      : "font-display text-sm font-medium text-fg-soft transition-colors group-hover:text-white"
+                  }
+                >
+                  {label}
+                </span>
+              </motion.div>
             </Link>
           );
         })}
       </nav>
 
-      <div className="mt-6 shrink-0 space-y-3 border-t border-border pt-5">
-        <Link
-          href="/#create-market"
-          onClick={onNavigate}
-          className="flex w-full items-center justify-center rounded-lg border border-survive bg-survive px-4 py-3 font-mono text-xs font-bold uppercase tracking-widest text-ink shadow-glow-sm transition hover:bg-transparent hover:text-survive"
-        >
-          Create Market
-        </Link>
+      <div className="shrink-0 space-y-3 border-t border-border pt-4">
+        <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+          <Link
+            href="/#create-market"
+            onClick={onNavigate}
+            className="flex w-full items-center justify-center gap-1.5 rounded-md bg-accent px-4 py-2.5 font-display text-xs font-bold uppercase tracking-[0.15em] text-ink transition-colors hover:bg-white"
+          >
+            <Plus className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
+            Create Market
+          </Link>
+        </motion.div>
 
-        <div className="rounded-lg border border-border bg-surface/80 px-3 py-3">
-          <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted">
+        <div className="rounded-md border border-border bg-surface px-3 py-3">
+          <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-fg-muted">
             Holdings
           </p>
           {!connected || !publicKey ? (
-            <p className="mt-2 font-mono text-xs text-muted">Connect wallet</p>
+            <p className="mt-2 font-mono text-xs text-fg-muted">
+              Not connected
+            </p>
           ) : (
-            <div className="mt-2 space-y-1">
-              <p className="font-mono text-sm font-semibold tabular-nums text-foreground">
+            <div className="mt-2 space-y-0.5">
+              <p className="font-mono text-sm font-semibold tabular-nums text-white">
                 {balances.isPending
-                  ? "…"
-                  : formatUSDC(balances.data?.usdc ?? 0)}{" "}
-                <span className="text-[10px] font-normal text-muted">USDC</span>
+                  ? "—"
+                  : formatUSDC(balances.data?.usdc ?? 0)}
               </p>
-              <p className="font-mono text-xs tabular-nums text-fg-soft">
+              <p className="font-mono text-[11px] tabular-nums text-fg-soft">
                 {balances.isPending
-                  ? "…"
+                  ? "—"
                   : `${formatSolAmount(balances.data?.sol ?? 0)} SOL`}
               </p>
-              <p className="truncate font-mono text-[10px] text-muted">
+              <p className="truncate font-mono text-[10px] text-fg-muted">
                 {formatWallet(publicKey.toBase58())}
               </p>
             </div>

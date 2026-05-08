@@ -1,3 +1,6 @@
+"use client";
+
+import { motion } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 
@@ -17,40 +20,42 @@ export function EmptyState({
   return (
     <div
       role="status"
-      className="card-cyber flex flex-col items-center justify-center px-6 py-14 text-center sm:py-16"
+      className="flex flex-col items-center justify-center border border-border bg-card px-6 py-14 text-center sm:py-16"
     >
       {Icon ? (
         <Icon
-          className="mb-4 h-12 w-12 text-muted"
-          strokeWidth={1.25}
+          className="mb-4 h-10 w-10 text-fg-muted"
+          strokeWidth={1.5}
           aria-hidden
         />
       ) : null}
-      <p className="font-display text-lg font-semibold text-foreground sm:text-xl">
+      <p className="font-display text-base font-semibold text-white sm:text-lg">
         {title}
       </p>
       {description ? (
-        <p className="mt-2 max-w-md font-mono text-sm text-muted">
+        <p className="mt-2 max-w-md font-mono text-sm text-fg-muted">
           {description}
         </p>
       ) : null}
       {action ? (
-        action.href ? (
-          <Link
-            href={action.href}
-            className="mt-6 inline-flex items-center justify-center rounded-lg border border-accent bg-accent px-6 py-3 font-mono text-xs font-bold uppercase tracking-widest text-ink transition-all duration-200 hover:border-accent-bright hover:bg-transparent hover:text-accent-bright"
-          >
-            {action.label}
-          </Link>
-        ) : (
-          <button
-            type="button"
-            onClick={action.onClick}
-            className="mt-6 inline-flex items-center justify-center rounded-lg border border-accent bg-accent px-6 py-3 font-mono text-xs font-bold uppercase tracking-widest text-ink transition-all duration-200 hover:border-accent-bright hover:bg-transparent hover:text-accent-bright"
-          >
-            {action.label}
-          </button>
-        )
+        <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}>
+          {action.href ? (
+            <Link
+              href={action.href}
+              className="mt-6 inline-flex items-center justify-center rounded-md border border-accent bg-accent px-6 py-2.5 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-ink transition-colors hover:bg-transparent hover:text-accent"
+            >
+              {action.label}
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={action.onClick}
+              className="mt-6 inline-flex items-center justify-center rounded-md border border-accent bg-accent px-6 py-2.5 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-ink transition-colors hover:bg-transparent hover:text-accent"
+            >
+              {action.label}
+            </button>
+          )}
+        </motion.div>
       ) : null}
     </div>
   );

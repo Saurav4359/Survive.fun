@@ -1,5 +1,8 @@
+"use client";
+
 import type { Market } from "@survivefun/types";
-import { Clock, Shield, Skull, TrendingUp } from "lucide-react";
+import { motion } from "framer-motion";
+import { Clock, TrendingUp } from "lucide-react";
 import Link from "next/link";
 
 import { formatPool, formatUSDC } from "@/utils/format";
@@ -12,6 +15,23 @@ function parseAmount(value: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+type RiskLevel = "HIGH" | "MEDIUM" | "LOW";
+
+function inferRisk(market: Market): RiskLevel {
+  const liq = market.openLiquidity
+    ? Number.parseFloat(market.openLiquidity)
+    : 0;
+  if (Number.isFinite(liq) && liq > 50_000) return "LOW";
+  if (Number.isFinite(liq) && liq > 10_000) return "MEDIUM";
+  return "HIGH";
+}
+
+const RISK_STYLES: Record<RiskLevel, string> = {
+  HIGH: "border-rug/60 text-rug",
+  MEDIUM: "border-warn/60 text-warn",
+  LOW: "border-accent/60 text-accent",
+};
+
 export function MarketCard({ market }: { market: Market }) {
   const name = market.tokenName?.trim() || "Unknown token";
   const ticker = market.tokenTicker?.trim() || "—";
@@ -21,81 +41,94 @@ export function MarketCard({ market }: { market: Market }) {
   const priceNum = open != null ? Number.parseFloat(open) : NaN;
   const hasPrice = Number.isFinite(priceNum);
   const expiresAt = new Date(market.expiresAt);
+  const risk = inferRisk(market);
+  const tickerLetter = ticker.slice(0, 1).toUpperCase();
 
   return (
-    <article
-      className="card-cyber group flex flex-col gap-4 border-l-[3px] border-l-accent p-5 pl-4"
+    <motion.div
+      whileHover={{ scale: 1.01 }}
+      transition={{ duration: 0.18, ease: "easeOut" }}
+      className="group relative"
     >
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1">
-          <h3 className="font-display truncate text-lg font-bold tracking-tight text-foreground">
-            {name}
-          </h3>
-          <p className="text-sm font-semibold uppercase tracking-widest text-accent-bright">
-            {ticker}
-          </p>
-        </div>
-        <div className="flex items-center gap-1.5 border border-border bg-surface px-2 py-1 font-mono text-xs text-muted transition-colors duration-200 group-hover:border-border-glow/50">
-          <Clock className="h-3.5 w-3.5 shrink-0 text-accent" aria-hidden />
-          <Timer expiresAt={expiresAt} />
-        </div>
-      </header>
-
-      <div className="flex flex-wrap items-end justify-between gap-3 border border-border bg-surface px-4 py-3 transition-colors duration-200 group-hover:border-border-glow/40">
-        <div className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-widest text-muted">
-            Price
-          </p>
-          <p className="font-mono text-xl font-medium tabular-nums text-foreground">
-            {hasPrice ? formatUSDC(priceNum) : "—"}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 text-right">
-          <TrendingUp className="h-4 w-4 text-muted" aria-hidden />
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-muted">
-              % chg
-            </p>
-            <p className="font-mono text-sm font-medium tabular-nums text-fg-soft">
-              —
+      <Link
+        href={`/market/${market.id}`}
+        className="relative flex flex-col gap-4 border border-border border-l-[3px] border-l-accent bg-card p-4 transition-colors duration-200 hover:border-accent hover:shadow-glow-sm"
+      >
+        <header className="flex items-start gap-3">
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-bg font-mono text-base font-bold text-accent"
+            aria-hidden
+          >
+            {tickerLetter}
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate font-display text-base font-bold tracking-tight text-white">
+              {name}
+            </h3>
+            <p className="font-mono text-xs font-medium text-fg-muted">
+              ${ticker}
             </p>
           </div>
-        </div>
-      </div>
+          <span
+            className={`shrink-0 rounded-sm border px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider bg-bg ${RISK_STYLES[risk]}`}
+          >
+            {risk}
+          </span>
+        </header>
 
-      <div className="grid grid-cols-2 gap-2 text-sm">
-        <div className="flex items-start gap-2 border border-survive/35 bg-survive/5 px-3 py-2">
-          <Shield className="mt-0.5 h-4 w-4 shrink-0 text-survive" aria-hidden />
+        <div className="flex items-end justify-between gap-3 border border-border bg-bg px-3 py-2">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-survive">
-              SURVIVE pool
+            <p className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-fg-muted">
+              Price
             </p>
-            <p className="mt-1 font-mono font-medium tabular-nums text-fg-soft">
+            <p className="mt-0.5 font-mono text-base font-semibold tabular-nums text-white">
+              {hasPrice ? formatUSDC(priceNum) : "—"}
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5 text-right">
+            <TrendingUp className="h-3.5 w-3.5 text-fg-muted" aria-hidden />
+            <div>
+              <p className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-fg-muted">
+                24h
+              </p>
+              <p className="mt-0.5 font-mono text-xs font-semibold tabular-nums text-fg-soft">
+                —
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <PoolBar survivePool={survive} rugPool={rug} />
+
+        <div className="grid grid-cols-2 gap-2 font-mono text-[11px]">
+          <div className="border border-border bg-bg px-2.5 py-1.5">
+            <p className="text-[9px] font-bold uppercase tracking-wider text-survive">
+              Survive
+            </p>
+            <p className="mt-0.5 tabular-nums text-white">
               {formatPool(survive)} USDC
             </p>
           </div>
-        </div>
-        <div className="flex items-start gap-2 border border-rug/35 bg-rug/5 px-3 py-2">
-          <Skull className="mt-0.5 h-4 w-4 shrink-0 text-rug" aria-hidden />
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-rug">
-              RUG pool
+          <div className="border border-border bg-bg px-2.5 py-1.5">
+            <p className="text-[9px] font-bold uppercase tracking-wider text-rug">
+              Rug
             </p>
-            <p className="mt-1 font-mono font-medium tabular-nums text-fg-soft">
+            <p className="mt-0.5 tabular-nums text-white">
               {formatPool(rug)} USDC
             </p>
           </div>
         </div>
-      </div>
 
-      <PoolBar survivePool={survive} rugPool={rug} />
-
-      <Link
-        href={`/market/${market.id}`}
-        className="block rounded-lg border border-accent bg-accent px-4 py-3 text-center text-sm font-semibold uppercase tracking-wide text-ink transition-all duration-200 hover:bg-transparent hover:text-accent-bright hover:shadow-glow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent active:translate-y-px"
-      >
-        Bet Now
+        <div className="flex items-center justify-between border-t border-border pt-3">
+          <div className="flex items-center gap-1.5 font-mono text-xs">
+            <Clock className="h-3.5 w-3.5 text-accent" aria-hidden />
+            <Timer expiresAt={expiresAt} />
+          </div>
+          <span className="rounded-sm border border-accent px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-accent transition-colors group-hover:bg-accent group-hover:text-ink">
+            Bet
+          </span>
+        </div>
       </Link>
-    </article>
+    </motion.div>
   );
 }

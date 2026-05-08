@@ -1,11 +1,11 @@
 "use client";
 
 import type { BetPlaced, BetSide } from "@survivefun/types";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
+import { Zap } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { io, type Socket } from "socket.io-client";
 
-import { API_URL } from "@/utils/constants";
+import { useWebSocketEvents } from "@/hooks/useWebSocket";
 import { formatUSDC, formatWallet } from "@/utils/format";
 
 type FeedRow = {
@@ -41,26 +41,72 @@ function rowOpacity(at: Date, now: number): number {
   const age = now - at.getTime();
   if (age <= FADE_AFTER_MS) return 1;
   const t = Math.min(1, (age - FADE_AFTER_MS) / 8000);
-  return 1 - t * 0.65;
+  return 1 - t * 0.7;
+}
+
+function FeedRowCard({ row, opacity }: { row: FeedRow; opacity: number }) {
+  return (
+    <motion.div
+      key={row.id}
+      initial={{ y: -16, opacity: 0 }}
+      animate={{ y: 0, opacity }}
+      exit={{ opacity: 0, height: 0, marginBottom: 0, paddingTop: 0, paddingBottom: 0 }}
+      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+      style={{ opacity }}
+      className={
+        row.side === "survive"
+          ? "border border-border border-l-[3px] border-l-survive bg-card px-3 py-2"
+          : "border border-border border-l-[3px] border-l-rug bg-card px-3 py-2"
+      }
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate font-mono text-xs font-semibold text-white">
+            {formatWallet(row.wallet)}
+          </p>
+          <p className="mt-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em]">
+            {row.side === "survive" ? (
+              <span className="text-survive">Survive</span>
+            ) : (
+              <span className="text-rug">Rug</span>
+            )}{" "}
+            <span className="text-fg-muted">·</span>{" "}
+            <span className="tabular-nums text-accent">
+              {formatUSDC(row.amountUsdc)}
+            </span>
+          </p>
+        </div>
+        <time
+          dateTime={row.at.toISOString()}
+          className="shrink-0 font-mono text-[10px] tabular-nums text-fg-muted"
+        >
+          {formatTime(row.at)}
+        </time>
+      </div>
+    </motion.div>
+  );
 }
 
 export type LiveFeedProps = {
+  /** Limit feed to a single market id; omit for the global feed. */
   marketId?: string;
-  /** Cap rows stored (default 80). */
+  /** Cap rows stored (default 50). */
   maxRows?: number;
-  /** Section heading (default "Live bet feed"). */
+  /** Section heading (default "Live Bets"). */
   heading?: string;
+  /** Compact mode hides icon & realtime badge. */
+  compact?: boolean;
 };
 
 export function LiveFeed({
   marketId,
-  maxRows = 80,
-  heading = "Live bet feed",
+  maxRows = 50,
+  heading = "Live Bets",
+  compact = false,
 }: LiveFeedProps) {
   const [rows, setRows] = useState<FeedRow[]>([]);
   const [now, setNow] = useState(() => Date.now());
   const listRef = useRef<HTMLDivElement>(null);
-  const socketRef = useRef<Socket | null>(null);
 
   const scrollToNewest = useCallback(() => {
     const el = listRef.current;
@@ -77,96 +123,51 @@ export function LiveFeed({
     return () => window.clearInterval(id);
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    const socket = io(API_URL, {
-      transports: ["websocket", "polling"],
-      autoConnect: true,
-      reconnection: true,
-    });
-    socketRef.current = socket;
-
-    const onBetPlaced = (payload: BetPlaced) => {
+  const { isConnected } = useWebSocketEvents({
+    onBetPlaced: (payload) => {
       if (marketId && payload.marketId !== marketId) return;
-      const row = normalizeBetPayload(payload, `${Date.now()}-${Math.random()}`);
+      const row = normalizeBetPayload(
+        payload,
+        `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      );
       setRows((prev) => [row, ...prev].slice(0, maxRows));
-    };
-
-    socket.on("bet_placed", onBetPlaced);
-
-    return () => {
-      cancelled = true;
-      socket.off("bet_placed", onBetPlaced);
-      socket.disconnect();
-      socketRef.current = null;
-    };
-  }, [marketId, maxRows]);
+    },
+  });
 
   return (
-    <section aria-label="Live bets" className="card-cyber">
-      <div className="header-scanline flex items-center justify-between gap-2 border-b border-border px-5 py-4">
-        <h2 className="relative z-[1] font-display text-sm font-bold uppercase tracking-widest text-foreground">
+    <section
+      aria-label="Live bets"
+      className="border border-border bg-card"
+    >
+      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+        <h2 className="flex items-center gap-2 font-display text-xs font-bold uppercase tracking-[0.2em] text-white">
+          {!compact ? <Zap className="h-3.5 w-3.5 text-accent" /> : null}
           {heading}
         </h2>
-        <span className="relative z-[1] rounded-lg border border-border-glow/50 bg-accent/10 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-widest text-accent-bright">
-          Realtime
-        </span>
+        {!compact ? (
+          <span className="flex items-center gap-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-accent">
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${isConnected ? "bg-accent shadow-glow-sm" : "bg-fg-muted"}`}
+            />
+            {isConnected ? "Live" : "Offline"}
+          </span>
+        ) : null}
       </div>
       <div
         ref={listRef}
-        className="max-h-[420px] space-y-2 overflow-y-auto px-3 py-3 sm:max-h-[520px]"
+        className="max-h-[420px] space-y-2 overflow-y-auto px-3 py-3 sm:max-h-[520px] hide-scrollbar"
       >
-        <AnimatePresence initial={false}>
-          {rows.length === 0 ? (
-            <p className="px-2 py-10 text-center font-mono text-sm text-muted">
-              Waiting for bets…
-            </p>
-          ) : (
-            rows.map((r) => {
-              const op = rowOpacity(r.at, now);
-              return (
-                <motion.div
-                  key={r.id}
-                  layout
-                  initial={{ opacity: 0, y: -24 }}
-                  animate={{ opacity: op, y: 0 }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-                  className={
-                    r.side === "survive"
-                      ? "border border-border border-l-4 border-l-survive bg-survive/5 px-3 py-2.5 shadow-glow-sm transition-colors duration-200 hover:border-border-glow/40"
-                      : "border border-border border-l-4 border-l-rug bg-rug/5 px-3 py-2.5 shadow-[0_0_16px_rgba(239,68,68,0.12)] transition-colors duration-200 hover:border-rug/50"
-                  }
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate font-mono text-sm font-semibold text-foreground">
-                        {formatWallet(r.wallet)}
-                      </p>
-                      <p className="mt-0.5 font-mono text-xs font-medium uppercase tracking-wide text-muted">
-                        {r.side === "survive" ? (
-                          <span className="text-survive">Survive</span>
-                        ) : (
-                          <span className="text-rug">Rug</span>
-                        )}{" "}
-                        ·{" "}
-                        <span className="tabular-nums text-accent-bright">
-                          {formatUSDC(r.amountUsdc)}
-                        </span>
-                      </p>
-                    </div>
-                    <time
-                      dateTime={r.at.toISOString()}
-                      className="shrink-0 font-mono text-[11px] tabular-nums text-muted"
-                    >
-                      {formatTime(r.at)}
-                    </time>
-                  </div>
-                </motion.div>
-              );
-            })
-          )}
-        </AnimatePresence>
+        {rows.length === 0 ? (
+          <p className="px-2 py-10 text-center font-mono text-xs text-fg-muted">
+            {isConnected ? "Waiting for bets…" : "Reconnecting…"}
+          </p>
+        ) : (
+          <AnimatePresence initial={false}>
+            {rows.map((r) => (
+              <FeedRowCard key={r.id} row={r} opacity={rowOpacity(r.at, now)} />
+            ))}
+          </AnimatePresence>
+        )}
       </div>
     </section>
   );

@@ -54,7 +54,7 @@ function StripRow({ rank, market, pair }: RowProps) {
       href={`/market/${market.id}`}
       className="flex min-w-[200px] shrink-0 items-center gap-3 rounded-xl border border-border bg-surface/90 px-3 py-2 transition hover:border-accent/50 hover:bg-surface"
     >
-      <span className="w-6 font-mono text-xs font-bold tabular-nums text-muted">
+      <span className="w-6 font-mono text-xs font-bold tabular-nums text-muted-foreground">
         {rank}
       </span>
       <TokenThumb mint={market.tokenMint} ticker={ticker} />
@@ -62,7 +62,7 @@ function StripRow({ rank, market, pair }: RowProps) {
         <p className="truncate font-mono text-sm font-bold text-accent-bright">
           ${ticker}
         </p>
-        <p className="truncate font-mono text-[10px] text-muted">
+        <p className="truncate font-mono text-[10px] text-muted-foreground">
           Pool {formatPool(pool)} USDC
         </p>
       </div>
