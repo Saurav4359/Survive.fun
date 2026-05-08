@@ -1,27 +1,30 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Mono, Syne } from "next/font/google";
+import { JetBrains_Mono, Space_Grotesk } from "next/font/google";
 
 import { Providers } from "./providers";
 
 import "./globals.css";
+import { AppShell } from "@/components/layout/AppShell";
+import { cn } from "@/lib/utils";
 
-const syne = Syne({
+const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
   variable: "--font-display",
   display: "swap",
-  weight: ["500", "600", "700", "800"],
+  weight: ["400", "500", "600", "700"],
 });
 
-const ibmPlexMono = IBM_Plex_Mono({
+const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
   variable: "--font-mono",
   display: "swap",
-  weight: ["400", "500", "600"],
+  weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
-  title: "Survive.fun",
-  description: "Bet on whether Pump.fun memecoins survive or rug.",
+  title: "survive.fun — rug or survive",
+  description:
+    "Prediction market for Pump.fun memecoin survival. Bet SURVIVE or RUG.",
 };
 
 export default function RootLayout({
@@ -32,13 +35,18 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`dark ${syne.variable} ${ibmPlexMono.variable}`}
+      className={cn(
+        "dark",
+        spaceGrotesk.variable,
+        jetbrainsMono.variable,
+        "font-sans",
+      )}
       suppressHydrationWarning
     >
-      <body className="terminal-bg relative min-h-screen overflow-x-hidden text-foreground antialiased">
-        <div className="atmosphere-mesh pointer-events-none fixed inset-0 -z-10" aria-hidden />
-        <div className="atmosphere-grain pointer-events-none fixed inset-0 -z-10" aria-hidden />
-        <Providers>{children}</Providers>
+      <body className="min-h-screen bg-bg text-foreground antialiased">
+        <Providers>
+          <AppShell>{children}</AppShell>
+        </Providers>
       </body>
     </html>
   );

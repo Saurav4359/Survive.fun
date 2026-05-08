@@ -2,37 +2,103 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --bg-primary: #030711;
-  --bg-sidebar: #060b16;
-  --bg-surface: #0a1122;
-  --bg-card: #0c1428;
-  --border: #1e3a5f;
-  --border-glow: #22d3ee;
-  --accent: #06b6d4;
-  --accent-bright: #67e8f9;
-  --accent-dim: #0e7490;
-  --survive: #2dd4bf;
-  --rug: #fb7185;
-  --warning: #fbbf24;
-  --text-primary: #e2e8f0;
-  --text-muted: #64748b;
-  --text-secondary: #94a3b8;
-  --glow: rgba(6, 182, 212, 0.28);
-  --on-accent: #030711;
-  --inset-glow: rgba(34, 211, 238, 0.08);
-}
-
 @layer base {
-  html {
-    @apply scroll-smooth;
+  :root {
+    /* Survive.fun strict palette — pure black + lime, NO gradients */
+    --bg: #000000;
+    --bg-surface: #0a0a0a;
+    --bg-card: #111111;
+    --border: #1a1a1a;
+    --border-accent: rgba(205, 240, 120, 0.125); /* #cdf07820 */
+
+    --accent: #cdf078;
+    --accent-bright: #cdf078;
+    --accent-dim: #8acc23;
+
+    --survive: #cdf078;
+    --rug: #ef4444;
+    --warning: #facc15;
+
+    --text: #ffffff;
+    --text-muted: #525252;
+    --text-soft: #a3a3a3;
+    --on-accent: #000000;
+    --glow: rgba(205, 240, 120, 0.22);
+
+    /* shadcn/ui semantic tokens (kept consistent with strict palette) */
+    --background: var(--bg);
+    --foreground: var(--text);
+    --card: var(--bg-card);
+    --card-foreground: var(--text);
+    --popover: var(--bg-card);
+    --popover-foreground: var(--text);
+    --primary: var(--accent);
+    --primary-foreground: var(--on-accent);
+    --secondary: var(--bg-surface);
+    --secondary-foreground: var(--text);
+    --muted: var(--bg-surface);
+    --muted-foreground: var(--text-muted);
+    --accent-foreground: var(--on-accent);
+    --destructive: var(--rug);
+    --destructive-foreground: #ffffff;
+    --input: var(--border);
+    --ring: var(--accent);
+    --radius: 0.5rem;
+    --chart-1: var(--accent);
+    --chart-2: var(--accent-bright);
+    --chart-3: var(--accent-dim);
+    --chart-4: #4d7c0f;
+    --chart-5: #365314;
+    --sidebar: var(--bg);
+    --sidebar-foreground: var(--text);
+    --sidebar-primary: var(--accent);
+    --sidebar-primary-foreground: var(--on-accent);
+    --sidebar-accent: var(--bg-surface);
+    --sidebar-accent-foreground: var(--text);
+    --sidebar-border: var(--border);
+    --sidebar-ring: var(--accent);
+  }
+
+  .dark {
+    --background: var(--bg);
+    --foreground: var(--text);
+    --card: var(--bg-card);
+    --card-foreground: var(--text);
+    --popover: var(--bg-card);
+    --popover-foreground: var(--text);
+    --primary: var(--accent);
+    --primary-foreground: var(--on-accent);
+    --secondary: var(--bg-surface);
+    --secondary-foreground: var(--text);
+    --muted: var(--bg-surface);
+    --muted-foreground: var(--text-muted);
+    --accent-foreground: var(--on-accent);
+    --destructive: var(--rug);
+    --destructive-foreground: #ffffff;
+    --input: var(--border);
+    --ring: var(--accent);
+    --sidebar: var(--bg);
+    --sidebar-foreground: var(--text);
+    --sidebar-primary: var(--accent);
+    --sidebar-primary-foreground: var(--on-accent);
+    --sidebar-accent: var(--bg-surface);
+    --sidebar-accent-foreground: var(--text);
+    --sidebar-border: var(--border);
+    --sidebar-ring: var(--accent);
   }
 
   html,
   body {
-    @apply min-h-full font-sans text-foreground antialiased;
-    background-color: var(--bg-primary);
-    color: var(--text-primary);
+    background: #000000;
+    color: var(--text);
+    font-family: var(--font-display), system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: 100%;
+  }
+
+  html {
+    scroll-behavior: smooth;
   }
 
   h1,
@@ -41,159 +107,98 @@
   h4,
   h5,
   h6 {
-    @apply font-display font-bold tracking-tight;
-    color: var(--text-primary);
+    font-family: var(--font-display), system-ui, sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--text);
   }
 
   ::selection {
-    background-color: rgba(6, 182, 212, 0.35);
-    color: var(--text-primary);
+    background-color: var(--accent);
+    color: var(--on-accent);
+  }
+
+  *,
+  *::before,
+  *::after {
+    border-color: var(--border);
   }
 }
 
-/* Radial mesh + slow drift (CSS-only atmosphere) */
-.atmosphere-mesh {
-  background:
-    radial-gradient(ellipse 120% 80% at 10% -20%, rgba(6, 182, 212, 0.14), transparent 50%),
-    radial-gradient(ellipse 80% 60% at 100% 10%, rgba(45, 212, 191, 0.08), transparent 45%),
-    radial-gradient(ellipse 60% 50% at 50% 100%, rgba(251, 113, 133, 0.06), transparent 55%),
-    var(--bg-primary);
-  animation: mesh-drift 28s ease-in-out infinite alternate;
-}
-
-@keyframes mesh-drift {
-  0% {
-    filter: hue-rotate(0deg);
-    opacity: 1;
-  }
-  100% {
-    filter: hue-rotate(12deg);
-    opacity: 0.97;
-  }
-}
-
-.atmosphere-grain {
-  opacity: 0.055;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='280' height='280'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='280' height='280' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
-  mix-blend-mode: overlay;
-}
-
-@layer components {
-  .terminal-bg {
-    background-color: transparent;
-  }
-
-  .card-cyber {
-    @apply border border-[var(--border)] bg-[var(--bg-card)] transition-all duration-300;
-    box-shadow: 0 0 0 1px rgba(30, 58, 95, 0.35);
-  }
-
-  .card-cyber:hover {
-    border-color: var(--border-glow);
-    box-shadow:
-      0 0 32px var(--glow),
-      0 0 0 1px rgba(34, 211, 238, 0.35);
-    transform: translateY(-2px);
-  }
-
-  .header-scanline {
-    position: relative;
-  }
-
-  .header-scanline::after {
-    content: "";
-    pointer-events: none;
-    position: absolute;
-    inset: 0;
-    background-color: rgba(6, 182, 212, 0.04);
-  }
-
-  .glitch-rug {
-    animation: glitch-rug 0.4s ease-out;
-  }
-
-  @keyframes glitch-rug {
-    0% {
-      transform: translate(0);
-      filter: none;
-    }
-    20% {
-      transform: translate(-2px, 1px);
-      filter: hue-rotate(-10deg);
-    }
-    40% {
-      transform: translate(2px, -1px);
-    }
-    60% {
-      transform: translate(-1px, -1px);
-    }
-    100% {
-      transform: translate(0);
-      filter: none;
-    }
-  }
-
-  .section-rail {
-    position: relative;
-    padding-left: 1rem;
-  }
-
-  .section-rail::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 0.35em;
-    bottom: 0.35em;
-    width: 3px;
-    background: linear-gradient(180deg, var(--accent-bright), transparent);
-    border-radius: 2px;
-    opacity: 0.85;
-  }
-
-  .wallet-adapter-modal-wrapper {
-    font-family: var(--font-display), system-ui, sans-serif;
-  }
-
-  .wallet-adapter-modal {
-    background-color: var(--bg-card) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 0.5rem !important;
-    box-shadow: 0 0 40px var(--glow) !important;
-  }
-
-  .wallet-adapter-modal-title {
-    color: var(--text-primary) !important;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    font-size: 0.7rem !important;
-  }
-
-  .wallet-adapter-modal-button-close {
-    background-color: transparent !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 0.5rem !important;
-  }
-
-  .wallet-adapter-modal-list .wallet-adapter-button {
-    background-color: var(--bg-surface) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 0.5rem !important;
-    color: var(--text-primary) !important;
-    font-family: var(--font-mono), ui-monospace, monospace !important;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
-  }
-
-  .wallet-adapter-modal-list .wallet-adapter-button:hover {
-    border-color: var(--border-glow) !important;
-    box-shadow: 0 0 16px var(--glow) !important;
-  }
-
+@layer utilities {
   .hide-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
   .hide-scrollbar::-webkit-scrollbar {
     display: none;
+  }
+
+  /* Subtle lime glow used on focus / hover — solid color, NO gradients */
+  .glow-lime {
+    box-shadow: 0 0 0 1px var(--accent), 0 0 24px var(--glow);
+  }
+  .glow-lime-soft {
+    box-shadow: 0 0 0 1px rgba(205, 240, 120, 0.4), 0 0 16px var(--glow);
+  }
+
+  /* Lime urgent pulse for timers under 5 min */
+  @keyframes pulse-rug {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.55;
+    }
+  }
+  .pulse-rug {
+    animation: pulse-rug 1s ease-in-out infinite;
+  }
+}
+
+@layer components {
+  /* Card primitive — pure black background, sharp 1px border, no gradient */
+  .panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+  }
+  .panel-surface {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+  }
+
+  /* Wallet adapter modal — keep theme strict */
+  .wallet-adapter-modal-wrapper {
+    font-family: var(--font-display), system-ui, sans-serif;
+  }
+  .wallet-adapter-modal {
+    background-color: var(--bg-card) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 0.5rem !important;
+  }
+  .wallet-adapter-modal-title {
+    color: var(--text) !important;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: 0.7rem !important;
+  }
+  .wallet-adapter-modal-button-close {
+    background-color: transparent !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 0.5rem !important;
+  }
+  .wallet-adapter-modal-list .wallet-adapter-button {
+    background-color: var(--bg-surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 0.5rem !important;
+    color: var(--text) !important;
+    font-family: var(--font-mono), ui-monospace, monospace !important;
+    transition: border-color 0.18s ease, box-shadow 0.18s ease !important;
+  }
+  .wallet-adapter-modal-list .wallet-adapter-button:hover {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 16px var(--glow) !important;
   }
 }
