@@ -1,5 +1,6 @@
 "use client";
 
+import { motion } from "framer-motion";
 import { AlertTriangle } from "lucide-react";
 import { useEffect } from "react";
 
@@ -16,26 +17,32 @@ export default function AppError({
 
   return (
     <div className="flex min-h-[70vh] flex-col items-center justify-center px-4 py-16">
-      <div className="card-cyber max-w-md border-rug/30 p-8 text-center">
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="max-w-md border border-rug/40 bg-card p-8 text-center"
+      >
         <AlertTriangle
-          className="mx-auto h-12 w-12 text-rug"
-          strokeWidth={1.25}
+          className="mx-auto h-10 w-10 text-rug"
+          strokeWidth={1.5}
           aria-hidden
         />
-        <h1 className="mt-6 font-display text-xl font-bold text-foreground">
+        <h1 className="mt-6 font-display text-xl font-bold text-white">
           Something went wrong
         </h1>
-        <p className="mt-3 font-mono text-sm text-muted">
+        <p className="mt-3 font-mono text-sm text-fg-muted">
           {error.message || "An unexpected error occurred. You can try again."}
         </p>
-        <button
+        <motion.button
+          whileTap={{ scale: 0.97 }}
           type="button"
           onClick={() => reset()}
-          className="mt-8 w-full rounded-lg border border-accent bg-accent py-3 font-mono text-xs font-bold uppercase tracking-widest text-ink transition-colors hover:bg-transparent hover:text-accent-bright"
+          className="mt-8 w-full rounded-md border border-accent bg-accent py-2.5 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-ink transition-colors hover:bg-transparent hover:text-accent"
         >
           Try again
-        </button>
-      </div>
+        </motion.button>
+      </motion.div>
     </div>
   );
 }

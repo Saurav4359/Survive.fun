@@ -1,31 +1,45 @@
 "use client";
 
-import type { ApiResponse, Bet, BetSide, Market, Token } from "@survivefun/types";
+import type {
+  ApiResponse,
+  Bet,
+  BetSide,
+  Market,
+  MarketChartResponse,
+} from "@survivefun/types";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion } from "framer-motion";
-import { ChevronLeft, SearchX } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  ChevronLeft,
+  Clock,
+  Droplets,
+  Star,
+  Timer as TimerIcon,
+  Users,
+} from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UTCTimestamp } from "lightweight-charts";
 
 import { BetPanel } from "@/components/BetPanel";
-import { WalletBalancePanel } from "@/components/WalletBalancePanel";
 import { LiveFeed } from "@/components/LiveFeed";
 import { PoolBar } from "@/components/PoolBar";
-import { RiskScore } from "@/components/RiskScore";
-import { useToast } from "@/components/ToastProvider";
 import { Timer } from "@/components/Timer";
-import { ChartAreaSkeleton, MarketDetailPageSkeleton } from "@/components/ui/skeletons";
+import { useToast } from "@/components/ToastProvider";
 import { marketQueryKey, useMarket } from "@/hooks/useMarket";
-import { useMarketBetsList, marketBetsQueryKey } from "@/hooks/useMarketBetsList";
+import {
+  marketBetsQueryKey,
+  useMarketBetsList,
+} from "@/hooks/useMarketBetsList";
 import { useToken } from "@/hooks/useToken";
-import { API_URL } from "@/utils/constants";
+import { userBetsQueryKey, useUserBets } from "@/hooks/useUserBets";
+import { apiV1Url } from "@/utils/constants";
 import { formatPool, formatUSDC, formatWallet } from "@/utils/format";
 import { getMarketPDA, placeBet as placeBetOnChain } from "@/utils/transactions";
 
-const CHART_LINE = "#22d3ee";
+const CHART_LINE = "#cdf078";
 
 function parseNum(s: string | null | undefined): number | null {
   if (s == null) return null;
@@ -42,7 +56,13 @@ const TF_CONFIG: Record<ChartTf, { stepSec: number; bars: number }> = {
   "1h": { stepSec: 3600, bars: 72 },
 };
 
-function formatTokenAgeShort(createdIso: string): string {
+function chartIntervalParam(tf: ChartTf): string {
+  if (tf === "5m") return "5m";
+  if (tf === "15m") return "15m";
+  return "1H";
+}
+
+function formatTokenAge(createdIso: string): string {
   const t = Date.parse(createdIso);
   if (!Number.isFinite(t)) return "—";
   const diff = Date.now() - t;
@@ -55,6 +75,19 @@ function formatTokenAgeShort(createdIso: string): string {
   return `${Math.max(1, m)}m`;
 }
 
+type RiskLevel = "HIGH" | "MEDIUM" | "LOW";
+function inferRisk(liq: number | null | undefined): RiskLevel {
+  if (liq != null && Number.isFinite(liq) && liq > 50_000) return "LOW";
+  if (liq != null && Number.isFinite(liq) && liq > 10_000) return "MEDIUM";
+  return "HIGH";
+}
+
+const RISK_STYLES: Record<RiskLevel, string> = {
+  HIGH: "border-rug text-rug",
+  MEDIUM: "border-warn text-warn",
+  LOW: "border-accent text-accent",
+};
+
 export default function MarketPage() {
   const params = useParams();
   const rawId = params?.id;
@@ -66,30 +99,53 @@ export default function MarketPage() {
   const { market, isLoading, error } = useMarket(id || undefined);
   const tokenHook = useToken(market?.tokenMint);
   const { bets: marketBets } = useMarketBetsList(id || undefined);
+  const userWallet = wallet.publicKey?.toBase58();
+  const { bets: userBets } = useUserBets(userWallet);
+  const toast = useToast();
 
   const [detailTab, setDetailTab] = useState<DetailTab>("about");
   const [chartTf, setChartTf] = useState<ChartTf>("1h");
-  const [position, setPosition] = useState<{
+  const [chartReady, setChartReady] = useState(false);
+  const [watching, setWatching] = useState(false);
+
+  /**
+   * Derive the user's existing position on this market from the API so it
+   * persists across reloads. Sums every bet the user has placed on this id.
+   */
+  const position = useMemo<{
     side: BetSide;
     amountUsdc: number;
-  } | null>(null);
-  const [chartReady, setChartReady] = useState(false);
+  } | null>(() => {
+    if (!id || !userBets || userBets.length === 0) return null;
+    let surviveTotal = 0;
+    let rugTotal = 0;
+    for (const b of userBets) {
+      if (b.market.id !== id) continue;
+      const amt = Number.parseFloat(b.amountUsdc);
+      if (!Number.isFinite(amt)) continue;
+      if (b.side === "survive") surviveTotal += amt;
+      else if (b.side === "rug") rugTotal += amt;
+    }
+    if (surviveTotal === 0 && rugTotal === 0) return null;
+    if (surviveTotal >= rugTotal) {
+      return { side: "survive", amountUsdc: surviveTotal };
+    }
+    return { side: "rug", amountUsdc: rugTotal };
+  }, [id, userBets]);
 
-  const toast = useToast();
   const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartApiRef = useRef<import("lightweight-charts").IChartApi | null>(null);
-  const seriesRef = useRef<import("lightweight-charts").ISeriesApi<"Line"> | null>(
+  const chartApiRef = useRef<import("lightweight-charts").IChartApi | null>(
     null,
   );
+  const seriesRef = useRef<
+    import("lightweight-charts").ISeriesApi<"Line"> | null
+  >(null);
   const chartTfRef = useRef(chartTf);
   chartTfRef.current = chartTf;
 
   const chartPriceRef = useRef(0.0001);
-  const openPriceStr = market?.openPrice ?? null;
   chartPriceRef.current =
-    tokenHook.price ??
-    parseNum(openPriceStr) ??
-    0.0001;
+    tokenHook.price ?? parseNum(market?.openPrice ?? null) ?? 0.0001;
 
   const placeBetMut = useMutation({
     mutationFn: async ({
@@ -106,11 +162,9 @@ export default function MarketPage() {
         (await getMarketPDA(m.tokenMint)).toBase58();
       const sig = await placeBetOnChain(wallet, marketPda, side, amountUsdc);
       const pk = wallet.publicKey;
-      if (!pk) {
-        throw new Error("Connect a wallet to place a bet");
-      }
+      if (!pk) throw new Error("Connect a wallet to place a bet");
       const res = await fetch(
-        `${API_URL}/v1/markets/${encodeURIComponent(id)}/bets`,
+        apiV1Url(`/markets/${encodeURIComponent(id)}/bets`),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -124,8 +178,9 @@ export default function MarketPage() {
       );
       const body = (await res.json()) as ApiResponse<Bet>;
       if (!res.ok || !body.success) {
-        const msg =
-          !body.success ? body.error.message : `Bet failed (${res.status})`;
+        const msg = !body.success
+          ? body.error.message
+          : `Bet failed (${res.status})`;
         throw new Error(msg);
       }
       return body.data;
@@ -138,6 +193,11 @@ export default function MarketPage() {
       });
       void queryClient.invalidateQueries({ queryKey: marketQueryKey(id) });
       void queryClient.invalidateQueries({ queryKey: marketBetsQueryKey(id) });
+      if (userWallet) {
+        void queryClient.invalidateQueries({
+          queryKey: userBetsQueryKey(userWallet),
+        });
+      }
     },
     onError: (e) => {
       const msg = e instanceof Error ? e.message : "Bet failed";
@@ -161,40 +221,25 @@ export default function MarketPage() {
     chartApiRef.current?.timeScale().fitContent();
   }, []);
 
-  const token: Token = useMemo(
-    () => ({
-      address: market?.tokenMint ?? "",
-      name: market?.tokenName ?? tokenHook.token?.name ?? "Token",
-      symbol: market?.tokenTicker ?? tokenHook.token?.symbol ?? "TKN",
-    }),
-    [
-      market?.tokenMint,
-      market?.tokenName,
-      market?.tokenTicker,
-      tokenHook.token?.name,
-      tokenHook.token?.symbol,
-    ],
-  );
-
   const survive = parseNum(market?.survivePool) ?? 0;
   const rug = parseNum(market?.rugPool) ?? 0;
   const openLiquidityUsd =
     tokenHook.liquidity ?? parseNum(market?.openLiquidity);
   const pairCreatedAtSeconds = tokenHook.pair?.pairCreatedAt ?? null;
 
-  const displayPriceUsd = tokenHook.price ?? parseNum(market?.openPrice);
+  const displayPriceUsd = tokenHook.price ?? parseNum(market?.openPrice ?? null);
+  const change24Num =
+    tokenHook.priceChange24h != null ? tokenHook.priceChange24h : null;
   const change24 =
-    tokenHook.priceChange24h != null
-      ? `${tokenHook.priceChange24h >= 0 ? "+" : ""}${tokenHook.priceChange24h.toFixed(2)}%`
+    change24Num != null
+      ? `${change24Num >= 0 ? "+" : ""}${change24Num.toFixed(2)}%`
       : "—";
 
   const tickerLetter = (market?.tokenTicker ?? "?").slice(0, 1).toUpperCase();
-
   const devShown =
     market?.devWallet ?? tokenHook.devWallet ?? market?.creatorWallet;
 
   useEffect(() => {
-    setPosition(null);
     setChartReady(false);
   }, [id]);
 
@@ -215,27 +260,27 @@ export default function MarketPage() {
       chart = createChart(chartContainerRef.current, {
         layout: {
           background: { type: ColorType.Solid, color: "#000000" },
-          textColor: "#6b7280",
+          textColor: "#525252",
         },
         grid: {
-          vertLines: { color: "rgba(134, 240, 173, 0.07)" },
-          horzLines: { color: "rgba(134, 240, 173, 0.07)" },
+          vertLines: { color: "#1a1a1a" },
+          horzLines: { color: "#1a1a1a" },
         },
         crosshair: {
           mode: CrosshairMode.Magnet,
           vertLine: {
             color: CHART_LINE,
             width: 1,
-            labelBackgroundColor: "#3d8f62",
+            labelBackgroundColor: "#cdf078",
           },
           horzLine: {
             color: CHART_LINE,
             width: 1,
-            labelBackgroundColor: "#3d8f62",
+            labelBackgroundColor: "#cdf078",
           },
         },
-        rightPriceScale: { borderColor: "#1f1f1f" },
-        timeScale: { borderColor: "#1f1f1f" },
+        rightPriceScale: { borderColor: "#1a1a1a" },
+        timeScale: { borderColor: "#1a1a1a" },
       });
 
       const series = chart.addLineSeries({
@@ -246,13 +291,41 @@ export default function MarketPage() {
       chartApiRef.current = chart;
       seriesRef.current = series;
       chartPriceRef.current =
-        tokenHook.price ?? parseNum(market.openPrice) ?? 0.0001;
-      seedFlatSeries();
+        tokenHook.price ?? parseNum(market.openPrice ?? null) ?? 0.0001;
+
+      const tf = chartIntervalParam(chartTfRef.current);
+      let usedBars = false;
+      try {
+        const r = await fetch(
+          `${apiV1Url(`/markets/${encodeURIComponent(id)}/chart`)}?interval=${encodeURIComponent(tf)}`,
+        );
+        if (r.ok) {
+          const j = (await r.json()) as ApiResponse<MarketChartResponse>;
+          if (!cancelled && j.success && j.data.bars.length > 0) {
+            const pts = j.data.bars
+              .map((b) => ({
+                time: b.t as UTCTimestamp,
+                value: Number.parseFloat(b.c),
+              }))
+              .filter((p) => Number.isFinite(p.value) && p.value > 0);
+            if (pts.length > 0) {
+              series.setData(pts);
+              usedBars = true;
+            }
+          }
+        }
+      } catch {
+        /* use synthetic series */
+      }
+      if (!usedBars) {
+        seedFlatSeries();
+      }
       setChartReady(true);
 
       ro = new ResizeObserver(() => {
         if (!chartContainerRef.current || !chart) return;
-        const { width, height } = chartContainerRef.current.getBoundingClientRect();
+        const { width, height } =
+          chartContainerRef.current.getBoundingClientRect();
         chart.applyOptions({ width, height });
       });
       ro.observe(chartContainerRef.current);
@@ -266,232 +339,250 @@ export default function MarketPage() {
       seriesRef.current = null;
       setChartReady(false);
     };
-  }, [id, market, seedFlatSeries]);
+  }, [id, market, seedFlatSeries, tokenHook.price, chartTf]);
 
   useEffect(() => {
     chartPriceRef.current =
-      tokenHook.price ?? parseNum(market?.openPrice) ?? 0.0001;
-    seedFlatSeries();
-  }, [
-    market?.openPrice,
-    tokenHook.price,
-    chartTf,
-    seedFlatSeries,
-    market,
-  ]);
-
-  useEffect(() => {
-    const raf = window.requestAnimationFrame(() => {
-      const el = chartContainerRef.current;
-      const chart = chartApiRef.current;
-      if (!el || !chart) return;
-      const { width, height } = el.getBoundingClientRect();
-      if (width > 0 && height > 0) {
-        chart.resize(width, height);
-        chart.timeScale().fitContent();
-      }
-    });
-    return () => window.cancelAnimationFrame(raf);
-  }, [chartTf]);
+      tokenHook.price ?? parseNum(market?.openPrice ?? null) ?? 0.0001;
+  }, [market?.openPrice, tokenHook.price, market]);
 
   const onBet = useCallback(
     async (side: BetSide, amountUsdc: number) => {
       if (!market) return;
       await placeBetMut.mutateAsync({ side, amountUsdc, m: market });
-      setPosition({ side, amountUsdc });
     },
     [placeBetMut, market],
   );
 
+  const totalPool = survive + rug;
+  const risk = inferRisk(openLiquidityUsd);
+
+  const sortedSignals = useMemo(() => {
+    const items: { label: string; value: string; Icon: typeof Droplets }[] = [];
+    items.push({
+      label: "Liquidity",
+      value:
+        openLiquidityUsd != null && Number.isFinite(openLiquidityUsd)
+          ? formatUSDC(openLiquidityUsd)
+          : "—",
+      Icon: Droplets,
+    });
+    items.push({
+      label: "Token age",
+      value: market ? formatTokenAge(market.createdAt) : "—",
+      Icon: TimerIcon,
+    });
+    items.push({
+      label: "Bettors",
+      value: market ? String(market.totalBettors) : "—",
+      Icon: Users,
+    });
+    return items;
+  }, [openLiquidityUsd, market]);
+
   if (!id) {
     return (
-      <div className="mx-auto max-w-[1440px] px-6 py-16 font-mono text-muted">
-        Invalid market id
-      </div>
+      <div className="px-6 py-16 font-mono text-fg-muted">Invalid market id</div>
     );
   }
 
   if (isLoading) {
-    return <MarketDetailPageSkeleton />;
+    return (
+      <div className="mx-auto max-w-[1440px] animate-pulse px-4 py-12 sm:px-6 lg:px-10">
+        <div className="h-8 w-32 bg-card" />
+        <div className="mt-6 h-32 bg-card" />
+        <div className="mt-4 h-72 bg-card" />
+      </div>
+    );
   }
 
   if (error || !market) {
     return (
-      <div className="mx-auto max-w-[1440px] px-6 py-16">
+      <div className="mx-auto max-w-[1440px] px-4 py-16 sm:px-6 lg:px-10">
         <Link
           href="/"
-          className="inline-flex items-center gap-2 font-mono text-sm text-accent-bright"
+          className="inline-flex items-center gap-2 font-mono text-sm text-accent"
         >
           <ChevronLeft className="h-4 w-4" aria-hidden />
           Markets
         </Link>
-        <p className="mt-8 font-display text-xl text-foreground">
+        <p className="mt-8 font-display text-xl text-white">
           Market not found
         </p>
-        <p className="mt-2 font-mono text-sm text-muted">
+        <p className="mt-2 font-mono text-sm text-fg-muted">
           {error?.message ?? "No data for this id."}
         </p>
       </div>
     );
   }
 
-  const marketCapLabel =
-    tokenHook.marketCap != null ? formatPool(tokenHook.marketCap) : "—";
+  const expiresAt = new Date(market.expiresAt);
 
   return (
-    <div className="min-h-screen animate-fade-in pb-16 pt-6 sm:pb-24 sm:pt-10">
-      <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-10">
-        <motion.div
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, ease: "easeOut" }}
-          className="mb-8 flex flex-wrap items-center justify-between gap-3"
-        >
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 border-b border-transparent font-mono text-sm font-medium text-muted transition-colors duration-200 hover:border-accent-bright hover:text-accent-bright"
-          >
-            <ChevronLeft className="h-4 w-4" aria-hidden />
-            Markets
-          </Link>
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            <WalletBalancePanel />
-            <span className="rounded-lg border border-border bg-surface px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-muted">
-              {market.status}
-            </span>
-          </div>
-        </motion.div>
+    <div className="mx-auto min-h-full max-w-[1440px] px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+      <Link
+        href="/"
+        className="inline-flex items-center gap-2 font-mono text-xs font-medium uppercase tracking-[0.15em] text-fg-muted transition-colors hover:text-accent"
+      >
+        <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
+        Markets
+      </Link>
 
-        <div
-          className="sticky top-0 z-40 -mx-4 mb-4 flex items-center justify-between gap-3 border-b border-border bg-[var(--bg-primary)]/93 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-10 lg:px-10 xl:hidden"
-          aria-label="Market closes in"
-        >
-          <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted">
-            {(market.tokenTicker ?? "Market").slice(0, 12)}
-            {market.tokenTicker && market.tokenTicker.length > 12 ? "…" : ""}{" "}
-            · closes in
-          </span>
-          <div className="shrink-0 font-mono text-base font-bold tabular-nums text-accent-bright sm:text-lg [&_span]:text-base sm:[&_span]:text-lg">
-            <Timer expiresAt={new Date(market.expiresAt)} />
+      {/* HEADER */}
+      <motion.header
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="mt-4 flex flex-wrap items-start justify-between gap-4 border border-border bg-card p-5"
+      >
+        <div className="flex min-w-0 items-start gap-4">
+          <div
+            className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md border border-border bg-bg font-mono text-2xl font-bold text-accent"
+            aria-hidden
+          >
+            {tickerLetter}
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-baseline gap-2">
+              <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
+                {market.tokenName ?? "Token"}
+              </h1>
+              <span className="font-mono text-base font-bold text-accent">
+                ${market.tokenTicker ?? "—"}
+              </span>
+            </div>
+            <div className="mt-3 flex flex-wrap items-end gap-5">
+              <div>
+                <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+                  Price
+                </p>
+                <p className="mt-0.5 font-mono text-2xl font-bold tabular-nums text-white sm:text-3xl">
+                  {displayPriceUsd != null ? formatUSDC(displayPriceUsd) : "—"}
+                </p>
+              </div>
+              <div>
+                <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+                  24h
+                </p>
+                <p
+                  className={`mt-0.5 font-mono text-base font-bold tabular-nums ${
+                    change24Num != null && change24Num < 0
+                      ? "text-rug"
+                      : change24Num != null && change24Num > 0
+                        ? "text-survive"
+                        : "text-fg-soft"
+                  }`}
+                >
+                  {change24}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
-
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-5 xl:items-start xl:gap-10">
-          <motion.div
-            className="order-1 min-w-0 space-y-6 xl:col-span-3"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, ease: "easeOut", delay: 0.05 }}
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <span
+            className={`rounded-sm border bg-bg px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.15em] ${RISK_STYLES[risk]}`}
           >
-            <div className="card-cyber space-y-5 p-5 sm:p-6">
-              <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
-                <div
-                  className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-accent/25 font-mono text-xl font-bold text-accent-bright ring-2 ring-accent/40"
-                  aria-hidden
-                >
-                  {tickerLetter}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-baseline gap-2 gap-y-1">
-                    <h1 className="font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-                      {market.tokenName ?? "Token"}
-                    </h1>
-                    <span className="font-mono text-lg font-semibold text-accent-bright">
-                      ${market.tokenTicker ?? "—"}
-                    </span>
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-end gap-4">
-                    <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
-                        Price
-                      </p>
-                      <p className="font-mono text-xl font-semibold tabular-nums text-foreground sm:text-2xl">
-                        {displayPriceUsd != null
-                          ? formatUSDC(displayPriceUsd)
-                          : "—"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
-                        24h
-                      </p>
-                      <p
-                        className={`font-mono text-lg font-semibold tabular-nums ${
-                          tokenHook.priceChange24h != null &&
-                          tokenHook.priceChange24h < 0
-                            ? "text-rug"
-                            : "text-survive"
-                        }`}
-                      >
-                        {change24}
-                      </p>
-                    </div>
-                  </div>
-                </div>
+            {risk} RISK
+          </span>
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={() => setWatching((v) => !v)}
+            className={
+              watching
+                ? "flex items-center gap-1.5 rounded-md border border-accent bg-accent px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-ink"
+                : "flex items-center gap-1.5 rounded-md border border-border bg-bg px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-fg-soft transition-colors hover:border-accent hover:text-accent"
+            }
+          >
+            <Star
+              className="h-3 w-3"
+              fill={watching ? "currentColor" : "none"}
+              aria-hidden
+            />
+            Watch
+          </motion.button>
+        </div>
+      </motion.header>
+
+      {/* MAIN GRID */}
+      <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-5 xl:items-start">
+        {/* LEFT (60%) */}
+        <div className="order-1 min-w-0 space-y-6 xl:col-span-3">
+          {/* Chart */}
+          <div className="border border-border bg-card">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+              <p className="font-display text-xs font-bold uppercase tracking-[0.2em] text-white">
+                Price (USD)
+              </p>
+              <div
+                className="flex gap-1"
+                role="tablist"
+                aria-label="Chart timeframe"
+              >
+                {(["5m", "15m", "1h"] as const).map((tf) => {
+                  const active = chartTf === tf;
+                  return (
+                    <button
+                      key={tf}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => setChartTf(tf)}
+                      className={
+                        active
+                          ? "rounded-sm bg-accent px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-ink"
+                          : "rounded-sm px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-fg-soft transition-colors hover:text-accent"
+                      }
+                    >
+                      {tf.toUpperCase()}
+                    </button>
+                  );
+                })}
               </div>
-
-              <RiskScore
-                token={token}
-                liquidityUsd={openLiquidityUsd}
-                pairCreatedAt={pairCreatedAtSeconds}
-                devWalletPctHeld={null}
-              />
-
-              {tokenHook.notFound && !tokenHook.isLoading ? (
-                <div className="mt-4 rounded-lg border border-warn/40 bg-warn/10 px-4 py-3">
-                  <div className="flex gap-3">
-                    <SearchX
-                      className="mt-0.5 h-5 w-5 shrink-0 text-warn"
-                      aria-hidden
-                    />
-                    <div>
-                      <p className="font-mono text-sm font-semibold text-warn">
-                        Token not found
-                      </p>
-                      <p className="mt-1 font-mono text-xs text-muted">
-                        No DexScreener pair for this mint yet. Price and liquidity
-                        may show as “—” until the token is indexed.
-                      </p>
-                    </div>
-                  </div>
-                </div>
+            </div>
+            <div className="relative h-[280px] w-full sm:h-[340px]">
+              {!chartReady ? (
+                <div className="absolute inset-0 animate-pulse bg-bg" />
               ) : null}
+              <div ref={chartContainerRef} className="h-full w-full" />
             </div>
+          </div>
 
-            <div className="card-cyber overflow-hidden">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-                <p className="font-display text-xs font-bold uppercase tracking-widest text-foreground">
-                  Price (USD)
-                </p>
-                <div className="flex gap-1" role="tablist" aria-label="Chart timeframe">
-                  {(["5m", "15m", "1h"] as const).map((tf) => {
-                    const active = chartTf === tf;
-                    return (
-                      <button
-                        key={tf}
-                        type="button"
-                        role="tab"
-                        aria-selected={active}
-                        onClick={() => setChartTf(tf)}
-                        className={
-                          active
-                            ? "rounded-lg border border-border-glow bg-accent/15 px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-accent-bright"
-                            : "rounded-lg border border-transparent px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-muted transition-colors hover:border-border hover:text-fg-soft"
-                        }
-                      >
-                        {tf === "5m" ? "5M" : tf === "15m" ? "15M" : "1H"}
-                      </button>
-                    );
-                  })}
+          {/* Signals row */}
+          <motion.div
+            initial="hidden"
+            animate="show"
+            variants={{
+              hidden: {},
+              show: { transition: { staggerChildren: 0.06 } },
+            }}
+            className="grid grid-cols-1 gap-3 sm:grid-cols-3"
+          >
+            {sortedSignals.map(({ label, value, Icon }) => (
+              <motion.div
+                key={label}
+                variants={{
+                  hidden: { opacity: 0, y: 12 },
+                  show: { opacity: 1, y: 0 },
+                }}
+                className="border border-border bg-card p-4"
+              >
+                <div className="flex items-center gap-2">
+                  <Icon className="h-3.5 w-3.5 text-accent" aria-hidden />
+                  <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+                    {label}
+                  </p>
                 </div>
-              </div>
-              <div className="relative h-[280px] w-full sm:h-[340px]">
-                {!chartReady ? <ChartAreaSkeleton /> : null}
-                <div ref={chartContainerRef} className="h-full w-full" />
-              </div>
-            </div>
+                <p className="mt-2 font-mono text-base font-semibold tabular-nums text-white">
+                  {value}
+                </p>
+              </motion.div>
+            ))}
+          </motion.div>
 
-            <div className="flex flex-wrap gap-px border border-border bg-border">
+          {/* Tabs */}
+          <div className="border-b border-border">
+            <div className="flex flex-wrap gap-1" role="tablist">
               {(
                 [
                   ["about", "About"],
@@ -504,42 +595,64 @@ export default function MarketPage() {
                   <button
                     key={key}
                     type="button"
+                    role="tab"
+                    aria-selected={active}
                     onClick={() => setDetailTab(key)}
-                    className={
-                      active
-                        ? "min-w-[7rem] flex-1 rounded-none bg-accent/15 px-4 py-3 font-display text-xs font-bold uppercase tracking-widest text-accent-bright"
-                        : "min-w-[7rem] flex-1 rounded-none bg-surface px-4 py-3 font-display text-xs font-semibold uppercase tracking-widest text-muted transition-colors hover:bg-card hover:text-fg-soft"
-                    }
+                    className="relative px-4 py-2.5 font-mono text-[11px] font-bold uppercase tracking-[0.15em] transition-colors"
                   >
-                    {label}
+                    <span
+                      className={
+                        active ? "text-accent" : "text-fg-soft hover:text-white"
+                      }
+                    >
+                      {label}
+                    </span>
+                    {active ? (
+                      <motion.span
+                        layoutId="market-detail-tab"
+                        className="absolute -bottom-px left-0 right-0 h-0.5 bg-accent"
+                        transition={{ duration: 0.28, ease: "easeOut" }}
+                      />
+                    ) : null}
                   </button>
                 );
               })}
             </div>
+          </div>
 
-            <div className="card-cyber min-h-[200px] p-5 sm:p-6">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={detailTab}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="border border-border bg-card p-5"
+            >
               {detailTab === "about" ? (
                 <dl className="grid gap-4 sm:grid-cols-2">
                   <div>
-                    <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                    <dt className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-fg-muted">
                       Liquidity
                     </dt>
-                    <dd className="mt-1 font-mono text-sm font-medium text-foreground">
+                    <dd className="mt-1 font-mono text-sm font-medium text-white">
                       {openLiquidityUsd != null
                         ? formatUSDC(openLiquidityUsd)
                         : "—"}
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                    <dt className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-fg-muted">
                       Market cap
                     </dt>
-                    <dd className="mt-1 font-mono text-sm font-medium text-foreground">
-                      {marketCapLabel}
+                    <dd className="mt-1 font-mono text-sm font-medium text-white">
+                      {tokenHook.marketCap != null
+                        ? formatPool(tokenHook.marketCap)
+                        : "—"}
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                    <dt className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-fg-muted">
                       Dev wallet
                     </dt>
                     <dd className="mt-1 font-mono text-sm font-medium text-fg-soft">
@@ -547,21 +660,33 @@ export default function MarketPage() {
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                    <dt className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-fg-muted">
                       Token age
                     </dt>
                     <dd
                       suppressHydrationWarning
-                      className="mt-1 font-mono text-sm font-medium text-foreground"
+                      className="mt-1 font-mono text-sm font-medium text-white"
                     >
-                      {formatTokenAgeShort(market.createdAt)}
+                      {formatTokenAge(market.createdAt)}
                     </dd>
                   </div>
-                  <div className="sm:col-span-2">
-                    <dt className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                  <div>
+                    <dt className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+                      Pair created
+                    </dt>
+                    <dd className="mt-1 font-mono text-sm font-medium text-fg-soft">
+                      {pairCreatedAtSeconds != null
+                        ? new Date(
+                            pairCreatedAtSeconds * 1000,
+                          ).toLocaleString()
+                        : "—"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-fg-muted">
                       Bettors
                     </dt>
-                    <dd className="mt-1 font-mono text-sm font-medium text-foreground">
+                    <dd className="mt-1 font-mono text-sm font-medium text-white">
                       {market.totalBettors}
                     </dd>
                   </div>
@@ -569,24 +694,34 @@ export default function MarketPage() {
               ) : null}
 
               {detailTab === "holders" ? (
-                <p className="py-8 text-center font-mono text-sm text-muted">
-                  On-chain holder breakdown is not available in Survive.fun yet.
-                </p>
+                <div className="py-6 text-center font-mono text-sm text-fg-muted">
+                  {tokenHook.holderCount != null ? (
+                    <p className="text-white">
+                      <span className="text-fg-muted">Estimated holders (Birdeye):</span>{" "}
+                      {tokenHook.holderCount.toLocaleString()}
+                    </p>
+                  ) : (
+                    <p>
+                      Holder count requires a Birdeye API key on the backend. Full
+                      on-chain breakdown is not wired yet.
+                    </p>
+                  )}
+                </div>
               ) : null}
 
               {detailTab === "transactions" ? (
                 <div className="overflow-x-auto">
                   {marketBets.length === 0 ? (
-                    <p className="py-8 text-center font-mono text-sm text-muted">
-                      No bets recorded for this market yet.
+                    <p className="py-8 text-center font-mono text-sm text-fg-muted">
+                      No bets recorded yet.
                     </p>
                   ) : (
-                    <table className="w-full min-w-[320px] border-collapse font-mono text-sm">
+                    <table className="w-full min-w-[320px] border-collapse font-mono text-xs">
                       <thead>
-                        <tr className="border-b border-border text-left text-[10px] uppercase tracking-widest text-muted">
-                          <th className="pb-3 pr-4 font-semibold">Time</th>
-                          <th className="pb-3 pr-4 font-semibold">Side</th>
-                          <th className="pb-3 font-semibold">Amount</th>
+                        <tr className="border-b border-border text-left text-[9px] uppercase tracking-[0.2em] text-fg-muted">
+                          <th className="pb-3 pr-4 font-bold">Time</th>
+                          <th className="pb-3 pr-4 font-bold">Side</th>
+                          <th className="pb-3 font-bold">Amount</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -600,15 +735,17 @@ export default function MarketPage() {
                           return (
                             <tr
                               key={row.id}
-                              className="border-b border-border/80 transition-colors hover:bg-surface/80"
+                              className="border-b border-border/80 transition-colors hover:bg-bg"
                             >
-                              <td className="py-2.5 pr-4 tabular-nums text-muted">
+                              <td className="py-2.5 pr-4 tabular-nums text-fg-muted">
                                 {timeStr}
                               </td>
-                              <td className="py-2.5 pr-4 text-fg-soft">
+                              <td
+                                className={`py-2.5 pr-4 font-bold ${row.side === "survive" ? "text-survive" : "text-rug"}`}
+                              >
                                 {row.side === "survive" ? "SURVIVE" : "RUG"}
                               </td>
-                              <td className="py-2.5 tabular-nums text-foreground">
+                              <td className="py-2.5 tabular-nums text-white">
                                 {formatUSDC(Number.parseFloat(row.amountUsdc))}
                               </td>
                             </tr>
@@ -619,67 +756,155 @@ export default function MarketPage() {
                   )}
                 </div>
               ) : null}
-            </div>
-          </motion.div>
-
-          <motion.aside
-            className="order-2 space-y-5 xl:sticky xl:top-8 xl:col-span-2"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, ease: "easeOut", delay: 0.08 }}
-          >
-            <div className="card-cyber p-5 sm:p-6">
-              <p className="hidden text-center text-[10px] font-semibold uppercase tracking-widest text-muted xl:block">
-                Closes in
-              </p>
-              <div className="mt-0 hidden justify-center xl:mt-4 xl:flex [&_span]:text-3xl [&_span]:font-bold [&_span]:tracking-[0.08em] sm:[&_span]:text-4xl">
-                <Timer expiresAt={new Date(market.expiresAt)} />
-              </div>
-              <p className="mb-3 text-center font-mono text-[10px] uppercase tracking-widest text-muted xl:hidden">
-                Pool snapshot
-              </p>
-
-              <div className="mt-4 xl:mt-8">
-                <PoolBar survivePool={survive} rugPool={rug} />
-              </div>
-
-              <div className="mt-6 grid grid-cols-2 gap-3 border-t border-border pt-6 font-mono text-sm">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
-                    Survive pool
-                  </p>
-                  <p className="mt-1 font-semibold tabular-nums text-survive">
-                    {formatUSDC(survive)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
-                    Rug pool
-                  </p>
-                  <p className="mt-1 font-semibold tabular-nums text-rug">
-                    {formatUSDC(rug)}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <BetPanel
-              market={market}
-              onBet={onBet}
-              position={position}
-            />
-          </motion.aside>
+            </motion.div>
+          </AnimatePresence>
         </div>
 
-        <motion.section
-          className="mt-12 sm:mt-16"
-          initial={{ opacity: 0, y: 12 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-40px" }}
-          transition={{ duration: 0.3, ease: "easeOut" }}
-        >
-          <LiveFeed marketId={market.id} maxRows={20} heading="Last 20 bets" />
-        </motion.section>
+        {/* RIGHT (40% sticky) */}
+        <aside className="order-2 space-y-5 xl:sticky xl:top-20 xl:col-span-2">
+          {/* Timer card with progress ring */}
+          <div className="border border-accent/40 bg-card p-5 shadow-glow-sm">
+            <p className="text-center font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+              Market closes in
+            </p>
+            <div className="mt-3 flex items-center justify-center">
+              <ProgressTimerRing expiresAt={expiresAt} createdAt={new Date(market.createdAt)} />
+            </div>
+            <p className="mt-3 text-center font-mono text-[10px] uppercase tracking-[0.15em] text-fg-muted">
+              <span className="text-accent">Status:</span> {market.status}
+            </p>
+          </div>
+
+          {/* Pool card */}
+          <div className="border border-border bg-card p-5">
+            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+              Pool snapshot
+            </p>
+            <div className="mt-4">
+              <PoolBar survivePool={survive} rugPool={rug} />
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-3 border-t border-border pt-4 font-mono text-sm">
+              <div>
+                <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+                  Survive
+                </p>
+                <p className="mt-1 font-bold tabular-nums text-survive">
+                  {formatUSDC(survive)}
+                </p>
+              </div>
+              <div>
+                <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+                  Rug
+                </p>
+                <p className="mt-1 font-bold tabular-nums text-rug">
+                  {formatUSDC(rug)}
+                </p>
+              </div>
+              <div>
+                <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+                  Total
+                </p>
+                <p className="mt-1 font-bold tabular-nums text-white">
+                  {formatUSDC(totalPool)}
+                </p>
+              </div>
+              <div>
+                <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+                  Bettors
+                </p>
+                <p className="mt-1 font-bold tabular-nums text-white">
+                  {market.totalBettors}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <BetPanel market={market} onBet={onBet} position={position} />
+        </aside>
+      </div>
+
+      {/* Live feed below */}
+      <section className="mt-12">
+        <LiveFeed marketId={market.id} maxRows={20} heading="Last 20 Bets" />
+      </section>
+    </div>
+  );
+}
+
+/** Lime ring around a timer that fills as the market progresses toward close. */
+function ProgressTimerRing({
+  expiresAt,
+  createdAt,
+}: {
+  expiresAt: Date;
+  createdAt: Date;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const total = expiresAt.getTime() - createdAt.getTime();
+  const elapsed = Math.max(0, now - createdAt.getTime());
+  const pct = total > 0 ? Math.min(100, (elapsed / total) * 100) : 0;
+  const remainingMs = expiresAt.getTime() - now;
+  const urgent = remainingMs > 0 && remainingMs < 5 * 60 * 1000;
+
+  const radius = 64;
+  const stroke = 4;
+  const circ = 2 * Math.PI * radius;
+  const offset = circ * (1 - pct / 100);
+
+  return (
+    <div className="relative h-[148px] w-[148px]">
+      <svg
+        viewBox="0 0 148 148"
+        className="absolute inset-0"
+        aria-hidden
+      >
+        <circle
+          cx="74"
+          cy="74"
+          r={radius}
+          stroke="#1a1a1a"
+          strokeWidth={stroke}
+          fill="none"
+        />
+        <motion.circle
+          cx="74"
+          cy="74"
+          r={radius}
+          stroke={urgent ? "#ef4444" : "#cdf078"}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          fill="none"
+          initial={false}
+          animate={{ strokeDashoffset: offset }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
+          style={{
+            strokeDasharray: circ,
+            transform: "rotate(-90deg)",
+            transformOrigin: "74px 74px",
+          }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="text-center">
+          <Clock
+            className="mx-auto mb-1 h-3.5 w-3.5 text-accent"
+            aria-hidden
+          />
+          <Timer
+            expiresAt={expiresAt}
+            className={
+              urgent
+                ? "pulse-rug font-mono text-base font-bold tabular-nums text-rug"
+                : "font-mono text-base font-bold tabular-nums text-accent"
+            }
+          />
+        </div>
       </div>
     </div>
   );

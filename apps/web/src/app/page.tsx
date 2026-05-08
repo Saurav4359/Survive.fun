@@ -3,65 +3,77 @@
 import type { ApiResponse, Market } from "@survivefun/types";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { WalletBalancePanel } from "@/components/WalletBalancePanel";
 import { motion } from "framer-motion";
-import { ArrowRight, Inbox } from "lucide-react";
-import { useState, type CSSProperties } from "react";
+import { ArrowRight, Flame, Inbox, Skull } from "lucide-react";
+import { useMemo, useState } from "react";
 
+import { CountUp } from "@/components/CountUp";
 import { EmptyState } from "@/components/EmptyState";
 import { LiveFeed } from "@/components/LiveFeed";
 import { MarketCard } from "@/components/MarketCard";
+import { ParticleField } from "@/components/three/ParticleField";
 import { useToast } from "@/components/ToastProvider";
-import { MarketCardSkeleton } from "@/components/ui/skeletons";
 import { fetchActiveMarkets, marketsQueryKey } from "@/hooks/useMarkets";
 import { fetchStats, statsQueryKey } from "@/hooks/useStats";
-import { API_URL, MARKET_DURATIONS } from "@/utils/constants";
-import { formatUSDC } from "@/utils/format";
+import { useMarketSearchStore } from "@/stores/marketSearchStore";
+import { apiV1Url, MARKET_DURATIONS } from "@/utils/constants";
+import { formatPool, formatUSDC } from "@/utils/format";
+import { createMarket as createMarketOnChain } from "@/utils/transactions";
+import { totalPoolUsdc } from "@/utils/marketRisk";
 
-const DURATION_TABS: { label: string; seconds: (typeof MARKET_DURATIONS)[number] }[] =
-  [
-    { label: "1H", seconds: MARKET_DURATIONS[0] },
-    { label: "6H", seconds: MARKET_DURATIONS[1] },
-    { label: "24H", seconds: MARKET_DURATIONS[2] },
-  ];
+const DURATION_TABS: {
+  label: string;
+  seconds: (typeof MARKET_DURATIONS)[number];
+}[] = [
+  { label: "1H", seconds: MARKET_DURATIONS[0] },
+  { label: "6H", seconds: MARKET_DURATIONS[1] },
+  { label: "24H", seconds: MARKET_DURATIONS[2] },
+];
 
-const sectionEase = { duration: 0.35, ease: [0.4, 0, 0.2, 1] as const };
+type FilterKey = "hot" | "high-risk" | "likely" | "new" | "watch";
 
-const staggerContainer = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.06, delayChildren: 0.08 },
-  },
-};
+const FILTERS: { key: FilterKey; label: string }[] = [
+  { key: "hot", label: "🔥 Hot" },
+  { key: "high-risk", label: "💀 High Risk" },
+  { key: "likely", label: "✅ Likely Survive" },
+  { key: "new", label: "⚡ New" },
+  { key: "watch", label: "⭐ Watch" },
+];
 
-const staggerItem = {
-  hidden: { opacity: 0, y: 14 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.3, ease: [0.4, 0, 0.2, 1] } },
-};
-
-const HERO_GRID_STYLE: CSSProperties = {
-  backgroundImage: `
-    linear-gradient(rgba(34, 211, 238, 0.07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(34, 211, 238, 0.07) 1px, transparent 1px),
-    radial-gradient(ellipse 90% 70% at 50% -10%, rgba(6, 182, 212, 0.14), transparent 52%)
-  `,
-  backgroundSize: "24px 24px, 24px 24px, 100% 100%",
-};
-
-function StatCellSkeleton() {
-  return (
-    <div className="bg-card px-4 py-4 sm:px-5 sm:py-5">
-      <div className="h-3 w-24 animate-pulse rounded bg-border/80" />
-      <div className="mt-3 h-7 w-20 animate-pulse rounded bg-border/80" />
-    </div>
-  );
+function applyFilter(markets: Market[], filter: FilterKey): Market[] {
+  switch (filter) {
+    case "hot":
+      return [...markets].sort(
+        (a, b) => totalPoolUsdc(b) - totalPoolUsdc(a),
+      );
+    case "high-risk":
+      return [...markets].sort((a, b) => {
+        const lqA = Number.parseFloat(a.openLiquidity ?? "0") || 0;
+        const lqB = Number.parseFloat(b.openLiquidity ?? "0") || 0;
+        return lqA - lqB;
+      });
+    case "likely":
+      return [...markets].sort((a, b) => {
+        const sA = Number.parseFloat(a.survivePool) || 0;
+        const sB = Number.parseFloat(b.survivePool) || 0;
+        return sB - sA;
+      });
+    case "new":
+      return [...markets].sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+    case "watch":
+      return markets;
+  }
 }
 
 export default function HomePage() {
-  const { publicKey } = useWallet();
+  const wallet = useWallet();
+  const { publicKey } = wallet;
   const queryClient = useQueryClient();
   const toast = useToast();
+  const search = useMarketSearchStore((s) => s.query);
 
   const marketsQuery = useQuery({
     queryKey: marketsQueryKey,
@@ -75,21 +87,37 @@ export default function HomePage() {
     staleTime: 20_000,
   });
 
-  const markets = marketsQuery.data ?? [];
+  const markets = useMemo(
+    () => marketsQuery.data ?? [],
+    [marketsQuery.data],
+  );
   const marketsLoading = marketsQuery.isPending;
-  const marketsError =
-    marketsQuery.error instanceof Error ? marketsQuery.error : null;
-
   const stats = statsQuery.data;
-  const statsLoading = statsQuery.isPending;
-  const statsError =
-    statsQuery.error instanceof Error ? statsQuery.error : null;
 
   const [tokenMint, setTokenMint] = useState("");
   const [durationSeconds, setDurationSeconds] = useState<number>(
     MARKET_DURATIONS[2],
   );
   const [createError, setCreateError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<FilterKey>("hot");
+
+  const trending = useMemo(() => {
+    return [...markets]
+      .sort((a, b) => totalPoolUsdc(b) - totalPoolUsdc(a))
+      .slice(0, 12);
+  }, [markets]);
+
+  const filtered = useMemo(() => {
+    const base = applyFilter(markets, filter);
+    const q = search.trim().toLowerCase();
+    if (!q) return base;
+    return base.filter((m) => {
+      const name = (m.tokenName ?? "").toLowerCase();
+      const ticker = (m.tokenTicker ?? "").toLowerCase();
+      const mint = m.tokenMint.toLowerCase();
+      return name.includes(q) || ticker.includes(q) || mint.includes(q);
+    });
+  }, [markets, filter, search]);
 
   const createMarket = useMutation({
     mutationFn: async ({
@@ -102,19 +130,26 @@ export default function HomePage() {
       if (!publicKey) {
         throw new Error("Connect a wallet to create a market");
       }
-      const res = await fetch(`${API_URL}/v1/markets`, {
+      const createMarketTxSignature = await createMarketOnChain(
+        wallet,
+        mint,
+        duration,
+      );
+      const res = await fetch(apiV1Url("/markets"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tokenMint: mint,
           duration,
           walletAddress: publicKey.toBase58(),
+          createMarketTxSignature,
         }),
       });
       const body = (await res.json()) as ApiResponse<Market>;
       if (!res.ok || !body.success) {
-        const msg =
-          !body.success ? body.error.message : `Create failed (${res.status})`;
+        const msg = !body.success
+          ? body.error.message
+          : `Create failed (${res.status})`;
         throw new Error(msg);
       }
       return body.data;
@@ -125,7 +160,7 @@ export default function HomePage() {
       toast({
         variant: "success",
         title: "Market created",
-        message: "It’s live — traders can start betting.",
+        message: "Live now — traders can start betting.",
       });
       void queryClient.invalidateQueries({ queryKey: marketsQueryKey });
       void queryClient.invalidateQueries({ queryKey: statsQueryKey });
@@ -133,267 +168,339 @@ export default function HomePage() {
     onError: (e) => {
       const msg = e instanceof Error ? e.message : "Create failed";
       setCreateError(msg);
-      toast({ variant: "error", title: "Couldn’t create market", message: msg });
+      toast({
+        variant: "error",
+        title: "Couldn't create market",
+        message: msg,
+      });
     },
   });
 
-  const statRows = [
-    {
-      label: "Active Markets",
-      value: statsLoading ? "—" : String(stats?.activeMarkets ?? "—"),
-    },
-    {
-      label: "Total Volume",
-      value: statsLoading
-        ? "—"
-        : stats
-          ? `${formatUSDC(Number.parseFloat(stats.totalBetVolumeUsdc))} USDC`
-          : statsError
-            ? "—"
-            : "—",
-    },
-    {
-      label: "Rugs (resolved)",
-      value: statsLoading ? "—" : String(stats?.resolvedRugs ?? "—"),
-    },
-    {
-      label: "Biggest payout",
-      value: statsLoading
-        ? "—"
-        : stats?.largestPayoutUsdc != null
-          ? formatUSDC(Number.parseFloat(stats.largestPayoutUsdc))
-          : "—",
-    },
-  ];
+  const totalVol = stats
+    ? Number.parseFloat(stats.totalBetVolumeUsdc) || 0
+    : 0;
+  const biggest =
+    stats?.largestPayoutUsdc != null
+      ? Number.parseFloat(stats.largestPayoutUsdc) || 0
+      : 0;
 
   return (
-    <div className="min-h-screen pb-20 pt-2 sm:pb-28 sm:pt-4">
-      <motion.header
-        initial={{ opacity: 0, y: -12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={sectionEase}
-        className="relative overflow-hidden border-b border-border/90"
-      >
-        <div
-          className="pointer-events-none absolute -right-20 top-1/2 h-56 w-56 -translate-y-1/2 rounded-full bg-accent/20 blur-3xl"
-          aria-hidden
-        />
-        <div
-          className="pointer-events-none absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-accent/70 to-transparent"
-          aria-hidden
-        />
-        <div className="relative mx-auto flex max-w-[1440px] flex-col gap-6 px-4 py-8 sm:flex-row sm:items-end sm:justify-between sm:px-6 lg:px-12 lg:py-10">
-          <div className="max-w-xl">
-            <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.32em] text-accent-bright/90">
-              survival markets
-            </p>
-            <h1 className="font-display mt-3 text-4xl font-extrabold tracking-tighter text-foreground sm:text-5xl lg:text-6xl">
-              survive<span className="text-accent-bright">.</span>fun
-            </h1>
-            <p className="mt-3 max-w-md font-mono text-sm leading-relaxed text-fg-soft sm:text-base">
-              Bet whether memecoins{" "}
-              <span className="font-semibold text-survive">survive</span> or{" "}
-              <span className="font-semibold text-rug">rug</span> — pooled odds, live
-              tape, countdown to resolution.
-            </p>
-          </div>
-          <div className="flex w-full shrink-0 justify-start sm:w-auto sm:max-w-md sm:justify-end">
-            <WalletBalancePanel />
-          </div>
+    <div className="min-h-full">
+      {/* HERO with three.js particle field */}
+      <section className="relative overflow-hidden border-b border-border">
+        <div className="pointer-events-none absolute inset-0 -z-0">
+          <ParticleField />
         </div>
-      </motion.header>
 
-      <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-12">
-        <motion.section
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ ...sectionEase, delay: 0.05 }}
-          aria-label="Platform statistics"
-          className="mt-10 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border shadow-[0_0_0_1px_rgba(6,182,212,0.12)] lg:grid-cols-4"
+        <div className="relative z-[1] mx-auto max-w-[1440px] px-4 py-12 sm:px-6 sm:py-16 lg:px-10 lg:py-20">
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, ease: "easeOut" }}
+          >
+            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.32em] text-accent">
+              Survive · Pump.fun prediction market
+            </p>
+            <h1 className="mt-4 font-display text-4xl font-bold leading-[1.05] tracking-tight text-white sm:text-5xl lg:text-6xl">
+              RUG OR <span className="text-accent">SURVIVE</span>?
+            </h1>
+            <p className="mt-4 max-w-xl font-mono text-sm leading-relaxed text-fg-soft sm:text-base">
+              Bet on whether memecoins{" "}
+              <span className="font-bold text-survive">survive</span> or{" "}
+              <span className="font-bold text-rug">rug</span>. Pooled odds, live
+              tape, on-chain settlement.
+            </p>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* TRENDING BAR (horizontal scroll) */}
+      {trending.length > 0 ? (
+        <section
+          aria-label="Trending markets"
+          className="border-b border-border bg-bg"
         >
-          {statsLoading
-            ? Array.from({ length: 4 }).map((_, i) => <StatCellSkeleton key={i} />)
-            : statRows.map((row) => (
-                <div
-                  key={row.label}
-                  className="bg-card px-4 py-4 sm:px-5 sm:py-5"
+          <div className="mx-auto flex max-w-[1440px] items-center gap-3 px-4 py-3 sm:px-6 lg:px-10">
+            <span className="flex shrink-0 items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-accent">
+              <Flame className="h-3.5 w-3.5" />
+              Hot Markets
+            </span>
+            <div className="hide-scrollbar flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1">
+              {trending.map((m, i) => (
+                <a
+                  key={m.id}
+                  href={`/market/${m.id}`}
+                  className="flex min-w-[200px] shrink-0 items-center gap-2.5 rounded-md border border-border bg-card px-3 py-1.5 transition-colors hover:border-accent"
                 >
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
-                    {row.label}
-                  </p>
-                  <p className="mt-2 font-mono text-base font-semibold tabular-nums text-foreground sm:text-lg">
-                    {row.value}
-                  </p>
-                </div>
-              ))}
-        </motion.section>
-
-        <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-12 lg:gap-8 xl:gap-10">
-          <div className="min-w-0 space-y-10 lg:col-span-8">
-            <motion.section
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ ...sectionEase, delay: 0.1 }}
-              aria-label="Create market"
-              className="relative overflow-hidden rounded-xl border border-border bg-card shadow-[0_20px_60px_-24px_rgba(6,182,212,0.25)]"
-            >
-              <div
-                className="pointer-events-none absolute inset-0 opacity-90"
-                style={HERO_GRID_STYLE}
-                aria-hidden
-              />
-              <div className="relative z-[1] space-y-5 p-6 sm:p-8">
-                <label className="block space-y-2">
-                  <span className="block font-mono text-[10px] font-bold uppercase tracking-widest text-muted">
-                    Token mint (SPL)
+                  <span className="w-5 font-mono text-[10px] font-bold tabular-nums text-fg-muted">
+                    {i + 1}
                   </span>
-                  <input
-                    type="text"
-                    value={tokenMint}
-                    onChange={(e) => setTokenMint(e.target.value)}
-                    placeholder="e.g. So111… from Solscan / Pump.fun mint"
-                    className="w-full rounded-lg border border-border bg-surface px-4 py-4 font-mono text-sm text-foreground placeholder:text-muted transition-all duration-200 focus:border-border-glow focus:outline-none focus:ring-1 focus:ring-accent focus:shadow-glow-sm sm:text-base"
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                  <p className="font-mono text-[11px] leading-relaxed text-muted">
-                    Paste the token’s{" "}
-                    <span className="text-fg-soft">mint address</span> (base58,
-                    32–44 chars) — the coin you’re betting on, not your wallet.
-                  </p>
-                </label>
-
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div
-                    className="flex flex-wrap gap-2"
-                    role="group"
-                    aria-label="Market duration"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-border bg-bg font-mono text-[11px] font-bold text-accent"
+                    aria-hidden
                   >
-                    {DURATION_TABS.map(({ label, seconds }) => {
-                      const active = durationSeconds === seconds;
-                      return (
-                        <button
-                          key={label}
-                          type="button"
-                          onClick={() => setDurationSeconds(seconds)}
-                          className={
-                            active
-                              ? "rounded-lg border border-border-glow bg-accent/15 px-4 py-2 font-mono text-xs font-bold uppercase tracking-widest text-accent-bright shadow-glow-sm"
-                              : "rounded-lg border border-border bg-surface px-4 py-2 font-mono text-xs font-bold uppercase tracking-widest text-muted transition-colors duration-200 hover:border-accent/40 hover:text-fg-soft"
-                          }
-                        >
-                          {label}
-                        </button>
-                      );
-                    })}
+                    {(m.tokenTicker ?? "?").slice(0, 1).toUpperCase()}
                   </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-mono text-xs font-bold text-white">
+                      ${m.tokenTicker ?? "—"}
+                    </p>
+                    <p className="truncate font-mono text-[10px] text-fg-muted">
+                      Pool {formatPool(totalPoolUsdc(m))} USDC
+                    </p>
+                  </div>
+                </a>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
-                  <button
-                    type="button"
-                    disabled={
-                      createMarket.isPending ||
-                      !publicKey ||
-                      !tokenMint.trim()
-                    }
-                    onClick={() => {
-                      setCreateError(null);
-                      const mint = tokenMint.trim();
-                      if (!publicKey) {
-                        toast({
-                          variant: "error",
-                          title: "Wallet required",
-                          message: "Connect a wallet to create a market.",
-                        });
-                        return;
+      <div className="mx-auto max-w-[1440px] px-4 py-8 sm:px-6 lg:px-10">
+        {/* CREATE MARKET */}
+        <section
+          id="create-market"
+          aria-label="Create market"
+          className="border border-border bg-card"
+        >
+          <div className="border-b border-border px-5 py-3">
+            <h2 className="font-display text-xs font-bold uppercase tracking-[0.2em] text-white">
+              Create a market
+            </h2>
+            <p className="mt-1 font-mono text-[11px] text-fg-muted">
+              Paste any Pump.fun token mint. Pick a duration. Ship it.
+            </p>
+          </div>
+          <div className="space-y-4 p-5">
+            <div className="relative">
+              <input
+                type="text"
+                value={tokenMint}
+                onChange={(e) => setTokenMint(e.target.value)}
+                placeholder="Paste any Pump.fun token mint..."
+                className="w-full rounded-md border border-border bg-bg px-4 py-3.5 font-mono text-sm text-white placeholder:text-fg-muted transition-shadow focus:border-accent focus:outline-none focus:shadow-glow-sm"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div
+                className="flex flex-wrap gap-1.5"
+                role="group"
+                aria-label="Market duration"
+              >
+                {DURATION_TABS.map(({ label, seconds }) => {
+                  const active = durationSeconds === seconds;
+                  return (
+                    <motion.button
+                      key={label}
+                      type="button"
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => setDurationSeconds(seconds)}
+                      className={
+                        active
+                          ? "rounded-md bg-accent px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-ink"
+                          : "rounded-md border border-border bg-bg px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-fg-soft transition-colors hover:border-accent hover:text-accent"
                       }
-                      if (!mint) {
-                        setCreateError("Paste the token mint address first.");
-                        toast({
-                          variant: "error",
-                          title: "Missing mint",
-                          message:
-                            "Paste the SPL mint for the coin you want a market for.",
-                        });
-                        return;
-                      }
-                      void createMarket.mutateAsync({
-                        mint,
-                        duration: durationSeconds,
-                      });
-                    }}
-                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-accent bg-accent px-6 py-3 font-mono text-xs font-bold uppercase tracking-widest text-ink shadow-glow-sm transition-all duration-200 hover:border-accent-bright hover:bg-transparent hover:text-accent-bright hover:shadow-none disabled:opacity-50"
-                  >
-                    Create Market
-                    <ArrowRight className="h-4 w-4" aria-hidden />
-                  </button>
-                </div>
-                {createError ? (
-                  <p className="font-mono text-xs text-rug">{createError}</p>
-                ) : null}
+                    >
+                      {label}
+                    </motion.button>
+                  );
+                })}
               </div>
-            </motion.section>
 
-            <motion.section
-              initial={{ opacity: 0, y: 16 }}
+              <motion.button
+                type="button"
+                whileHover={
+                  !createMarket.isPending && publicKey && tokenMint.trim()
+                    ? { scale: 1.02 }
+                    : undefined
+                }
+                whileTap={{ scale: 0.97 }}
+                disabled={
+                  createMarket.isPending || !publicKey || !tokenMint.trim()
+                }
+                onClick={() => {
+                  setCreateError(null);
+                  const mint = tokenMint.trim();
+                  if (!publicKey) {
+                    toast({
+                      variant: "error",
+                      title: "Wallet required",
+                      message: "Connect a wallet to create a market.",
+                    });
+                    return;
+                  }
+                  if (!mint) {
+                    setCreateError("Paste the token mint address first.");
+                    return;
+                  }
+                  void createMarket.mutateAsync({
+                    mint,
+                    duration: durationSeconds,
+                  });
+                }}
+                className="group inline-flex items-center justify-center gap-2 rounded-md bg-accent px-5 py-2.5 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-ink transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {createMarket.isPending ? "Creating…" : "Create Market"}
+                <motion.span
+                  initial={false}
+                  className="inline-flex"
+                  whileHover={{ x: 3 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+                </motion.span>
+              </motion.button>
+            </div>
+            {createError ? (
+              <p className="font-mono text-xs text-rug">{createError}</p>
+            ) : null}
+          </div>
+        </section>
+
+        {/* STATS BAR */}
+        <section
+          aria-label="Platform statistics"
+          className="mt-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4"
+        >
+          {[
+            {
+              label: "Active Markets",
+              value: stats?.activeMarkets ?? 0,
+              format: (n: number) => `${Math.round(n)}`,
+            },
+            {
+              label: "Total Volume",
+              value: totalVol,
+              format: (n: number) => formatUSDC(n),
+            },
+            {
+              label: "Rugs Caught",
+              value: stats?.resolvedRugs ?? 0,
+              format: (n: number) => `${Math.round(n)}`,
+            },
+            {
+              label: "Biggest Win",
+              value: biggest,
+              format: (n: number) => formatUSDC(n),
+            },
+          ].map((stat, i) => (
+            <motion.div
+              key={stat.label}
+              initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ ...sectionEase, delay: 0.14 }}
-              aria-label="Active markets"
+              transition={{ delay: i * 0.06, duration: 0.4 }}
+              className="border border-border border-t-2 border-t-accent bg-card px-4 py-4"
             >
-              <div className="mb-5 flex items-end justify-between gap-3 border-b border-border pb-3">
-                <h2 className="section-rail font-display text-lg font-bold uppercase tracking-[0.2em] text-foreground">
-                  Active markets
-                </h2>
-                {marketsError ? (
-                  <span className="font-mono text-xs text-rug">Load error</span>
-                ) : null}
-              </div>
+              <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+                {stat.label}
+              </p>
+              <p className="mt-2 font-mono text-xl font-bold tabular-nums text-accent sm:text-2xl">
+                <CountUp
+                  to={stat.value}
+                  format={stat.format}
+                  delay={0.2 + i * 0.08}
+                />
+              </p>
+            </motion.div>
+          ))}
+        </section>
 
+        {/* MARKETS GRID + LIVE FEED */}
+        <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-6">
+          <section className="min-w-0 lg:col-span-9" aria-label="Active markets">
+            {/* Filter tabs */}
+            <div className="flex flex-wrap gap-1 border-b border-border">
+              {FILTERS.map(({ key, label }) => {
+                const active = filter === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setFilter(key)}
+                    className="relative px-3 py-2.5 font-mono text-[11px] font-bold uppercase tracking-[0.15em] transition-colors"
+                  >
+                    <span className={active ? "text-accent" : "text-fg-soft hover:text-white"}>
+                      {label}
+                    </span>
+                    {active ? (
+                      <motion.span
+                        layoutId="filter-underline"
+                        className="absolute -bottom-px left-0 right-0 h-0.5 bg-accent"
+                        transition={{ duration: 0.28, ease: "easeOut" }}
+                      />
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-5">
               {marketsLoading ? (
-                <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                   {Array.from({ length: 6 }).map((_, i) => (
-                    <MarketCardSkeleton key={i} />
+                    <div
+                      key={i}
+                      className="h-[320px] animate-pulse border border-border bg-card"
+                    />
                   ))}
                 </div>
-              ) : markets.length === 0 ? (
+              ) : filtered.length === 0 ? (
                 <EmptyState
                   icon={Inbox}
-                  title="No active markets"
-                  description="Create one with the form above, or seed demo data from the API when you’re developing locally."
-                  action={{ label: "Scroll to create", onClick: () => {
-                    document
-                      .querySelector('[aria-label="Create market"]')
-                      ?.scrollIntoView({ behavior: "smooth" });
-                  } }}
+                  title="No markets in this filter"
+                  description="Try another filter or create a new market with the form above."
+                  action={{
+                    label: "Create a market",
+                    onClick: () =>
+                      document
+                        .getElementById("create-market")
+                        ?.scrollIntoView({ behavior: "smooth" }),
+                  }}
                 />
               ) : (
                 <motion.div
-                  className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3"
-                  variants={staggerContainer}
                   initial="hidden"
                   animate="show"
+                  variants={{
+                    hidden: {},
+                    show: { transition: { staggerChildren: 0.06 } },
+                  }}
+                  className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
                 >
-                  {markets.map((market) => (
-                    <motion.div key={market.id} variants={staggerItem}>
+                  {filtered.map((market) => (
+                    <motion.div
+                      key={market.id}
+                      variants={{
+                        hidden: { opacity: 0, y: 18 },
+                        show: { opacity: 1, y: 0 },
+                      }}
+                      transition={{ duration: 0.35 }}
+                    >
                       <MarketCard market={market} />
                     </motion.div>
                   ))}
                 </motion.div>
               )}
-            </motion.section>
-          </div>
+            </div>
+          </section>
 
-          <motion.aside
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ ...sectionEase, delay: 0.18 }}
-            className="lg:col-span-4"
-            aria-label="Live bets"
-          >
-            <div className="lg:sticky lg:top-8">
+          <aside className="lg:col-span-3" aria-label="Live bets">
+            <div className="sticky top-20">
               <LiveFeed />
             </div>
-          </motion.aside>
+          </aside>
         </div>
+
+        <footer className="mt-16 flex items-center justify-between border-t border-border pt-6 font-mono text-[10px] uppercase tracking-[0.15em] text-fg-muted">
+          <span className="flex items-center gap-1.5">
+            <Skull className="h-3 w-3" />
+            survive.fun
+          </span>
+          <span>v0.1 · devnet</span>
+        </footer>
       </div>
     </div>
   );
