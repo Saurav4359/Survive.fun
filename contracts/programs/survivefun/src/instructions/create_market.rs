@@ -36,8 +36,6 @@ pub enum SurviveError {
     BetSideMismatch,
     #[msg("Insufficient lamports to preserve rent on market")]
     InsufficientRent,
-    #[msg("Market cannot be resolved before expires_at")]
-    CannotResolveBeforeExpiry,
     #[msg("Market cannot be closed while it has bets or non-seed pool funds")]
     MarketHasOpenPositions,
 }

@@ -125,16 +125,6 @@ describe("survivefun SOL-only (local validator)", function () {
     return fundLamports(provider, authority, pubkey, lamports);
   }
 
-  async function waitUntilMarketCanResolve(market: PublicKey): Promise<void> {
-    const acc: any = await program.account.market.fetch(market);
-    const expiresAt = acc.expiresAt.toNumber();
-    const now = Math.floor(Date.now() / 1000);
-    const deltaSec = expiresAt - now + 2;
-    if (deltaSec > 0) {
-      await new Promise((r) => setTimeout(r, deltaSec * 1000));
-    }
-  }
-
   async function createMarketIx(tokenMint: PublicKey, durationSeconds: number) {
     const [market] = marketPda(program.programId, tokenMint, durationSeconds);
     return program.methods
@@ -434,25 +424,6 @@ describe("survivefun SOL-only (local validator)", function () {
       [winner],
     );
 
-    try {
-      await send(
-        provider,
-        await program.methods
-          .resolveMarket({ rug: {} })
-          .accountsPartial({
-            market,
-            platformAuthority: platformKp.publicKey,
-          })
-          .instruction(),
-        [platformKp],
-      );
-      assert.fail("expected CannotResolveBeforeExpiry");
-    } catch (e) {
-      expectAnchorError(e, "CannotResolveBeforeExpiry");
-    }
-
-    await waitUntilMarketCanResolve(market);
-
     await send(
       provider,
       await program.methods
@@ -544,8 +515,6 @@ describe("survivefun SOL-only (local validator)", function () {
       [winner],
     );
 
-    await waitUntilMarketCanResolve(market);
-
     await send(
       provider,
       await program.methods
@@ -620,8 +589,6 @@ describe("survivefun SOL-only (local validator)", function () {
       [winner],
     );
 
-    await waitUntilMarketCanResolve(market);
-
     await send(
       provider,
       await program.methods
@@ -659,7 +626,7 @@ describe("survivefun SOL-only (local validator)", function () {
             bettor: winner.publicKey,
             platformAuthority: platformKp.publicKey,
           })
-          .instruction(),
+        .instruction(),
         [winner],
       );
       assert.fail("expected AlreadyClaimed");

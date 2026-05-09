@@ -11,6 +11,12 @@
 
 ---
 
+## Resolve timing (2026-05-09 follow-up)
+
+- **`resolve_market`** no longer requires `Clock >= expires_at`. Rug (or survive) can be recorded **any time** while `status == Active`; **`place_bet`** still requires `now < expires_at`**.
+- **`CannotResolveBeforeExpiry`** error variant removed (IDL / error codes shifted).
+- Devnet upgrade deploy + `anchor idl upgrade`: signature `52BLLN76u48aNBU6YzmTeuALFcoT2GCT8RvL9qbUvHQMtqSZW9bMQ4gQs6b21rxC1iJkwT9yJxhJrpWmxmqkWHmH` (program id unchanged).
+
 ## Latest deploy run (2026-05-09)
 
 - **Market PDA:** `seeds = [b"market", token_mint]` only — fixes `AccountDidNotDeserialize` from stale PDAs that used extra seed bytes; **one market account per token mint** (duration still passed to `create_market` for expiry, not for PDA).
@@ -49,7 +55,7 @@ See prior sections in git history; includes **`MarketAlreadyExists`**, bet bound
 
 - **`Market.platform_authority`** is set once in **`create_market`** from the **`platform_authority`** signer. It is the canonical resolver and platform fee recipient for that market.
 - **`resolve_market`** and **`claim_payout`** require **`platform_authority`** to match **`market.platform_authority`** (arbitrary signers cannot resolve or steal fee routing).
-- **`resolve_market`** rejects resolution before **`market.expires_at`** (**`CannotResolveBeforeExpiry`**).
+- **`resolve_market`** may run **while the market is `Active`** at any time; **`expires_at`** still gates **`place_bet`** only. Timing for “survive vs rug” is enforced by the **platform resolver** off-chain.
 - **Account layout:** adding `platform_authority` changes the `Market` account size; existing on-chain `Market` accounts from before this layout are **incompatible** — upgrade the program and use **new** markets (or migrate off old PDAs).
 
 ### Local tests vs deploy
