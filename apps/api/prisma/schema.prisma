@@ -32,6 +32,8 @@ model Market {
   bets      Bet[]
   rugEvents RugEvent[]
 
+  // Enforced in DB: partial unique on (token_mint, duration) WHERE status = 'active'
+  // (see migration 20260509120000_markets_active_mint_duration_unique).
   @@map("markets")
 }
 
