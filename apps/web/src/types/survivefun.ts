@@ -339,8 +339,18 @@ export type Survivefun = {
     },
     {
       "code": 6011,
+      "name": "betSideMismatch",
+      "msg": "Add stake on the same side as your existing bet (cannot switch survive/rug)"
+    },
+    {
+      "code": 6012,
       "name": "insufficientRent",
       "msg": "Insufficient lamports to preserve rent on market"
+    },
+    {
+      "code": 6013,
+      "name": "cannotResolveBeforeExpiry",
+      "msg": "Market cannot be resolved before expires_at"
     }
   ],
   "types": [
@@ -488,6 +498,13 @@ export type Survivefun = {
           {
             "name": "platformFeeBps",
             "type": "u64"
+          },
+          {
+            "name": "platformAuthority",
+            "docs": [
+              "Resolver + fee recipient; set once in `create_market` from `platform_authority` signer."
+            ],
+            "type": "pubkey"
           },
           {
             "name": "bump",

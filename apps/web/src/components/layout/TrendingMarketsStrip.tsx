@@ -1,44 +1,12 @@
 "use client";
 
 import type { Market, TokenPair } from "@survivefun/types";
-import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
+import { TokenThumb } from "@/components/TokenThumb";
 import { formatSolBetLine } from "@/utils/format";
 import { totalPoolLamports } from "@/utils/marketRisk";
-
-function TokenThumb({
-  mint,
-  ticker,
-}: {
-  mint: string;
-  ticker: string;
-}) {
-  const [bad, setBad] = useState(false);
-  const src = `https://dd.dexscreener.com/ds-data/tokens/solana/${mint}.png`;
-  const letter = (ticker || "?").slice(0, 1).toUpperCase();
-  if (bad) {
-    return (
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-accent/20 font-mono text-xs font-bold text-accent-bright">
-        {letter}
-      </div>
-    );
-  }
-  return (
-    <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full border border-border bg-surface">
-      <Image
-        src={src}
-        alt=""
-        width={36}
-        height={36}
-        className="h-full w-full object-cover"
-        onError={() => setBad(true)}
-        unoptimized
-      />
-    </div>
-  );
-}
 
 type RowProps = {
   rank: number;
@@ -57,7 +25,13 @@ function StripRow({ rank, market, pair }: RowProps) {
       <span className="w-6 font-mono text-xs font-bold tabular-nums text-muted-foreground">
         {rank}
       </span>
-      <TokenThumb mint={market.tokenMint} ticker={ticker} />
+      <TokenThumb
+        mint={market.tokenMint}
+        ticker={ticker}
+        size={36}
+        rounded="full"
+        className="bg-accent/20"
+      />
       <div className="min-w-0 flex-1">
         <p className="truncate font-mono text-sm font-bold text-accent-bright">
           ${ticker}

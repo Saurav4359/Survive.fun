@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 
 const KEY = "survivefun-watchlist-v1";
+/** Same-tab sync — `storage` only fires across tabs. */
+const CHANGE_EVENT = "survivefun-watchlist-change";
 
 function readIds(): string[] {
   if (typeof window === "undefined") return [];
@@ -25,8 +27,13 @@ export function useWatchlist() {
     const onStorage = (e: StorageEvent) => {
       if (e.key === KEY || e.key === null) setIds(readIds());
     };
+    const onLocalChange = () => setIds(readIds());
     window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    window.addEventListener(CHANGE_EVENT, onLocalChange);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(CHANGE_EVENT, onLocalChange);
+    };
   }, []);
 
   const toggle = useCallback((marketId: string) => {
@@ -41,6 +48,9 @@ export function useWatchlist() {
       } catch {
         /* ignore */
       }
+      queueMicrotask(() => {
+        window.dispatchEvent(new Event(CHANGE_EVENT));
+      });
       return next;
     });
   }, []);

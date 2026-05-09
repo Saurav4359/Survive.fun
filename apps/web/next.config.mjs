@@ -1,5 +1,14 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "dd.dexscreener.com",
+        pathname: "/ds-data/**",
+      },
+    ],
+  },
   transpilePackages: [
     "@survivefun/types",
     "@solana/wallet-adapter-base",

@@ -8,6 +8,7 @@ import Link from "next/link";
 import { formatPoolTotals, formatUsd, parsePoolLamports } from "@/utils/format";
 
 import { PoolBar } from "./PoolBar";
+import { TokenThumb } from "./TokenThumb";
 import { Timer } from "./Timer";
 
 type RiskLevel = "HIGH" | "MEDIUM" | "LOW";
@@ -40,8 +41,6 @@ export function MarketCard({ market }: { market: Market }) {
   const hasPrice = Number.isFinite(priceNum);
   const expiresAt = new Date(market.expiresAt);
   const risk = inferRisk(market);
-  const tickerLetter = ticker.slice(0, 1).toUpperCase();
-
   return (
     <motion.div
       whileHover={{ scale: 1.01 }}
@@ -53,12 +52,7 @@ export function MarketCard({ market }: { market: Market }) {
         className="relative flex flex-col gap-4 border border-border border-l-[3px] border-l-accent bg-card p-4 transition-colors duration-200 hover:border-accent hover:shadow-glow-sm"
       >
         <header className="flex items-start gap-3">
-          <div
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-bg font-mono text-base font-bold text-accent"
-            aria-hidden
-          >
-            {tickerLetter}
-          </div>
+          <TokenThumb mint={market.tokenMint} ticker={ticker} size={40} />
           <div className="min-w-0 flex-1">
             <h3 className="truncate font-display text-base font-bold tracking-tight text-white">
               {name}

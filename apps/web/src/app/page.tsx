@@ -16,6 +16,7 @@ import { ParticleField } from "@/components/three/ParticleField";
 import { useToast } from "@/components/ToastProvider";
 import { fetchActiveMarkets, marketsQueryKey } from "@/hooks/useMarkets";
 import { fetchStats, statsQueryKey } from "@/hooks/useStats";
+import { useWatchlist } from "@/hooks/useWatchlist";
 import { useMarketSearchStore } from "@/stores/marketSearchStore";
 import { apiV1Url, MARKET_DURATIONS } from "@/utils/constants";
 import { formatSolBetLine, parsePoolLamports } from "@/utils/format";
@@ -41,7 +42,11 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: "watch", label: "⭐ Watch" },
 ];
 
-function applyFilter(markets: Market[], filter: FilterKey): Market[] {
+function applyFilter(
+  markets: Market[],
+  filter: FilterKey,
+  watchIds: string[],
+): Market[] {
   switch (filter) {
     case "hot":
       return [...markets].sort(
@@ -64,8 +69,11 @@ function applyFilter(markets: Market[], filter: FilterKey): Market[] {
         (a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       );
-    case "watch":
-      return markets;
+    case "watch": {
+      if (watchIds.length === 0) return [];
+      const starred = new Set(watchIds);
+      return markets.filter((m) => starred.has(m.id));
+    }
   }
 }
 
@@ -75,6 +83,8 @@ export default function HomePage() {
   const queryClient = useQueryClient();
   const toast = useToast();
   const search = useMarketSearchStore((s) => s.query);
+  const setSearchQuery = useMarketSearchStore((s) => s.setQuery);
+  const { ids: watchIds } = useWatchlist();
 
   const marketsQuery = useQuery({
     queryKey: marketsQueryKey,
@@ -128,7 +138,7 @@ export default function HomePage() {
   }, [markets]);
 
   const filtered = useMemo(() => {
-    const base = applyFilter(markets, filter);
+    const base = applyFilter(markets, filter, watchIds);
     const q = search.trim().toLowerCase();
     if (!q) return base;
     return base.filter((m) => {
@@ -137,7 +147,57 @@ export default function HomePage() {
       const mint = m.tokenMint.toLowerCase();
       return name.includes(q) || ticker.includes(q) || mint.includes(q);
     });
-  }, [markets, filter, search]);
+  }, [markets, filter, search, watchIds]);
+
+  const emptyGridContent = (() => {
+    if (markets.length === 0) {
+      return {
+        title: "No active markets yet",
+        description: "Create the first market with the form above.",
+        action: {
+          label: "Create a market",
+          onClick: () =>
+            document
+              .getElementById("create-market")
+              ?.scrollIntoView({ behavior: "smooth" }),
+        },
+      } as const;
+    }
+    const q = search.trim();
+    if (q) {
+      return {
+        title: "No matches for your search",
+        description: `Nothing matches “${q}”. Clear the top-bar search to see all ${markets.length} active market${markets.length === 1 ? "" : "s"}.`,
+        action: {
+          label: "Clear search",
+          onClick: () => setSearchQuery(""),
+        },
+      } as const;
+    }
+    if (filter === "watch") {
+      return {
+        title: "No starred markets",
+        description:
+          "Open any market and tap Watch — it will show up here on the home page.",
+        action: {
+          label: "Browse Hot",
+          onClick: () => setFilter("hot"),
+        },
+      } as const;
+    }
+    return {
+      title: "No markets in this filter",
+      description:
+        "Try another filter tab or create a new market with the form above.",
+      action: {
+        label: "Create a market",
+        onClick: () =>
+          document
+            .getElementById("create-market")
+            ?.scrollIntoView({ behavior: "smooth" }),
+      },
+    } as const;
+  })();
 
   const createMarket = useMutation({
     mutationFn: async ({
@@ -483,6 +543,16 @@ export default function HomePage() {
             </div>
 
             <div className="mt-5">
+              {search.trim() ? (
+                <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.15em] text-fg-muted">
+                  Search:{" "}
+                  <span className="text-accent">{search.trim()}</span>
+                  <span className="text-fg-soft">
+                    {" "}
+                    · {filtered.length} of {markets.length} shown
+                  </span>
+                </p>
+              ) : null}
               {marketsLoading ? (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                   {Array.from({ length: 6 }).map((_, i) => (
@@ -495,15 +565,9 @@ export default function HomePage() {
               ) : filtered.length === 0 ? (
                 <EmptyState
                   icon={Inbox}
-                  title="No markets in this filter"
-                  description="Try another filter or create a new market with the form above."
-                  action={{
-                    label: "Create a market",
-                    onClick: () =>
-                      document
-                        .getElementById("create-market")
-                        ?.scrollIntoView({ behavior: "smooth" }),
-                  }}
+                  title={emptyGridContent.title}
+                  description={emptyGridContent.description}
+                  action={emptyGridContent.action}
                 />
               ) : (
                 <motion.div

@@ -30,6 +30,7 @@ import { PoolBar } from "@/components/PoolBar";
 import { Timer } from "@/components/Timer";
 import { useToast } from "@/components/ToastProvider";
 import { marketQueryKey, useMarket } from "@/hooks/useMarket";
+import { useWatchlist } from "@/hooks/useWatchlist";
 import {
   marketBetsQueryKey,
   useMarketBetsList,
@@ -118,7 +119,7 @@ export default function MarketPage() {
   const [detailTab, setDetailTab] = useState<DetailTab>("about");
   const [chartTf, setChartTf] = useState<ChartTf>("1h");
   const [chartReady, setChartReady] = useState(false);
-  const [watching, setWatching] = useState(false);
+  const { has: isStarred, toggle: toggleStar } = useWatchlist();
 
   /**
    * Derive the user's existing position on this market from the API so it
@@ -511,16 +512,19 @@ export default function MarketPage() {
           </span>
           <motion.button
             whileTap={{ scale: 0.95 }}
-            onClick={() => setWatching((v) => !v)}
+            type="button"
+            onClick={() => market && toggleStar(market.id)}
             className={
-              watching
+              market && isStarred(market.id)
                 ? "flex items-center gap-1.5 rounded-md border border-accent bg-accent px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-ink"
                 : "flex items-center gap-1.5 rounded-md border border-border bg-bg px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-fg-soft transition-colors hover:border-accent hover:text-accent"
             }
           >
             <Star
               className="h-3 w-3"
-              fill={watching ? "currentColor" : "none"}
+              fill={
+                market && isStarred(market.id) ? "currentColor" : "none"
+              }
               aria-hidden
             />
             Watch

@@ -333,8 +333,18 @@
     },
     {
       "code": 6011,
+      "name": "BetSideMismatch",
+      "msg": "Add stake on the same side as your existing bet (cannot switch survive/rug)"
+    },
+    {
+      "code": 6012,
       "name": "InsufficientRent",
       "msg": "Insufficient lamports to preserve rent on market"
+    },
+    {
+      "code": 6013,
+      "name": "CannotResolveBeforeExpiry",
+      "msg": "Market cannot be resolved before expires_at"
     }
   ],
   "types": [
@@ -482,6 +492,13 @@
           {
             "name": "platform_fee_bps",
             "type": "u64"
+          },
+          {
+            "name": "platform_authority",
+            "docs": [
+              "Resolver + fee recipient; set once in `create_market` from `platform_authority` signer."
+            ],
+            "type": "pubkey"
           },
           {
             "name": "bump",

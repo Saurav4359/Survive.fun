@@ -20,6 +20,7 @@ import {
 } from "@solana/web3.js";
 
 import survivefunIdl from "@/idl/survivefun.json";
+import type { Survivefun } from "@/types/survivefun";
 import {
   MARKET_DURATIONS,
   ONCHAIN_MAX_STAKE_RAW,
@@ -488,13 +489,14 @@ export async function claimPayout(
     throw new Error("Invalid market or bet PDA.");
   }
 
-  const platformAuthority = platformAuthorityOrCreator(bettor);
-
   const connection = getConnection();
   const provider = new AnchorProvider(connection, toAnchorWallet(wallet), {
     commitment: "confirmed",
   });
-  const program = new Program(survivefunIdl as Idl, provider);
+  const program = new Program<Survivefun>(survivefunIdl, provider);
+
+  const marketAcc = await program.account.market.fetch(marketPk);
+  const platformAuthority = marketAcc.platformAuthority;
 
   const ix = await program.methods
     .claimPayout()
