@@ -18,7 +18,8 @@
     "simulate-survive": "ts-node --project tsconfig.scripts.json scripts/simulate-survive.ts",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f --tail=200"
+    "docker:logs": "docker compose logs -f --tail=200",
+    "demo": "tsx scripts/setup-demo.ts"
   },
   "devDependencies": {
     "@survivefun/types": "workspace:^",
@@ -28,6 +29,7 @@
     "@types/node": "^20.17.10",
     "dotenv": "^16.4.7",
     "prisma": "^6.19.3",
+    "tsx": "^4.20.6",
     "ts-node": "^10.9.2",
     "turbo": "^2.5.4",
     "typescript": "^5.7.2"
