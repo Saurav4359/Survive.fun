@@ -7,6 +7,7 @@ import cors from "cors";
 import express, { Router } from "express";
 import { Server } from "socket.io";
 
+import { assertProductionSafeOrExit } from "./config/productionGate";
 import { startBackgroundJobs } from "./jobs/backgroundJobs";
 import { errorHandler } from "./middleware/errorHandler";
 import { marketBetsRouter, userBetsRouter } from "./routes/bets";
@@ -20,6 +21,9 @@ import {
 } from "./routes/webhook";
 import { initSocketHandler } from "./websocket/socketHandler";
 
+assertProductionSafeOrExit();
+
+const isProduction = process.env.NODE_ENV === "production";
 const PORT_RAW = process.env.PORT?.trim();
 const parsedPort =
   PORT_RAW !== undefined && PORT_RAW !== ""
@@ -27,16 +31,31 @@ const parsedPort =
     : Number.NaN;
 const PORT = Number.isFinite(parsedPort) ? parsedPort : 3001;
 
-const corsOrigins = process.env.CORS_ORIGIN?.split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+const corsOrigins: string[] =
+  process.env.CORS_ORIGIN?.split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean) ?? [];
+
+if (isProduction && corsOrigins.length === 0) {
+  console.error(
+    "[fatal] CORS_ORIGIN must list allowed origins (comma-separated) when NODE_ENV=production",
+  );
+  process.exit(1);
+}
+
+/** In production, only explicit origins (after check above). In dev, reflect any origin if unset. */
+const expressCorsOrigin: boolean | string[] =
+  corsOrigins.length > 0 ? corsOrigins : true;
+/** Socket.IO: wildcard only when not production and CORS_ORIGIN unset. */
+const socketCorsOrigin: string | string[] =
+  corsOrigins.length > 0 ? corsOrigins : "*";
 
 const app = express();
 const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
   cors: {
-    origin: corsOrigins && corsOrigins.length > 0 ? corsOrigins : "*",
+    origin: socketCorsOrigin,
     methods: ["GET", "POST"],
   },
 });
@@ -46,7 +65,7 @@ console.log("✅ Socket.io initialized");
 
 app.use(
   cors({
-    origin: corsOrigins && corsOrigins.length > 0 ? corsOrigins : true,
+    origin: expressCorsOrigin,
     credentials: true,
   }),
 );
