@@ -166,11 +166,18 @@ function collectTransferSenders(ev: Record<string, unknown>): string[] {
 async function resolveActiveMarketAsRug(row: DbMarket): Promise<void> {
   const rug = await detectRug(dbMarketToDetectInput(row));
   if (!rug.isRug) return;
-  await processMarketResolution(
-    row.id,
-    "rug",
-    rug.condition ?? "unknown",
-  );
+  try {
+    await processMarketResolution(
+      row.id,
+      "rug",
+      rug.condition ?? "unknown",
+    );
+  } catch (e) {
+    console.log(`${LOG_PREFIX} processMarketResolution failed (rug)`, {
+      marketId: row.id,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
 }
 
 async function handleTokenMintEvent(ev: Record<string, unknown>): Promise<void> {

@@ -1,5 +1,5 @@
 /**
- * Parimutuel payout math + DB resolution persistence + optional on-chain resolve.
+ * Parimutuel payout math + on-chain resolve FIRST, then DB persistence.
  */
 
 import { Prisma } from "@prisma/client";
@@ -85,6 +85,29 @@ export async function processMarketResolution(
     });
   }
 
+  try {
+    const sig = await resolveMarketOnChain(
+      connection,
+      market.tokenMint,
+      market.durationSeconds,
+      outcome,
+    );
+    console.log(`${LOG_PREFIX} ✅ On-chain resolved`, {
+      marketId,
+      outcome,
+      signature: sig.signature,
+      marketPda: sig.marketPda,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`${LOG_PREFIX} ❌ On-chain resolution failed (DB not updated)`, {
+      marketId,
+      outcome,
+      error: msg,
+    });
+    throw new Error(`On-chain resolution failed: ${msg}`);
+  }
+
   const resolvedAt = new Date();
 
   await prisma.$transaction(async (tx) => {
@@ -151,26 +174,6 @@ export async function processMarketResolution(
       });
     }
   });
-
-  try {
-    const sig = await resolveMarketOnChain(
-      connection,
-      market.tokenMint,
-      market.durationSeconds,
-      outcome,
-    );
-    console.log(`${LOG_PREFIX} resolve_market on-chain ok`, {
-      marketId,
-      outcome,
-      signature: sig.signature,
-    });
-  } catch (e) {
-    console.log(`${LOG_PREFIX} resolve_market on-chain failed (DB already updated)`, {
-      marketId,
-      outcome,
-      error: e instanceof Error ? e.message : String(e),
-    });
-  }
 
   const dto = toMarketDto(
     await prisma.market.findUniqueOrThrow({ where: { id: marketId } }),
