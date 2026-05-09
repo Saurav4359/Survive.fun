@@ -384,11 +384,6 @@
     },
     {
       "code": 6013,
-      "name": "CannotResolveBeforeExpiry",
-      "msg": "Market cannot be resolved before expires_at"
-    },
-    {
-      "code": 6014,
       "name": "MarketHasOpenPositions",
       "msg": "Market cannot be closed while it has bets or non-seed pool funds"
     }
