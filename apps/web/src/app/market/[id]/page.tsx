@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   Clock,
   Droplets,
+  Loader2,
   Star,
   Timer as TimerIcon,
   Users,
@@ -509,8 +510,18 @@ export default function MarketPage() {
     market.outcome != null &&
     userMarketBet.side === market.outcome &&
     !userMarketBet.claimed &&
-    (myPayout === undefined ||
-      (myPayout.found && myPayout.won && !myPayout.claimed));
+    myPayout !== undefined &&
+    myPayout.found &&
+    myPayout.won &&
+    !myPayout.claimed &&
+    myPayout.onChainResolved;
+
+  const payoutProcessing =
+    myPayout !== undefined &&
+    myPayout.found &&
+    myPayout.won &&
+    !myPayout.claimed &&
+    !myPayout.onChainResolved;
 
   const sortedSignals = useMemo(() => {
     const items: { label: string; value: string; Icon: typeof Droplets }[] = [];
@@ -1044,6 +1055,17 @@ export default function MarketPage() {
                       >
                         {claimMut.isPending ? "Claiming…" : "Claim payout"}
                       </motion.button>
+                    ) : payoutProcessing ? (
+                      <div className="flex flex-col items-center gap-2 py-2 font-mono text-[11px] text-fg-muted">
+                        <Loader2
+                          className="h-5 w-5 animate-spin text-accent"
+                          aria-hidden
+                        />
+                        <p className="text-center leading-relaxed">
+                          Payout processing… (on-chain settlement). This usually
+                          clears within ~30s.
+                        </p>
+                      </div>
                     ) : payoutTxSig ? (
                       <a
                         href={solscanTxUrl(payoutTxSig)}

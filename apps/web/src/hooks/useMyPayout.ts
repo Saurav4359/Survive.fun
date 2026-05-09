@@ -43,6 +43,20 @@ export function useMyPayout(
     queryFn: () => fetchMyPayout(marketId!, wallet!),
     enabled: Boolean(marketId?.trim() && wallet?.trim()) && enabled,
     staleTime: 5000,
+    /** Poll while DB shows a win but Solana market is not Resolved yet (resolver retry). */
+    refetchInterval: (query) => {
+      const d = query.state.data;
+      if (
+        d &&
+        d.found &&
+        d.won &&
+        !d.claimed &&
+        !d.onChainResolved
+      ) {
+        return 10_000;
+      }
+      return false;
+    },
   });
 
   return {
