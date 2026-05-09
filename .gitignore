@@ -12,6 +12,7 @@ build
 
 # Anchor / Rust
 contracts/target
+contracts/.anchor
 **/*.rs.bk
 
 # Env

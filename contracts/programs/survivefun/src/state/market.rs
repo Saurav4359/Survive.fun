@@ -13,8 +13,6 @@ pub enum Outcome {
     Rug,
 }
 
-/// Bonding-curve market account backing Survive.fun pools.
-/// Rent: allocate `8 + Market::INIT_SPACE` bytes (8-byte Anchor account discriminator).
 #[account]
 #[derive(InitSpace)]
 pub struct Market {
