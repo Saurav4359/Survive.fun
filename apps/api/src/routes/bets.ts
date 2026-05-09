@@ -1,4 +1,10 @@
-import type { ApiResponse, Bet, BetSide, BetWithMarket } from "@survivefun/types";
+import type {
+  ApiResponse,
+  Bet,
+  BetSide,
+  BetWithMarket,
+  MarketCurrency,
+} from "@survivefun/types";
 import { Prisma } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
@@ -7,8 +13,12 @@ import { connection } from "../config/solana";
 import { prisma } from "../config/database";
 import { toBetDto, toBetWithMarketDto, toMarketDto } from "../lib/dto";
 import { marketPdaBase58ForDbRow } from "../lib/marketOnChain";
-import { verifyPlaceBetTransaction } from "../lib/solanaTxVerify";
-import { parseBody, parseQuery } from "../lib/zodUtil";
+import {
+  ONCHAIN_MAX_STAKE_RAW,
+  ONCHAIN_MIN_STAKE_RAW,
+  verifyPlaceBetTransaction,
+} from "../lib/solanaTxVerify";
+import { formatZod, parseQuery } from "../lib/zodUtil";
 import { AppError } from "../middleware/errorHandler";
 import { emitBetPlaced, emitPoolUpdate } from "../websocket/socketHandler";
 
@@ -27,7 +37,8 @@ const marketIdParamSchema = z.object({
 
 const placeBetBodySchema = z.object({
   side: z.enum(["survive", "rug"]),
-  amount: z.coerce.number().min(1).max(50),
+  currency: z.literal("sol"),
+  amount: z.union([z.number(), z.string()]),
   txSignature: z.string().min(64).max(128),
   walletAddress: solanaAddress,
 });
@@ -36,22 +47,57 @@ const walletParamSchema = z.object({
   wallet: solanaAddress,
 });
 
-function potentialPayoutUsdc(
+function marketCurrency(row: { currency: string }): MarketCurrency {
+  return row.currency === "sol" ? "sol" : "usdc";
+}
+
+function parseSolLamports(amount: unknown): bigint {
+  if (typeof amount === "number") {
+    if (!Number.isInteger(amount)) {
+      throw new AppError(
+        "SOL_AMOUNT_INVALID",
+        "SOL amount must be in lamports",
+        400,
+      );
+    }
+    return BigInt(amount);
+  }
+  if (typeof amount === "string" && /^\d+$/.test(amount)) {
+    return BigInt(amount);
+  }
+  throw new AppError(
+    "SOL_AMOUNT_INVALID",
+    "SOL amount must be in lamports",
+    400,
+  );
+}
+
+function assertSolStakeRange(lamports: bigint): void {
+  if (lamports < ONCHAIN_MIN_STAKE_RAW || lamports > ONCHAIN_MAX_STAKE_RAW) {
+    throw new AppError(
+      "SOL_AMOUNT_INVALID",
+      "SOL amount must be in lamports",
+      400,
+    );
+  }
+}
+
+function potentialPayoutLamports(
   side: BetSide,
-  survive: number,
-  rug: number,
-  amount: number,
-): number {
-  if (amount <= 0 || !Number.isFinite(amount)) return 0;
+  survive: bigint,
+  rug: bigint,
+  amount: bigint,
+): bigint {
+  if (amount <= 0n) return 0n;
   if (side === "survive") {
     const ts = survive + amount;
     const tr = rug;
-    if (ts <= 0) return amount;
+    if (ts === 0n) return amount;
     return (amount * (ts + tr)) / ts;
   }
   const tr = rug + amount;
   const ts = survive;
-  if (tr <= 0) return amount;
+  if (tr === 0n) return amount;
   return (amount * (ts + tr)) / tr;
 }
 
@@ -62,7 +108,18 @@ function skipTxVerification(): boolean {
 marketBetsRouter.post("/:id/bets", async (req, res, next) => {
   try {
     const { id: marketId } = parseQuery(marketIdParamSchema, req.params);
-    const input = parseBody(placeBetBodySchema, req.body);
+    const parsed = placeBetBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      const currencyBad = parsed.error.issues.some(
+        (i) => i.path[0] === "currency",
+      );
+      throw new AppError(
+        currencyBad ? "INVALID_CURRENCY" : "VALIDATION_ERROR",
+        currencyBad ? "Currency must be sol" : formatZod(parsed.error),
+        400,
+      );
+    }
+    const raw = parsed.data;
 
     const marketRow = await prisma.market.findUnique({ where: { id: marketId } });
     if (!marketRow) {
@@ -76,15 +133,29 @@ marketBetsRouter.post("/:id/bets", async (req, res, next) => {
       );
     }
 
+    const mCur = marketCurrency(marketRow);
+    if (mCur !== "sol") {
+      throw new AppError(
+        "LEGACY_MARKET",
+        "This market uses deprecated collateral; only SOL markets accept bets.",
+        400,
+      );
+    }
+
+    const lamports = parseSolLamports(raw.amount);
+    assertSolStakeRange(lamports);
+    const stakeDecimal = new Prisma.Decimal(lamports.toString());
+    const verifyStake = { currency: "sol" as const, lamports };
+
     if (!skipTxVerification()) {
       const marketPk = marketPdaBase58ForDbRow(marketRow);
       await verifyPlaceBetTransaction(
         connection,
-        input.txSignature,
-        input.walletAddress,
+        raw.txSignature,
+        raw.walletAddress,
         marketPk,
-        input.side,
-        input.amount,
+        raw.side,
+        verifyStake,
       );
     }
 
@@ -100,23 +171,18 @@ marketBetsRouter.post("/:id/bets", async (req, res, next) => {
           400,
         );
       }
-
-      const survive = Number(market.survivePool);
-      const rug = Number(market.rugPool);
-      if (!Number.isFinite(survive) || !Number.isFinite(rug)) {
-        throw new AppError("INVALID_POOL", "Invalid pool state", 500);
+      if (marketCurrency(market) !== mCur) {
+        throw new AppError("CURRENCY_MISMATCH", "Market currency changed", 409);
       }
 
-      const payout = potentialPayoutUsdc(
-        input.side,
-        survive,
-        rug,
-        input.amount,
-      );
-      const potentialWin = new Prisma.Decimal(payout.toFixed(6));
+      const survive = BigInt(market.survivePool.toFixed(0).split(".")[0]!);
+      const rug = BigInt(market.rugPool.toFixed(0).split(".")[0]!);
+      const amt = BigInt(stakeDecimal.toFixed(0).split(".")[0]!);
+      const payout = potentialPayoutLamports(raw.side, survive, rug, amt);
+      const potentialWin = new Prisma.Decimal(payout.toString());
 
       const priorBets = await tx.bet.count({
-        where: { marketId, bettorWallet: input.walletAddress },
+        where: { marketId, bettorWallet: raw.walletAddress },
       });
 
       let bet;
@@ -124,11 +190,12 @@ marketBetsRouter.post("/:id/bets", async (req, res, next) => {
         bet = await tx.bet.create({
           data: {
             marketId,
-            bettorWallet: input.walletAddress,
-            side: input.side,
-            amountUsdc: new Prisma.Decimal(input.amount),
+            bettorWallet: raw.walletAddress,
+            side: raw.side,
+            currency: mCur,
+            amountUsdc: stakeDecimal,
             potentialWin,
-            txSignature: input.txSignature,
+            txSignature: raw.txSignature,
           },
         });
       } catch (e) {
@@ -146,13 +213,9 @@ marketBetsRouter.post("/:id/bets", async (req, res, next) => {
       }
 
       const incSurvive =
-        input.side === "survive"
-          ? new Prisma.Decimal(input.amount)
-          : new Prisma.Decimal(0);
+        raw.side === "survive" ? stakeDecimal : new Prisma.Decimal(0);
       const incRug =
-        input.side === "rug"
-          ? new Prisma.Decimal(input.amount)
-          : new Prisma.Decimal(0);
+        raw.side === "rug" ? stakeDecimal : new Prisma.Decimal(0);
 
       const updated = await tx.market.update({
         where: { id: marketId },
@@ -171,9 +234,11 @@ marketBetsRouter.post("/:id/bets", async (req, res, next) => {
 
     emitBetPlaced({
       marketId,
-      bettorWallet: input.walletAddress,
-      side: input.side,
-      amountUsdc: dto.amountUsdc,
+      bettorWallet: raw.walletAddress,
+      side: raw.side,
+      currency: mCur,
+      amountUsdc: "0",
+      amountLamports: dto.amountLamports,
       survivePool: marketDto.survivePool,
       rugPool: marketDto.rugPool,
       timestamp: dto.createdAt,

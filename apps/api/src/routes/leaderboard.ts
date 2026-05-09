@@ -32,7 +32,7 @@ router.get("/", async (req, res, next) => {
 
     if (tab === "biggest-payouts") {
       const rows = await prisma.bet.findMany({
-        where: { payoutAmount: { not: null } },
+        where: { payoutAmount: { not: null }, currency: "sol" },
         orderBy: { payoutAmount: "desc" },
         take: limit,
         include: { market: true },
@@ -53,6 +53,7 @@ router.get("/", async (req, res, next) => {
 
     const bets = await prisma.bet.findMany({
       where: {
+        currency: "sol",
         market: { status: "resolved" },
         ...(tab === "rug-callers" ? { side: "rug" } : {}),
       },

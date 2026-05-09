@@ -2,7 +2,7 @@ import type { ZodError, ZodType } from "zod";
 
 import { AppError } from "../middleware/errorHandler";
 
-function formatZod(e: ZodError): string {
+export function formatZod(e: ZodError): string {
   return e.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`).join("; ");
 }
 

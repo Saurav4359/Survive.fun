@@ -9,7 +9,7 @@ export const connection = new Connection(
 );
 
 /** Default from `contracts/programs/survivefun` Anchor `declare_id!` (local dev). */
-const DEFAULT_DEV_PROGRAM_ID = "HB3uE5XQGq1xNtW9RMSrnBegwifeLzk1xyr75ofRPrtH";
+const DEFAULT_DEV_PROGRAM_ID = "3shYxrDG1srw1Wxu2yVnrnEUk53m6tS8HDyVKuoYLVd1";
 
 let programIdMemo: PublicKey | null = null;
 

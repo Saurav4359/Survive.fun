@@ -18,7 +18,7 @@ import {
 } from "../lib/dexscreener";
 import { toMarketDto } from "../lib/dto";
 import { verifyCreateMarketTransaction } from "../lib/solanaTxVerify";
-import { parseBody, parseQuery } from "../lib/zodUtil";
+import { formatZod, parseQuery } from "../lib/zodUtil";
 import { AppError } from "../middleware/errorHandler";
 import { emitMarketCreated } from "../websocket/socketHandler";
 
@@ -30,6 +30,12 @@ const solanaAddress = z
   .max(44)
   .regex(/^[1-9A-HJ-NP-Za-km-z]+$/, "Invalid base58 address");
 
+const durationSecondsQuery = z.union([
+  z.literal(3600),
+  z.literal(21_600),
+  z.literal(86_400),
+]);
+
 const listMarketsQuerySchema = z.object({
   status: z
     .enum(["active", "resolved", "expired", "all"])
@@ -37,6 +43,8 @@ const listMarketsQuerySchema = z.object({
     .default("active"),
   page: z.coerce.number().int().min(1).optional().default(1),
   limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+  tokenMint: solanaAddress.optional(),
+  durationSeconds: durationSecondsQuery.optional(),
 });
 
 const createMarketBodySchema = z.object({
@@ -52,6 +60,7 @@ const createMarketBodySchema = z.object({
       ),
   ]),
   walletAddress: solanaAddress,
+  currency: z.literal("sol").default("sol"),
   createMarketTxSignature: z.string().min(64).max(128).optional(),
 });
 
@@ -66,6 +75,8 @@ const chartQuerySchema = z.object({
 const activeMarketsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional().default(1),
   limit: z.coerce.number().int().min(1).max(100).optional().default(100),
+  tokenMint: solanaAddress.optional(),
+  durationSeconds: durationSecondsQuery.optional(),
 });
 
 function allowDbOnlyMarketCreate(): boolean {
@@ -75,10 +86,16 @@ function allowDbOnlyMarketCreate(): boolean {
 router.get("/", async (req, res, next) => {
   try {
     const q = parseQuery(listMarketsQuerySchema, req.query);
-    const where =
+    const where: Record<string, unknown> =
       q.status === "all"
         ? {}
         : { status: q.status as "active" | "resolved" | "expired" };
+    if (q.tokenMint) {
+      where.tokenMint = q.tokenMint;
+    }
+    if (q.durationSeconds != null) {
+      where.durationSeconds = q.durationSeconds;
+    }
 
     const [total, rows] = await Promise.all([
       prisma.market.count({ where }),
@@ -108,7 +125,13 @@ router.get("/", async (req, res, next) => {
 router.get("/active", async (req, res, next) => {
   try {
     const q = parseQuery(activeMarketsQuerySchema, req.query);
-    const where = { status: "active" as const };
+    const where: Record<string, unknown> = { status: "active" as const };
+    if (q.tokenMint) {
+      where.tokenMint = q.tokenMint;
+    }
+    if (q.durationSeconds != null) {
+      where.durationSeconds = q.durationSeconds;
+    }
     const [total, rows] = await Promise.all([
       prisma.market.count({ where }),
       prisma.market.findMany({
@@ -187,7 +210,37 @@ router.get("/:id", async (req, res, next) => {
 
 router.post("/", async (req, res, next) => {
   try {
-    const input = parseBody(createMarketBodySchema, req.body);
+    const parsed = createMarketBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      const currencyBad = parsed.error.issues.some(
+        (i) => i.path[0] === "currency",
+      );
+      throw new AppError(
+        currencyBad ? "INVALID_CURRENCY" : "VALIDATION_ERROR",
+        currencyBad
+          ? "Currency must be sol"
+          : formatZod(parsed.error),
+        400,
+      );
+    }
+    const input = parsed.data;
+
+    const existingActive = await prisma.market.findFirst({
+      where: {
+        tokenMint: input.tokenMint,
+        durationSeconds: input.duration,
+        status: "active",
+      },
+    });
+    if (existingActive) {
+      const body: ApiResponse<Market> = {
+        success: true,
+        data: toMarketDto(existingActive),
+      };
+      res.status(200).json(body);
+      return;
+    }
+
     const pair = await requireDexPairForMint(input.tokenMint);
     const boot = pairToMarketBootstrap(pair, input.tokenMint);
 
@@ -217,6 +270,7 @@ router.post("/", async (req, res, next) => {
       );
     }
 
+    const seedLamportsPerSide = "10000000";
     const row = await prisma.market.create({
       data: {
         tokenMint: input.tokenMint,
@@ -225,13 +279,14 @@ router.post("/", async (req, res, next) => {
         creatorWallet: input.walletAddress,
         durationSeconds: input.duration,
         expiresAt,
-        survivePool: 0,
-        rugPool: 0,
+        survivePool: onChainAddress ? seedLamportsPerSide : "0",
+        rugPool: onChainAddress ? seedLamportsPerSide : "0",
         openPrice: boot.openPrice,
         openLiquidity: boot.openLiquidity,
         devWallet: boot.devWallet,
         status: "active",
         onChainAddress,
+        currency: input.currency,
       },
     });
 

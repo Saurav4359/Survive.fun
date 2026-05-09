@@ -1,7 +1,27 @@
-import type { Bet, BetWithMarket, Market } from "@survivefun/types";
+import type {
+  Bet,
+  BetWithMarket,
+  Market,
+  MarketCurrency,
+} from "@survivefun/types";
 import type { Bet as DbBet, Market as DbMarket } from "@prisma/client";
 
+import { marketPdaBase58ForMintAndDuration } from "./marketOnChain";
+
+function asMarketCurrency(raw: string): MarketCurrency {
+  return raw === "sol" ? "sol" : "usdc";
+}
+
+function lamportsIntegerString(d: { toFixed: (n: number) => string }): string {
+  return d.toFixed(0).split(".")[0] ?? "0";
+}
+
 export function toMarketDto(row: DbMarket): Market {
+  const canonicalPda = marketPdaBase58ForMintAndDuration(
+    row.tokenMint,
+    row.durationSeconds,
+  );
+  const stored = row.onChainAddress?.trim() ?? null;
   return {
     id: row.id,
     tokenMint: row.tokenMint,
@@ -19,19 +39,24 @@ export function toMarketDto(row: DbMarket): Market {
       row.devSellThresholdOverride?.toString() ?? null,
     status: row.status as Market["status"],
     outcome: (row.outcome as Market["outcome"] | null) ?? null,
-    onChainAddress: row.onChainAddress,
+    onChainAddress: stored == null ? null : canonicalPda,
     createdAt: row.createdAt.toISOString(),
     totalBettors: row.totalBettors,
+    currency: asMarketCurrency(row.currency),
   };
 }
 
 export function toBetDto(row: DbBet): Bet {
+  const cur = asMarketCurrency(row.currency);
+  const isUsdc = cur === "usdc";
   return {
     id: row.id,
     marketId: row.marketId,
     bettorWallet: row.bettorWallet,
     side: row.side as Bet["side"],
-    amountUsdc: row.amountUsdc.toString(),
+    currency: cur,
+    amountUsdc: isUsdc ? row.amountUsdc.toString() : null,
+    amountLamports: isUsdc ? null : lamportsIntegerString(row.amountUsdc),
     potentialWin: row.potentialWin?.toString() ?? null,
     txSignature: row.txSignature,
     claimed: row.claimed,

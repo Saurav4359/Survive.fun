@@ -20,6 +20,7 @@ import {
 
 import { connection, getProgramId } from "../config/solana";
 import { prisma } from "../config/database";
+import { toMarketDto } from "../lib/dto";
 import { detectRug } from "../services/rugDetector";
 import { emitMarketResolved } from "../websocket/socketHandler";
 
@@ -69,42 +70,26 @@ function loadPlatformKeypair(): Keypair {
   return platformKeypairCache;
 }
 
-function toMarketDto(row: DbMarket): Market {
-  return {
-    id: row.id,
-    tokenMint: row.tokenMint,
-    tokenName: row.tokenName,
-    tokenTicker: row.tokenTicker,
-    creatorWallet: row.creatorWallet,
-    durationSeconds: row.durationSeconds,
-    expiresAt: row.expiresAt.toISOString(),
-    survivePool: row.survivePool.toString(),
-    rugPool: row.rugPool.toString(),
-    openPrice: row.openPrice?.toString() ?? null,
-    openLiquidity: row.openLiquidity?.toString() ?? null,
-    devWallet: row.devWallet,
-    devSellThresholdOverride:
-      row.devSellThresholdOverride?.toString() ?? null,
-    status: row.status as Market["status"],
-    outcome: (row.outcome as Market["outcome"] | null) ?? null,
-    onChainAddress: row.onChainAddress,
-    createdAt: row.createdAt.toISOString(),
-    totalBettors: row.totalBettors,
-  };
+function durationSeedLe(durationSeconds: number): Buffer {
+  const b = Buffer.allocUnsafe(8);
+  b.writeBigUInt64LE(BigInt(durationSeconds), 0);
+  return b;
 }
 
-function marketPda(tokenMint: PublicKey): PublicKey {
+function marketPda(tokenMint: PublicKey, durationSeconds: number): PublicKey {
   const [pda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("market"), tokenMint.toBuffer()],
+    [
+      Buffer.from("market"),
+      tokenMint.toBuffer(),
+      durationSeedLe(durationSeconds),
+    ],
     getProgramId(),
   );
   return pda;
 }
 
 function marketAccountPk(dto: Market): PublicKey {
-  const trimmed = dto.onChainAddress?.trim();
-  if (trimmed) return new PublicKey(trimmed);
-  return marketPda(new PublicKey(dto.tokenMint));
+  return marketPda(new PublicKey(dto.tokenMint), dto.durationSeconds);
 }
 
 /**

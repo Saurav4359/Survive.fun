@@ -65,7 +65,10 @@ async function runStatsUpdater(): Promise<void> {
     ] = await Promise.all([
       prisma.market.count({ where: { status: "active" } }),
       prisma.market.count(),
-      prisma.bet.aggregate({ _sum: { amountUsdc: true } }),
+      prisma.bet.aggregate({
+        where: { currency: "usdc" },
+        _sum: { amountUsdc: true },
+      }),
       prisma.market.count({
         where: { status: "resolved", outcome: "rug" },
       }),

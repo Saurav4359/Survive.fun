@@ -10,12 +10,23 @@ import {
   type PartiallyDecodedInstruction,
   PublicKey,
   type ParsedTransactionWithMeta,
+  type TokenBalance,
 } from "@solana/web3.js";
 
 import { getProgramId } from "../config/solana";
 import { AppError } from "../middleware/errorHandler";
 
 const USDC_DECIMALS = 6;
+
+/** On-chain min/max stake (lamports) — matches `MIN_BET_LAMPORTS` / `MAX_BET_LAMPORTS` in program. */
+export const ONCHAIN_MIN_STAKE_RAW = 10_000_000n;
+export const ONCHAIN_MAX_STAKE_RAW = 10_000_000_000n;
+
+function durationSeedLe(durationSeconds: number): Buffer {
+  const b = Buffer.allocUnsafe(8);
+  b.writeBigUInt64LE(BigInt(durationSeconds), 0);
+  return b;
+}
 
 function anchorIxDiscriminator(name: string): Buffer {
   const hash = createHash("sha256").update(`global:${name}`).digest();
@@ -88,7 +99,11 @@ export async function verifyCreateMarketTransaction(
 
   const mintPk = new PublicKey(expectedMint);
   const [expectedPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("market"), mintPk.toBuffer()],
+    [
+      Buffer.from("market"),
+      mintPk.toBuffer(),
+      durationSeedLe(expectedDurationSec),
+    ],
     programId,
   );
 
@@ -119,16 +134,7 @@ export async function verifyCreateMarketTransaction(
         400,
       );
     }
-    if (ix.accounts.length > 4) {
-      const marketAcc = ix.accounts[4];
-      if (marketAcc && !marketAcc.equals(expectedPda)) {
-        throw new AppError(
-          "TX_MARKET_PDA_MISMATCH",
-          "Market account does not match derived PDA",
-          400,
-        );
-      }
-    }
+
     return { marketPda: expectedPda.toBase58() };
   }
 
@@ -145,10 +151,27 @@ export async function verifyPlaceBetTransaction(
   expectedBettor: string,
   marketPdaStr: string,
   expectedSide: "survive" | "rug",
-  amountUsdcUi: number,
+  stake:
+    | { currency: "usdc"; amountUi: number }
+    | { currency: "sol"; lamports: bigint },
 ): Promise<void> {
   const programId = getProgramId();
-  const amountRaw = BigInt(Math.round(amountUsdcUi * 10 ** USDC_DECIMALS));
+  const amountRaw =
+    stake.currency === "usdc"
+      ? BigInt(Math.round(stake.amountUi * 10 ** USDC_DECIMALS))
+      : stake.lamports;
+
+  if (
+    amountRaw < ONCHAIN_MIN_STAKE_RAW ||
+    amountRaw > ONCHAIN_MAX_STAKE_RAW
+  ) {
+    throw new AppError(
+      "TX_AMOUNT_OUT_OF_RANGE",
+      "On-chain bet amount is outside program min/max",
+      400,
+    );
+  }
+
   const marketPk = new PublicKey(marketPdaStr);
   const bettorPk = new PublicKey(expectedBettor);
 

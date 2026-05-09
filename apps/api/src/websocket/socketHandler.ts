@@ -5,6 +5,7 @@
 
 import type { BetPlaced, Market, MarketResolved } from "@survivefun/types";
 import type { Server, Socket } from "socket.io";
+import { z } from "zod";
 
 /** All connected clients are joined here on connect (platform-wide feed). */
 export const ROOM_PLATFORM_FEED = "platform_feed";
@@ -35,11 +36,15 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
 
+const marketIdUuid = z.string().uuid();
+
 function readSubscribeMarketPayload(raw: unknown): { marketId: string } | null {
   if (!isRecord(raw)) return null;
   const marketId = raw.marketId;
   if (typeof marketId !== "string" || marketId.trim() === "") return null;
-  return { marketId: marketId.trim() };
+  const parsed = marketIdUuid.safeParse(marketId.trim());
+  if (!parsed.success) return null;
+  return { marketId: parsed.data };
 }
 
 function handleSubscribeMarket(socket: Socket, raw: unknown): void {

@@ -3,6 +3,7 @@ import type {
   PlatformSnapshot,
   RecentPayout,
 } from "@survivefun/types";
+import { Prisma } from "@prisma/client";
 import { Router } from "express";
 
 import { prisma } from "../config/database";
@@ -11,16 +12,24 @@ const router = Router();
 
 router.get("/", async (_req, res, next) => {
   try {
+    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
     const [
       activeMarkets,
-      volumeSum,
+      volumeSumSolLifetime,
+      volumeSol24h,
       resolvedRugs,
       resolvedSurvives,
-      maxPayout,
+      maxPayoutSol,
       payoutRows,
     ] = await Promise.all([
       prisma.market.count({ where: { status: "active" } }),
       prisma.bet.aggregate({
+        where: { currency: "sol" },
+        _sum: { amountUsdc: true },
+      }),
+      prisma.bet.aggregate({
+        where: { currency: "sol", createdAt: { gte: since24h } },
         _sum: { amountUsdc: true },
       }),
       prisma.market.count({
@@ -30,11 +39,13 @@ router.get("/", async (_req, res, next) => {
         where: { status: "resolved", outcome: "survive" },
       }),
       prisma.bet.aggregate({
+        where: { currency: "sol", payoutAmount: { not: null } },
         _max: { payoutAmount: true },
       }),
       prisma.bet.findMany({
         where: {
           payoutAmount: { not: null },
+          currency: "sol",
         },
         orderBy: { createdAt: "desc" },
         take: 15,
@@ -45,6 +56,14 @@ router.get("/", async (_req, res, next) => {
         },
       }),
     ]);
+
+    const solLamportsSum =
+      volumeSol24h._sum.amountUsdc ?? new Prisma.Decimal(0);
+    const solVolume24h =
+      Number(solLamportsSum.toString()) / 1_000_000_000;
+
+    const lifetimeSolLamports =
+      volumeSumSolLifetime._sum.amountUsdc ?? new Prisma.Decimal(0);
 
     const recentPayouts: RecentPayout[] = payoutRows
       .filter((b) => b.payoutAmount != null)
@@ -59,12 +78,12 @@ router.get("/", async (_req, res, next) => {
 
     const data: PlatformSnapshot = {
       activeMarkets,
-      totalBetVolumeUsdc:
-        volumeSum._sum.amountUsdc?.toString() ?? "0",
+      totalBetVolumeUsdc: lifetimeSolLamports.toString(),
+      solVolume24h,
+      usdcVolume24h: 0,
       resolvedRugs,
       resolvedSurvives,
-      largestPayoutUsdc:
-        maxPayout._max.payoutAmount?.toString() ?? null,
+      largestPayoutUsdc: maxPayoutSol._max.payoutAmount?.toString() ?? null,
       recentPayouts,
     };
 

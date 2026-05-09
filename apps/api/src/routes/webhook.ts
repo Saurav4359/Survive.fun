@@ -15,6 +15,7 @@ import { createHelius } from "@helius-labs/helius-sdk";
 import express, { Router, type Request, type Response } from "express";
 
 import { prisma } from "../config/database";
+import { toMarketDto } from "../lib/dto";
 import { detectRug } from "../services/rugDetector";
 import { resolveOnChain } from "../jobs/resolver";
 import {
@@ -165,30 +166,6 @@ function collectTransferSenders(ev: Record<string, unknown>): string[] {
   return [...out];
 }
 
-function prismaRowToMarket(row: DbMarket): Market {
-  return {
-    id: row.id,
-    tokenMint: row.tokenMint,
-    tokenName: row.tokenName,
-    tokenTicker: row.tokenTicker,
-    creatorWallet: row.creatorWallet,
-    durationSeconds: row.durationSeconds,
-    expiresAt: row.expiresAt.toISOString(),
-    survivePool: row.survivePool.toString(),
-    rugPool: row.rugPool.toString(),
-    openPrice: row.openPrice?.toString() ?? null,
-    openLiquidity: row.openLiquidity?.toString() ?? null,
-    devWallet: row.devWallet,
-    devSellThresholdOverride:
-      row.devSellThresholdOverride?.toString() ?? null,
-    status: row.status as Market["status"],
-    outcome: (row.outcome as Market["outcome"] | null) ?? null,
-    onChainAddress: row.onChainAddress,
-    createdAt: row.createdAt.toISOString(),
-    totalBettors: row.totalBettors,
-  };
-}
-
 function rugEventType(
   condition: Awaited<ReturnType<typeof detectRug>>["condition"],
 ): "dev_sell" | "price_drop" | "liquidity_removed" | "graduation_stall" {
@@ -326,6 +303,7 @@ async function handleTokenMintEvent(ev: Record<string, unknown>): Promise<void> 
       status: "active",
       outcome: null,
       onChainAddress: null,
+      currency: "usdc",
     },
   });
 
@@ -370,7 +348,7 @@ async function handleTransferEvent(ev: Record<string, unknown>): Promise<void> {
 
     for (const row of rows) {
       try {
-        const dto = prismaRowToMarket(row);
+        const dto = toMarketDto(row);
         const rug = await detectRug(dto);
         if (!rug.isRug) continue;
         await resolveActiveMarketAsRug(row, dto, rug);

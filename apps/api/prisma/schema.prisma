@@ -27,6 +27,7 @@ model Market {
   onChainAddress  String?   @map("on_chain_address") @db.VarChar(44)
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
   totalBettors    Int       @default(0) @map("total_bettors")
+  currency        String    @default("usdc") @db.VarChar(10)
 
   bets      Bet[]
   rugEvents RugEvent[]
@@ -42,6 +43,7 @@ model Bet {
   amountUsdc    Decimal   @map("amount_usdc") @db.Decimal(18, 6)
   potentialWin  Decimal?  @map("potential_win") @db.Decimal(18, 6)
   txSignature   String    @unique @map("tx_signature") @db.VarChar(88)
+  currency      String    @default("usdc") @db.VarChar(10)
   claimed       Boolean   @default(false)
   payoutAmount  Decimal?  @map("payout_amount") @db.Decimal(18, 6)
   payoutTx      String?   @map("payout_tx") @db.VarChar(88)
