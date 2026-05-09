@@ -8,7 +8,7 @@
 
 import { timingSafeEqual } from "node:crypto";
 
-import type { Market as DbMarket, Prisma } from "@prisma/client";
+import { Prisma, type Market as DbMarket } from "@prisma/client";
 import type { Market } from "@survivefun/types";
 import axios from "axios";
 import { createHelius } from "@helius-labs/helius-sdk";
@@ -17,11 +17,11 @@ import express, { Router, type Request, type Response } from "express";
 import { prisma } from "../config/database";
 import { toMarketDto } from "../lib/dto";
 import { detectRug } from "../services/rugDetector";
-import { resolveOnChain } from "../jobs/resolver";
 import {
-  emitMarketResolved,
-  emitNewToken,
-} from "../websocket/socketHandler";
+  finalizeRugResolutionAfterChain,
+  resolveOnChain,
+} from "../jobs/resolver";
+import { emitNewToken } from "../websocket/socketHandler";
 
 const LOG_PREFIX = "[heliusWebhook]";
 
@@ -166,79 +166,31 @@ function collectTransferSenders(ev: Record<string, unknown>): string[] {
   return [...out];
 }
 
-function rugEventType(
-  condition: Awaited<ReturnType<typeof detectRug>>["condition"],
-): "dev_sell" | "price_drop" | "liquidity_removed" | "graduation_stall" {
-  if (
-    condition === "dev_sell" ||
-    condition === "price_drop" ||
-    condition === "liquidity_removed" ||
-    condition === "graduation_stall"
-  ) {
-    return condition;
-  }
-  return "price_drop";
-}
-
 async function resolveActiveMarketAsRug(
   row: DbMarket,
   dto: Market,
   rug: Awaited<ReturnType<typeof detectRug>>,
 ): Promise<void> {
-  const updated = await prisma.market.update({
-    where: { id: row.id },
-    data: { status: "resolved", outcome: "rug" },
-  });
-
-  let txSig: string | undefined;
+  let txSig: string;
   try {
     txSig = await resolveOnChain(dto, "rug");
   } catch (e) {
-    console.log(`${LOG_PREFIX} on-chain resolve failed (immediate rug)`, {
+    console.log(`${LOG_PREFIX} on-chain resolve failed (immediate rug); DB unchanged`, {
       marketId: row.id,
       error: e instanceof Error ? e.message : String(e),
     });
+    return;
   }
 
   try {
-    await prisma.rugEvent.create({
-      data: {
-        marketId: row.id,
-        tokenMint: row.tokenMint,
-        eventType: rugEventType(rug.condition),
-        eventData: rug.data as Prisma.InputJsonValue,
-        txSignature: txSig ?? null,
-        detectedAt: new Date(),
-      },
-    });
+    await finalizeRugResolutionAfterChain(row, rug, txSig);
   } catch (e) {
-    console.log(`${LOG_PREFIX} failed to persist rug event (webhook)`, {
+    console.error(`${LOG_PREFIX} CRITICAL: webhook rug resolve on-chain ok but DB finalize failed`, {
       marketId: row.id,
+      txSignature: txSig,
       error: e instanceof Error ? e.message : String(e),
     });
   }
-
-  try {
-    emitMarketResolved({
-      marketId: updated.id,
-      outcome: "rug",
-      survivePool: updated.survivePool.toString(),
-      rugPool: updated.rugPool.toString(),
-      timestamp: new Date().toISOString(),
-    });
-  } catch (e) {
-    console.log(`${LOG_PREFIX} emitMarketResolved failed`, {
-      marketId: updated.id,
-      error: e instanceof Error ? e.message : String(e),
-    });
-  }
-
-  console.log(`${LOG_PREFIX} immediate rug resolution`, {
-    marketId: row.id,
-    tokenMint: row.tokenMint,
-    rugCondition: rug.condition,
-    txSignature: txSig ?? null,
-  });
 }
 
 async function handleTokenMintEvent(ev: Record<string, unknown>): Promise<void> {
@@ -289,23 +241,37 @@ async function handleTokenMintEvent(ev: Record<string, unknown>): Promise<void> 
   const now = new Date();
   const expiresAt = new Date(now.getTime() + ONE_HOUR_SECONDS * 1000);
 
-  const market = await prisma.market.create({
-    data: {
-      tokenMint: mint,
-      tokenName,
-      tokenTicker,
-      creatorWallet,
-      durationSeconds: ONE_HOUR_SECONDS,
-      expiresAt,
-      openPrice,
-      openLiquidity,
-      devWallet: null,
-      status: "active",
-      outcome: null,
-      onChainAddress: null,
-      currency: "usdc",
-    },
-  });
+  let market: DbMarket;
+  try {
+    market = await prisma.market.create({
+      data: {
+        tokenMint: mint,
+        tokenName,
+        tokenTicker,
+        creatorWallet,
+        durationSeconds: ONE_HOUR_SECONDS,
+        expiresAt,
+        openPrice,
+        openLiquidity,
+        devWallet: null,
+        status: "active",
+        outcome: null,
+        onChainAddress: null,
+        currency: "usdc",
+      },
+    });
+  } catch (e) {
+    if (
+      e instanceof Prisma.PrismaClientKnownRequestError &&
+      e.code === "P2002"
+    ) {
+      console.log(`${LOG_PREFIX} active market already exists for mint (unique index)`, {
+        mint,
+      });
+      return;
+    }
+    throw e;
+  }
 
   console.log(`${LOG_PREFIX} auto-created 1h market`, {
     marketId: market.id,

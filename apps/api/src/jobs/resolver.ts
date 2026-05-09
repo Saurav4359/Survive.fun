@@ -2,6 +2,10 @@
  * Periodic market resolver: full `detectRug()` (dev sell, price drop, liquidity,
  * graduation stall) vs expiry → survive. Runs every 30s via BullMQ when
  * REDIS_URL is set, else setInterval. Emits `market_resolved` via Socket.IO.
+ *
+ * Resolution is chain-first: we submit `resolve_market` and only update the DB
+ * (and emit / RugEvent) after `sendAndConfirmTransaction` succeeds, so indexer
+ * state stays aligned with the program (no “resolved” UI while still Active on-chain).
  */
 
 import { createHash } from "node:crypto";
@@ -98,7 +102,7 @@ function marketAccountPk(dto: Market): PublicKey {
 export async function resolveOnChain(
   market: Market,
   outcome: MarketOutcome,
-): Promise<string | undefined> {
+): Promise<string> {
   const platform = loadPlatformKeypair();
   const marketPk = marketAccountPk(market);
   const outcomeU8 =
@@ -145,43 +149,32 @@ function rugEventType(
   return "price_drop";
 }
 
-async function handleRugResolution(
+/**
+ * After a confirmed on-chain `resolve_market` (rug), persist DB + RugEvent + socket.
+ * Call only when `resolveOnChain` has already succeeded.
+ */
+export async function finalizeRugResolutionAfterChain(
   row: DbMarket,
-  dto: Market,
   rug: Awaited<ReturnType<typeof detectRug>>,
+  txSig: string,
 ): Promise<void> {
-  const updated = await prisma.market.update({
-    where: { id: row.id },
-    data: { status: "resolved", outcome: "rug" },
-  });
-
-  let txSig: string | undefined;
-  try {
-    txSig = await resolveOnChain(dto, "rug");
-  } catch (e) {
-    console.log(`${LOG_PREFIX} on-chain resolve failed (rug)`, {
-      marketId: row.id,
-      error: e instanceof Error ? e.message : String(e),
+  const updated = await prisma.$transaction(async (tx) => {
+    const m = await tx.market.update({
+      where: { id: row.id },
+      data: { status: "resolved", outcome: "rug" },
     });
-  }
-
-  try {
-    await prisma.rugEvent.create({
+    await tx.rugEvent.create({
       data: {
         marketId: row.id,
         tokenMint: row.tokenMint,
         eventType: rugEventType(rug.condition),
         eventData: rug.data as Prisma.InputJsonValue,
-        txSignature: txSig ?? null,
+        txSignature: txSig,
         detectedAt: new Date(),
       },
     });
-  } catch (e) {
-    console.log(`${LOG_PREFIX} failed to persist rug event`, {
-      marketId: row.id,
-      error: e instanceof Error ? e.message : String(e),
-    });
-  }
+    return m;
+  });
 
   emitMarketResolved({
     marketId: updated.id,
@@ -191,32 +184,25 @@ async function handleRugResolution(
     timestamp: new Date().toISOString(),
   });
 
-  console.log(`${LOG_PREFIX} resolved market as rug`, {
+  console.log(`${LOG_PREFIX} resolved market as rug (chain confirmed)`, {
     marketId: row.id,
     tokenMint: row.tokenMint,
     rugCondition: rug.condition,
-    txSignature: txSig ?? null,
+    txSignature: txSig,
   });
 }
 
-async function handleSurviveResolution(
+/**
+ * After a confirmed on-chain `resolve_market` (survive), persist DB + socket.
+ */
+export async function finalizeSurviveResolutionAfterChain(
   row: DbMarket,
-  dto: Market,
+  txSig: string,
 ): Promise<void> {
   const updated = await prisma.market.update({
     where: { id: row.id },
     data: { status: "resolved", outcome: "survive" },
   });
-
-  let txSig: string | undefined;
-  try {
-    txSig = await resolveOnChain(dto, "survive");
-  } catch (e) {
-    console.log(`${LOG_PREFIX} on-chain resolve failed (survive)`, {
-      marketId: row.id,
-      error: e instanceof Error ? e.message : String(e),
-    });
-  }
 
   emitMarketResolved({
     marketId: updated.id,
@@ -226,12 +212,65 @@ async function handleSurviveResolution(
     timestamp: new Date().toISOString(),
   });
 
-  console.log(`${LOG_PREFIX} resolved market as survive (expired)`, {
+  console.log(`${LOG_PREFIX} resolved market as survive (chain confirmed, expired)`, {
     marketId: row.id,
     tokenMint: row.tokenMint,
     expiresAt: row.expiresAt.toISOString(),
-    txSignature: txSig ?? null,
+    txSignature: txSig,
   });
+}
+
+async function handleRugResolution(
+  row: DbMarket,
+  dto: Market,
+  rug: Awaited<ReturnType<typeof detectRug>>,
+): Promise<void> {
+  let txSig: string;
+  try {
+    txSig = await resolveOnChain(dto, "rug");
+  } catch (e) {
+    console.log(`${LOG_PREFIX} on-chain resolve failed (rug); leaving market active in DB`, {
+      marketId: row.id,
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return;
+  }
+
+  try {
+    await finalizeRugResolutionAfterChain(row, rug, txSig);
+  } catch (e) {
+    console.error(`${LOG_PREFIX} CRITICAL: on-chain rug resolve succeeded but DB finalize failed`, {
+      marketId: row.id,
+      txSignature: txSig,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+}
+
+async function handleSurviveResolution(
+  row: DbMarket,
+  dto: Market,
+): Promise<void> {
+  let txSig: string;
+  try {
+    txSig = await resolveOnChain(dto, "survive");
+  } catch (e) {
+    console.log(`${LOG_PREFIX} on-chain resolve failed (survive); leaving market active in DB`, {
+      marketId: row.id,
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return;
+  }
+
+  try {
+    await finalizeSurviveResolutionAfterChain(row, txSig);
+  } catch (e) {
+    console.error(`${LOG_PREFIX} CRITICAL: on-chain survive resolve succeeded but DB finalize failed`, {
+      marketId: row.id,
+      txSignature: txSig,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
 }
 
 async function runResolverCycle(): Promise<void> {
