@@ -4,12 +4,14 @@ import { Connection, Keypair, PublicKey, clusterApiUrl } from "@solana/web3.js";
 const devnetRpc = clusterApiUrl("devnet");
 
 export const connection = new Connection(
-  process.env.SOLANA_RPC_URL?.trim() || devnetRpc,
+  process.env.SOLANA_RPC?.trim() ||
+    process.env.SOLANA_RPC_URL?.trim() ||
+    devnetRpc,
   "confirmed",
 );
 
 /** Default from `contracts/programs/survivefun` Anchor `declare_id!` (local dev). */
-const DEFAULT_DEV_PROGRAM_ID = "3shYxrDG1srw1Wxu2yVnrnEUk53m6tS8HDyVKuoYLVd1";
+const DEFAULT_DEV_PROGRAM_ID = "9ZqPpXBid4xzB49HjB7zE6BnTWryMuuZFTULTSJqqTd8";
 
 let programIdMemo: PublicKey | null = null;
 
@@ -21,7 +23,9 @@ let programIdMemo: PublicKey | null = null;
 export function getProgramId(): PublicKey {
   if (programIdMemo) return programIdMemo;
 
-  const raw = process.env.SURVIVEFUN_PROGRAM_ID?.trim();
+  const raw =
+    process.env.PROGRAM_ID?.trim() ||
+    process.env.SURVIVEFUN_PROGRAM_ID?.trim();
   if (raw) {
     programIdMemo = new PublicKey(raw);
     return programIdMemo;
@@ -29,7 +33,7 @@ export function getProgramId(): PublicKey {
 
   if (process.env.NODE_ENV === "production") {
     throw new Error(
-      "SURVIVEFUN_PROGRAM_ID must be set when submitting on-chain transactions",
+      "PROGRAM_ID (or SURVIVEFUN_PROGRAM_ID) must be set when submitting on-chain transactions",
     );
   }
 

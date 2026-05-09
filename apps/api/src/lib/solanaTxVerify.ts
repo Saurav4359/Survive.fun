@@ -22,12 +22,6 @@ const USDC_DECIMALS = 6;
 export const ONCHAIN_MIN_STAKE_RAW = 10_000_000n;
 export const ONCHAIN_MAX_STAKE_RAW = 10_000_000_000n;
 
-function durationSeedLe(durationSeconds: number): Buffer {
-  const b = Buffer.allocUnsafe(8);
-  b.writeBigUInt64LE(BigInt(durationSeconds), 0);
-  return b;
-}
-
 function anchorIxDiscriminator(name: string): Buffer {
   const hash = createHash("sha256").update(`global:${name}`).digest();
   return Buffer.from(hash.subarray(0, 8));
@@ -99,11 +93,7 @@ export async function verifyCreateMarketTransaction(
 
   const mintPk = new PublicKey(expectedMint);
   const [expectedPda] = PublicKey.findProgramAddressSync(
-    [
-      Buffer.from("market"),
-      mintPk.toBuffer(),
-      durationSeedLe(expectedDurationSec),
-    ],
+    [Buffer.from("market"), mintPk.toBuffer()],
     programId,
   );
 
