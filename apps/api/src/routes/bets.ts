@@ -18,6 +18,7 @@ import {
   ONCHAIN_MIN_STAKE_RAW,
   verifyPlaceBetTransaction,
 } from "../lib/solanaTxVerify";
+import { processBetClaim } from "../services/payoutService";
 import { formatZod, parseQuery } from "../lib/zodUtil";
 import { AppError } from "../middleware/errorHandler";
 import { emitBetPlaced, emitPoolUpdate } from "../websocket/socketHandler";
@@ -297,4 +298,34 @@ userBetsRouter.get("/:wallet/bets", async (req, res, next) => {
   }
 });
 
-export { marketBetsRouter, userBetsRouter };
+const betIdParamSchema = z.object({
+  id: z.string().uuid(),
+});
+
+const claimBetBodySchema = z.object({
+  txSignature: z.string().min(64).max(128),
+  walletAddress: solanaAddress,
+});
+
+const betsClaimRouter = Router();
+
+betsClaimRouter.post("/:id/claim", async (req, res, next) => {
+  try {
+    const { id } = parseQuery(betIdParamSchema, req.params);
+    const parsed = claimBetBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new AppError("VALIDATION_ERROR", formatZod(parsed.error), 400);
+    }
+    const data = await processBetClaim(
+      id,
+      parsed.data.txSignature,
+      parsed.data.walletAddress,
+    );
+    const body: ApiResponse<typeof data> = { success: true, data };
+    res.json(body);
+  } catch (e) {
+    next(e);
+  }
+});
+
+export { marketBetsRouter, userBetsRouter, betsClaimRouter };

@@ -1,42 +1,54 @@
 /**
- * Rug heuristics for Survive.fun markets.
- * RPC via @helius-labs/helius-sdk (aliased to helius-sdk); HTTP via axios only.
+ * Automated rug heuristics for Survive.fun (Helius RPC + DexScreener).
+ * Never throws from `detectRug` — callers always get a result object.
  */
 
+import type { Market as DbMarket } from "@prisma/client";
 import type { Market } from "@survivefun/types";
 import axios from "axios";
-
-import {
-  birdeyeTokenOverview,
-  detectPumpGraduationStall,
-} from "../lib/birdeye";
 import { createHelius } from "@helius-labs/helius-sdk";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import {
-  Connection,
   PublicKey,
   type ParsedTransactionWithMeta,
   type TokenBalance,
 } from "@solana/web3.js";
 
+import { connection } from "../config/solana";
+
 const DEXSCREENER_TOKEN_URL =
   "https://api.dexscreener.com/latest/dex/tokens";
 
-const SIGNATURE_PAGE_LIMIT = 100;
-const MAX_TX_FETCH = 40;
-
-const DEV_SELL_RATIO_THRESHOLD = 0.25;
-/** Trigger when current price is below 10% of open (drop over 90%). */
-const PRICE_DROP_THRESHOLD = 0.1;
-/** Trigger when current liquidity is below 20% of open (over 80% removed). */
-const LIQUIDITY_REMAINING_THRESHOLD = 0.2;
-
 const LOG_PREFIX = "[rugDetector]";
 
-function parseMarketDecimal(value: string | null | undefined): number | null {
-  if (value == null || value === "") return null;
-  const n = Number.parseFloat(value);
-  return Number.isFinite(n) ? n : null;
+const DEV_SELL_RATIO_THRESHOLD = 0.25;
+const PRICE_DROP_FRACTION = 0.9;
+const LIQUIDITY_REMOVED_PERCENT = 80;
+
+export type DetectRugMarketInput = {
+  id: string;
+  tokenMint: string;
+  devWallet: string;
+  openPrice: number;
+  openLiquidity: number;
+  expiresAt: Date;
+  survivePool: number;
+  rugPool: number;
+  /** Optional 0–1 override for dev sell ratio (DB demo field). */
+  devSellThresholdOverride?: number | null;
+};
+
+export type RugConditionResult = "dev_sell" | "price_drop" | "liquidity_removed" | null;
+
+export type DetectRugResult = {
+  isRug: boolean;
+  condition: RugConditionResult;
+  isSurvive: boolean;
+  data: Record<string, unknown>;
+};
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
 }
 
 function heliusNetwork(): "mainnet" | "devnet" {
@@ -45,28 +57,17 @@ function heliusNetwork(): "mainnet" | "devnet" {
   return "devnet";
 }
 
-function heliusRpcUrl(): string | null {
-  const apiKey = process.env.HELIUS_API_KEY?.trim();
-  if (!apiKey) return null;
-  const net = heliusNetwork();
-  return `https://${net}.helius-rpc.com/?api-key=${encodeURIComponent(apiKey)}`;
-}
-
-function getHeliusClient(): ReturnType<typeof createHelius> | null {
+function getHelius() {
   const apiKey = process.env.HELIUS_API_KEY?.trim();
   if (!apiKey) return null;
   try {
     return createHelius({ apiKey, network: heliusNetwork() });
   } catch (e) {
-    console.log(`${LOG_PREFIX} createHelius failed`, e);
+    console.warn(`${LOG_PREFIX} createHelius failed`, {
+      error: e instanceof Error ? e.message : String(e),
+    });
     return null;
   }
-}
-
-function getConnection(): Connection | null {
-  const url = heliusRpcUrl();
-  if (!url) return null;
-  return new Connection(url, "confirmed");
 }
 
 function uiAmountFromBalance(b: TokenBalance): number {
@@ -85,7 +86,6 @@ function soldUiFromTxMeta(
   ownerWallet: string,
 ): number {
   if (!meta) return 0;
-
   const sumForOwner = (
     rows: readonly TokenBalance[] | null | undefined,
   ): number => {
@@ -97,20 +97,116 @@ function soldUiFromTxMeta(
     }
     return t;
   };
-
   const pre = sumForOwner(meta.preTokenBalances);
   const post = sumForOwner(meta.postTokenBalances);
   const delta = pre - post;
   return delta > 0 ? delta : 0;
 }
 
-function marketOpenMs(market: Market): number | null {
-  const t = Date.parse(market.createdAt);
-  return Number.isFinite(t) ? t : null;
-}
+/**
+ * Helius-backed RPC: `helius` proxies to the same JSON-RPC as `connection`.
+ * Uses `getSignaturesForAddress` + `getParsedTransaction` on the shared connection.
+ */
+async function conditionDevSell(
+  market: DetectRugMarketInput,
+): Promise<{ triggered: boolean; condition: RugConditionResult; detail: Record<string, unknown> }> {
+  const devWallet = market.devWallet?.trim() ?? "";
+  const detail: Record<string, unknown> = {
+    tokenMint: market.tokenMint,
+    devWallet,
+  };
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null;
+  if (!devWallet) {
+    return { triggered: false, condition: null, detail: { ...detail, skipped: true, reason: "no_dev_wallet" } };
+  }
+
+  if (!getHelius()) {
+    return {
+      triggered: false,
+      condition: null,
+      detail: { ...detail, skipped: true, reason: "missing_helius_api_key" },
+    };
+  }
+
+  let mintPk: PublicKey;
+  let ownerPk: PublicKey;
+  try {
+    mintPk = new PublicKey(market.tokenMint);
+    ownerPk = new PublicKey(devWallet);
+  } catch {
+    return {
+      triggered: false,
+      condition: null,
+      detail: { ...detail, skipped: true, reason: "invalid_mint_or_wallet" },
+    };
+  }
+
+  try {
+    const sigInfos = await connection.getSignaturesForAddress(ownerPk, {
+      limit: 20,
+    });
+
+    let totalSoldUi = 0;
+    for (const info of sigInfos) {
+      const sig = info.signature;
+      if (!sig) continue;
+      const parsed = await connection.getParsedTransaction(sig, {
+        maxSupportedTransactionVersion: 0,
+        commitment: "confirmed",
+      });
+      if (!parsed?.meta) continue;
+      totalSoldUi += soldUiFromTxMeta(parsed.meta, market.tokenMint, devWallet);
+    }
+
+    const ata = getAssociatedTokenAddressSync(mintPk, ownerPk, false);
+    let currentUi = 0;
+    try {
+      const bal = await connection.getTokenAccountBalance(ata);
+      currentUi =
+        bal.value.uiAmount ??
+        Number.parseFloat(bal.value.amount) / 10 ** bal.value.decimals;
+      if (!Number.isFinite(currentUi)) currentUi = 0;
+    } catch {
+      currentUi = 0;
+    }
+
+    const initialHoldings = currentUi + totalSoldUi;
+    const ratio = initialHoldings > 0 ? totalSoldUi / initialHoldings : 0;
+    const override = market.devSellThresholdOverride;
+    const ratioThreshold =
+      override != null && override > 0 && override <= 1
+        ? override
+        : DEV_SELL_RATIO_THRESHOLD;
+
+    const full = {
+      ...detail,
+      signaturesScanned: sigInfos.length,
+      totalSoldUi,
+      currentBalanceUi: currentUi,
+      initialHoldingsAtOpenUi: initialHoldings,
+      soldToInitialRatio: ratio,
+      devSellRatioThreshold: ratioThreshold,
+    };
+
+    if (ratio > ratioThreshold) {
+      return { triggered: true, condition: "dev_sell", detail: full };
+    }
+    return { triggered: false, condition: null, detail: full };
+  } catch (e) {
+    console.warn(`${LOG_PREFIX} dev_sell check failed (skipped)`, {
+      marketId: market.id,
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return {
+      triggered: false,
+      condition: null,
+      detail: {
+        ...detail,
+        skipped: true,
+        error: e instanceof Error ? e.message : String(e),
+      },
+    };
+  }
 }
 
 async function fetchDexscreenerPair(
@@ -130,350 +226,273 @@ async function fetchDexscreenerPair(
 }
 
 /**
- * Condition 1: dev sold more than 25% of estimated holdings at market open.
- * Uses Helius getSignaturesForAddress, parses SPL balances; only txs at/after market.createdAt.
- * Denominator: current ATA balance + cumulative sells since open (proxy for tokens held at open).
+ * Single DexScreener request: price drop (>90%) and/or liquidity removed (>80%).
  */
-async function conditionDevSell(market: Market): Promise<{
-  triggered: boolean;
-  detail: Record<string, unknown>;
+async function conditionDexPair(
+  market: DetectRugMarketInput,
+): Promise<{
+  priceDrop: { triggered: boolean; detail: Record<string, unknown> };
+  liquidityRemoved: { triggered: boolean; detail: Record<string, unknown> };
 }> {
-  const devWallet =
-    market.devWallet?.trim() || market.creatorWallet?.trim() || "";
-  if (!devWallet) {
+  const emptyDetail = { tokenMint: market.tokenMint };
+  const priceDetail: Record<string, unknown> = { ...emptyDetail };
+  const liqDetail: Record<string, unknown> = { ...emptyDetail };
+
+  const openPrice = Number(market.openPrice);
+  const openLiquidity = Number(market.openLiquidity);
+
+  if (!Number.isFinite(openPrice) || openPrice <= 0) {
+    priceDetail.skipped = true;
+    priceDetail.reason = "no_open_price";
+    liqDetail.skipped = true;
+    liqDetail.reason = "no_open_price";
     return {
-      triggered: false,
-      detail: { skipped: true, reason: "no_dev_or_creator_wallet" },
+      priceDrop: { triggered: false, detail: priceDetail },
+      liquidityRemoved: { triggered: false, detail: liqDetail },
     };
   }
 
-  const helius = getHeliusClient();
-  const connection = getConnection();
-  if (!helius || !connection) {
-    return {
-      triggered: false,
-      detail: { skipped: true, reason: "missing_helius_api_key_or_rpc" },
-    };
-  }
-
-  let mintPk: PublicKey;
-  let ownerPk: PublicKey;
   try {
-    mintPk = new PublicKey(market.tokenMint);
-    ownerPk = new PublicKey(devWallet);
-  } catch {
+    const pair = await fetchDexscreenerPair(market.tokenMint);
+    if (!pair) {
+      priceDetail.skipped = true;
+      priceDetail.reason = "dex_pair_not_found";
+      liqDetail.skipped = true;
+      liqDetail.reason = "dex_pair_not_found";
+      return {
+        priceDrop: { triggered: false, detail: priceDetail },
+        liquidityRemoved: { triggered: false, detail: liqDetail },
+      };
+    }
+
+    const priceUsdRaw = pair.priceUsd;
+    const currentPrice =
+      typeof priceUsdRaw === "string"
+        ? Number.parseFloat(priceUsdRaw)
+        : typeof priceUsdRaw === "number"
+          ? priceUsdRaw
+          : NaN;
+
+    priceDetail.openPrice = openPrice;
+    priceDetail.currentPrice = currentPrice;
+
+    if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
+      priceDetail.skipped = true;
+      priceDetail.reason = "no_current_price";
+    } else {
+      const dropFraction =
+        openPrice > 0 ? (openPrice - currentPrice) / openPrice : 0;
+      priceDetail.dropFraction = dropFraction;
+      priceDetail.thresholdFraction = PRICE_DROP_FRACTION;
+      if (dropFraction > PRICE_DROP_FRACTION) {
+        return {
+          priceDrop: { triggered: true, detail: priceDetail },
+          liquidityRemoved: {
+            triggered: false,
+            detail: {
+              ...liqDetail,
+              skipped: true,
+              reason: "evaluated_with_same_request_as_price",
+              pairLiquidityUsd: parseLiquidityUsd(pair),
+            },
+          },
+        };
+      }
+    }
+
+    if (!Number.isFinite(openLiquidity) || openLiquidity <= 0) {
+      liqDetail.skipped = true;
+      liqDetail.reason = "no_open_liquidity";
+      return {
+        priceDrop: { triggered: false, detail: priceDetail },
+        liquidityRemoved: { triggered: false, detail: liqDetail },
+      };
+    }
+
+    const currentLiquidity = parseLiquidityUsd(pair);
+    liqDetail.openLiquidityUsd = openLiquidity;
+    liqDetail.currentLiquidityUsd = currentLiquidity;
+
+    if (currentLiquidity == null || !Number.isFinite(currentLiquidity) || currentLiquidity < 0) {
+      liqDetail.skipped = true;
+      liqDetail.reason = "no_current_liquidity";
+      return {
+        priceDrop: { triggered: false, detail: priceDetail },
+        liquidityRemoved: { triggered: false, detail: liqDetail },
+      };
+    }
+
+    const removedPercent =
+      ((openLiquidity - currentLiquidity) / openLiquidity) * 100;
+    liqDetail.removedPercent = removedPercent;
+
+    if (removedPercent > LIQUIDITY_REMOVED_PERCENT) {
+      return {
+        priceDrop: { triggered: false, detail: priceDetail },
+        liquidityRemoved: { triggered: true, detail: liqDetail },
+      };
+    }
+
     return {
-      triggered: false,
-      detail: { skipped: true, reason: "invalid_mint_or_wallet" },
+      priceDrop: { triggered: false, detail: priceDetail },
+      liquidityRemoved: { triggered: false, detail: liqDetail },
     };
-  }
-
-  const openMs = marketOpenMs(market);
-
-  const signatures = await helius.getSignaturesForAddress(devWallet, {
-    limit: SIGNATURE_PAGE_LIMIT,
-  });
-
-  let totalSoldUi = 0;
-  const sigList = signatures.slice(0, MAX_TX_FETCH);
-
-  for (const row of sigList) {
-    const sig = typeof row === "string" ? row : (row as { signature?: string }).signature;
-    if (!sig) continue;
-
-    const parsed = await connection.getParsedTransaction(sig, {
-      maxSupportedTransactionVersion: 0,
-      commitment: "confirmed",
+  } catch (e) {
+    console.warn(`${LOG_PREFIX} DexScreener pair check failed (skipped)`, {
+      marketId: market.id,
+      error: e instanceof Error ? e.message : String(e),
     });
-
-    if (!parsed?.meta) continue;
-
-    if (openMs != null && parsed.blockTime != null) {
-      if (parsed.blockTime * 1000 < openMs) continue;
-    }
-
-    totalSoldUi += soldUiFromTxMeta(parsed.meta, market.tokenMint, devWallet);
+    priceDetail.skipped = true;
+    priceDetail.error = e instanceof Error ? e.message : String(e);
+    liqDetail.skipped = true;
+    liqDetail.error = e instanceof Error ? e.message : String(e);
+    return {
+      priceDrop: { triggered: false, detail: priceDetail },
+      liquidityRemoved: { triggered: false, detail: liqDetail },
+    };
   }
-
-  const ata = getAssociatedTokenAddressSync(mintPk, ownerPk, false);
-  let currentUi = 0;
-  try {
-    const bal = await connection.getTokenAccountBalance(ata);
-    currentUi =
-      bal.value.uiAmount ??
-      Number.parseFloat(bal.value.amount) / 10 ** bal.value.decimals;
-    if (!Number.isFinite(currentUi)) currentUi = 0;
-  } catch {
-    currentUi = 0;
-  }
-
-  const initialHoldingsAtOpenUi = currentUi + totalSoldUi;
-  const ratio =
-    initialHoldingsAtOpenUi > 0 ? totalSoldUi / initialHoldingsAtOpenUi : 0;
-
-  const override = parseMarketDecimal(market.devSellThresholdOverride ?? undefined);
-  const ratioThreshold =
-    override != null && override > 0 && override <= 1
-      ? override
-      : DEV_SELL_RATIO_THRESHOLD;
-
-  const detail: Record<string, unknown> = {
-    devWallet,
-    tokenMint: market.tokenMint,
-    marketCreatedAt: market.createdAt,
-    signaturesScanned: sigList.length,
-    totalSoldUi,
-    currentBalanceUi: currentUi,
-    initialHoldingsAtOpenUi,
-    soldToInitialRatio: ratio,
-    devSellRatioThreshold: ratioThreshold,
-  };
-
-  const triggered = ratio > ratioThreshold;
-  return { triggered, detail };
 }
 
-async function conditionPriceDrop(market: Market): Promise<{
-  triggered: boolean;
-  detail: Record<string, unknown>;
-}> {
-  const openPrice = parseMarketDecimal(market.openPrice);
-  const detail: Record<string, unknown> = {
-    openPrice,
-    tokenMint: market.tokenMint,
-  };
-
-  if (openPrice == null || openPrice <= 0) {
-    return {
-      triggered: false,
-      detail: { ...detail, skipped: true, reason: "no_open_price" },
-    };
-  }
-
-  const pair = await fetchDexscreenerPair(market.tokenMint);
-  if (!pair) {
-    return {
-      triggered: false,
-      detail: { ...detail, skipped: true, reason: "dex_pair_not_found" },
-    };
-  }
-
-  const priceUsdRaw = pair.priceUsd;
-  const currentPrice =
-    typeof priceUsdRaw === "string"
-      ? Number.parseFloat(priceUsdRaw)
-      : typeof priceUsdRaw === "number"
-        ? priceUsdRaw
-        : NaN;
-
-  detail.currentPrice = currentPrice;
-
-  if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
-    return {
-      triggered: false,
-      detail: { ...detail, skipped: true, reason: "no_current_price" },
-    };
-  }
-
-  const thresholdAbs = openPrice * PRICE_DROP_THRESHOLD;
-  detail.thresholdPrice = thresholdAbs;
-  detail.priceVsOpen = currentPrice / openPrice;
-
-  const triggered = currentPrice < thresholdAbs;
-  return { triggered, detail };
-}
-
-async function conditionLiquidityRemoved(market: Market): Promise<{
-  triggered: boolean;
-  detail: Record<string, unknown>;
-}> {
-  const openLiquidity = parseMarketDecimal(market.openLiquidity);
-  const detail: Record<string, unknown> = {
-    openLiquidityUsd: openLiquidity,
-    tokenMint: market.tokenMint,
-  };
-
-  if (openLiquidity == null || openLiquidity <= 0) {
-    return {
-      triggered: false,
-      detail: { ...detail, skipped: true, reason: "no_open_liquidity" },
-    };
-  }
-
-  const pair = await fetchDexscreenerPair(market.tokenMint);
-  if (!pair) {
-    return {
-      triggered: false,
-      detail: { ...detail, skipped: true, reason: "dex_pair_not_found" },
-    };
-  }
-
+function parseLiquidityUsd(pair: Record<string, unknown>): number | null {
   const liq = pair.liquidity;
-  let currentLiquidity: number | null = null;
-  if (isRecord(liq)) {
-    const u = liq.usd;
-    if (typeof u === "number" && Number.isFinite(u)) currentLiquidity = u;
-    else if (typeof u === "string") {
-      const n = Number.parseFloat(u);
-      currentLiquidity = Number.isFinite(n) ? n : null;
-    }
+  if (!isRecord(liq)) return null;
+  const u = liq.usd;
+  if (typeof u === "number" && Number.isFinite(u)) return u;
+  if (typeof u === "string") {
+    const n = Number.parseFloat(u);
+    return Number.isFinite(n) ? n : null;
   }
-
-  detail.currentLiquidityUsd = currentLiquidity;
-
-  if (currentLiquidity == null || currentLiquidity < 0) {
-    return {
-      triggered: false,
-      detail: { ...detail, skipped: true, reason: "no_current_liquidity" },
-    };
-  }
-
-  const thresholdAbs = openLiquidity * LIQUIDITY_REMAINING_THRESHOLD;
-  detail.thresholdLiquidityUsd = thresholdAbs;
-  detail.liquidityVsOpen = currentLiquidity / openLiquidity;
-
-  const triggered = currentLiquidity < thresholdAbs;
-  return { triggered, detail };
+  return null;
 }
 
-/** Spec §1 condition 4: bonding curve ≥80% progress but token not graduated (Birdeye pump extension). */
-async function conditionGraduationStall(market: Market): Promise<{
-  triggered: boolean;
-  detail: Record<string, unknown>;
-}> {
-  const overview = await birdeyeTokenOverview(market.tokenMint);
-  if (!overview) {
-    return {
-      triggered: false,
-      detail: { skipped: true, reason: "no_birdeye_overview" },
-    };
-  }
-  const { stall, detail } = detectPumpGraduationStall(overview);
-  return { triggered: stall, detail: { ...detail, tokenMint: market.tokenMint } };
+export function dbMarketToDetectInput(row: DbMarket): DetectRugMarketInput {
+  const dev = (row.devWallet ?? row.creatorWallet ?? "").trim();
+  const op = row.openPrice != null ? row.openPrice.toNumber() : 0;
+  const ol = row.openLiquidity != null ? row.openLiquidity.toNumber() : 0;
+  const sp = row.survivePool.toNumber();
+  const rp = row.rugPool.toNumber();
+  const override =
+    row.devSellThresholdOverride != null
+      ? row.devSellThresholdOverride.toNumber()
+      : null;
+
+  return {
+    id: row.id,
+    tokenMint: row.tokenMint,
+    devWallet: dev,
+    openPrice: Number.isFinite(op) ? op : 0,
+    openLiquidity: Number.isFinite(ol) ? ol : 0,
+    expiresAt: row.expiresAt,
+    survivePool: Number.isFinite(sp) ? sp : 0,
+    rugPool: Number.isFinite(rp) ? rp : 0,
+    devSellThresholdOverride:
+      override != null && Number.isFinite(override) ? override : null,
+  };
 }
 
-export async function detectRug(market: Market): Promise<{
-  isRug: boolean;
-  condition:
-    | "dev_sell"
-    | "price_drop"
-    | "liquidity_removed"
-    | "graduation_stall"
-    | null;
-  data: Record<string, any>;
-}> {
-  const data: Record<string, any> = {
+function mapMarketDtoToInput(m: Market): DetectRugMarketInput {
+  const dev = (m.devWallet ?? m.creatorWallet ?? "").trim();
+  const op = m.openPrice != null ? Number.parseFloat(m.openPrice) : NaN;
+  const ol = m.openLiquidity != null ? Number.parseFloat(m.openLiquidity) : NaN;
+  const sp = Number.parseFloat(m.survivePool);
+  const rp = Number.parseFloat(m.rugPool);
+  const overrideRaw = m.devSellThresholdOverride;
+  const override =
+    overrideRaw != null && overrideRaw !== ""
+      ? Number.parseFloat(overrideRaw)
+      : null;
+
+  return {
+    id: m.id,
+    tokenMint: m.tokenMint,
+    devWallet: dev,
+    openPrice: Number.isFinite(op) ? op : 0,
+    openLiquidity: Number.isFinite(ol) ? ol : 0,
+    expiresAt: new Date(m.expiresAt),
+    survivePool: Number.isFinite(sp) ? sp : 0,
+    rugPool: Number.isFinite(rp) ? rp : 0,
+    devSellThresholdOverride:
+      override != null && Number.isFinite(override) ? override : null,
+  };
+}
+
+export async function detectRug(market: DetectRugMarketInput): Promise<DetectRugResult> {
+  const data: Record<string, unknown> = {
     marketId: market.id,
     tokenMint: market.tokenMint,
+    evaluatedAt: new Date().toISOString(),
   };
 
-  let devTriggered = false;
-  let priceTriggered = false;
-  let liqTriggered = false;
-  let gradTriggered = false;
+  console.log(`${LOG_PREFIX} detection attempt`, { marketId: market.id });
+
+  let condition: RugConditionResult = null;
 
   try {
-    try {
-      const { triggered, detail } = await conditionDevSell(market);
-      data.devSell = detail;
-      devTriggered = triggered;
-      if (triggered) {
-        console.log(`${LOG_PREFIX} detection`, {
-          condition: "dev_sell",
-          marketId: market.id,
-          detail,
-        });
-      }
-    } catch (e) {
-      console.log(`${LOG_PREFIX} dev_sell condition error`, e);
-      data.devSell = {
-        error: e instanceof Error ? e.message : String(e),
-      };
+    const dev = await conditionDevSell(market);
+    data.devSell = dev.detail;
+    if (dev.triggered && dev.condition) {
+      condition = dev.condition;
+      console.log(`${LOG_PREFIX} condition fired`, {
+        marketId: market.id,
+        condition,
+      });
     }
 
-    try {
-      const { triggered, detail } = await conditionPriceDrop(market);
-      data.priceDrop = detail;
-      priceTriggered = triggered;
-      if (triggered) {
-        console.log(`${LOG_PREFIX} detection`, {
-          condition: "price_drop",
+    if (!condition) {
+      const dex = await conditionDexPair(market);
+      data.priceDrop = dex.priceDrop.detail;
+      data.liquidityRemoved = dex.liquidityRemoved.detail;
+
+      if (dex.priceDrop.triggered) {
+        condition = "price_drop";
+        console.log(`${LOG_PREFIX} condition fired`, {
           marketId: market.id,
-          detail,
+          condition,
+        });
+      } else if (dex.liquidityRemoved.triggered) {
+        condition = "liquidity_removed";
+        console.log(`${LOG_PREFIX} condition fired`, {
+          marketId: market.id,
+          condition,
         });
       }
-    } catch (e) {
-      console.log(`${LOG_PREFIX} price_drop condition error`, e);
-      data.priceDrop = {
-        error: e instanceof Error ? e.message : String(e),
-      };
     }
 
-    try {
-      const { triggered, detail } = await conditionLiquidityRemoved(market);
-      data.liquidityRemoved = detail;
-      liqTriggered = triggered;
-      if (triggered) {
-        console.log(`${LOG_PREFIX} detection`, {
-          condition: "liquidity_removed",
-          marketId: market.id,
-          detail,
-        });
-      }
-    } catch (e) {
-      console.log(`${LOG_PREFIX} liquidity_removed condition error`, e);
-      data.liquidityRemoved = {
-        error: e instanceof Error ? e.message : String(e),
-      };
+    const isRug = condition != null;
+    const expired = Date.now() > market.expiresAt.getTime();
+    const isSurvive = !isRug && expired;
+
+    if (isSurvive) {
+      console.log(`${LOG_PREFIX} survive (expired, no rug signal)`, {
+        marketId: market.id,
+        expiresAt: market.expiresAt.toISOString(),
+      });
     }
 
-    try {
-      const { triggered, detail } = await conditionGraduationStall(market);
-      data.graduationStall = detail;
-      gradTriggered = triggered;
-      if (triggered) {
-        console.log(`${LOG_PREFIX} detection`, {
-          condition: "graduation_stall",
-          marketId: market.id,
-          detail,
-        });
-      }
-    } catch (e) {
-      console.log(`${LOG_PREFIX} graduation_stall condition error`, e);
-      data.graduationStall = {
-        error: e instanceof Error ? e.message : String(e),
-      };
-    }
-
-    const isRug =
-      devTriggered || priceTriggered || liqTriggered || gradTriggered;
-    const condition:
-      | "dev_sell"
-      | "price_drop"
-      | "liquidity_removed"
-      | "graduation_stall"
-      | null = devTriggered
-      ? "dev_sell"
-      : priceTriggered
-        ? "price_drop"
-        : liqTriggered
-          ? "liquidity_removed"
-          : gradTriggered
-            ? "graduation_stall"
-            : null;
-
-    console.log(`${LOG_PREFIX} evaluation`, {
-      marketId: market.id,
+    const result: DetectRugResult = {
       isRug,
       condition,
+      isSurvive,
+      data,
+    };
+
+    console.log(`${LOG_PREFIX} evaluation summary`, {
+      marketId: market.id,
+      isRug: result.isRug,
+      condition: result.condition,
+      isSurvive: result.isSurvive,
     });
 
-    return { isRug, condition, data };
+    return result;
   } catch (e) {
-    console.log(`${LOG_PREFIX} fatal error`, e);
+    console.warn(`${LOG_PREFIX} unexpected detectRug error`, {
+      marketId: market.id,
+      error: e instanceof Error ? e.message : String(e),
+    });
     return {
       isRug: false,
       condition: null,
+      isSurvive: false,
       data: {
         ...data,
         fatal: e instanceof Error ? e.message : String(e),
@@ -482,28 +501,32 @@ export async function detectRug(market: Market): Promise<{
   }
 }
 
-/**
- * Individual rug signals (same heuristics as inside `detectRug`).
- * The resolver runs full `detectRug` every 30s per active market; these are
- * exported for tests, admin tooling, or future per-signal schedulers.
- */
-export async function checkDevSell(market: Market): Promise<{
+/** @deprecated Use `detectRug` with numeric fields; kept for `scripts/test-rug-detector.ts`. */
+export async function checkDevSell(m: Market): Promise<{
   triggered: boolean;
   detail: Record<string, unknown>;
 }> {
-  return conditionDevSell(market);
+  const r = await conditionDevSell(mapMarketDtoToInput(m));
+  return { triggered: r.triggered, detail: r.detail };
 }
 
-export async function checkPriceDrop(market: Market): Promise<{
+/** @deprecated Use `detectRug`; kept for `scripts/test-rug-detector.ts`. */
+export async function checkPriceDrop(m: Market): Promise<{
   triggered: boolean;
   detail: Record<string, unknown>;
 }> {
-  return conditionPriceDrop(market);
+  const { priceDrop } = await conditionDexPair(mapMarketDtoToInput(m));
+  return { triggered: priceDrop.triggered, detail: priceDrop.detail };
 }
 
-export async function checkLiquidityRemoved(market: Market): Promise<{
+/** @deprecated Use `detectRug`; kept for scripts/spec callers. */
+export async function checkLiquidityRemoved(m: Market): Promise<{
   triggered: boolean;
   detail: Record<string, unknown>;
 }> {
-  return conditionLiquidityRemoved(market);
+  const { liquidityRemoved } = await conditionDexPair(mapMarketDtoToInput(m));
+  return {
+    triggered: liquidityRemoved.triggered,
+    detail: liquidityRemoved.detail,
+  };
 }

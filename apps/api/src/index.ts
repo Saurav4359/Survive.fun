@@ -31,7 +31,7 @@ import { Server } from "socket.io";
 import { assertProductionSafeOrExit } from "./config/productionGate";
 import { startBackgroundJobs } from "./jobs/backgroundJobs";
 import { errorHandler } from "./middleware/errorHandler";
-import { marketBetsRouter, userBetsRouter } from "./routes/bets";
+import { betsClaimRouter, marketBetsRouter, userBetsRouter } from "./routes/bets";
 import leaderboardRouter from "./routes/leaderboard";
 import marketsRouter from "./routes/markets";
 import statsRouter from "./routes/stats";
@@ -107,6 +107,7 @@ app.get("/health", (_req, res) => {
 });
 
 const apiRouter = Router();
+apiRouter.use("/bets", betsClaimRouter);
 apiRouter.use("/markets", marketBetsRouter);
 apiRouter.use("/markets", marketsRouter);
 apiRouter.use("/users", userBetsRouter);

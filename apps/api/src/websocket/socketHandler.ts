@@ -120,7 +120,42 @@ export function emitPoolUpdate(payload: {
 
 /** Full `MarketResolved` payload (matches `@survivefun/types` / frontend guards). */
 export function emitMarketResolved(payload: MarketResolved): void {
-  getIo().emit("market_resolved", payload);
+  try {
+    getIo().emit("market_resolved", payload);
+  } catch (e) {
+    console.log("[socket] market_resolved emit failed", {
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+}
+
+export function emitPayoutReady(payload: {
+  wallet: string;
+  amount: string;
+  marketId: string;
+}): void {
+  try {
+    getIo().emit("payout_ready", payload);
+  } catch (e) {
+    console.log("[socket] payout_ready emit failed", {
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+}
+
+export function emitPayoutClaimed(payload: {
+  wallet: string;
+  marketId: string;
+  betId: string;
+  amount: string;
+}): void {
+  try {
+    getIo().emit("payout_claimed", payload);
+  } catch (e) {
+    console.log("[socket] payout_claimed emit failed", {
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
 }
 
 /** Emits only to `ROOM_PLATFORM_FEED`. */

@@ -91,6 +91,7 @@ async function runStatsUpdater(): Promise<void> {
     const statsData = {
       totalMarkets,
       totalVolume: volDec,
+      totalFees: existing?.totalFees ?? new Prisma.Decimal(0),
       totalRugs,
       totalSurvives,
       updatedAt: new Date(),
@@ -101,7 +102,12 @@ async function runStatsUpdater(): Promise<void> {
         data: statsData,
       });
     } else {
-      await prisma.platformStats.create({ data: statsData });
+      await prisma.platformStats.create({
+        data: {
+          ...statsData,
+          totalFees: new Prisma.Decimal(0),
+        },
+      });
     }
 
     try {

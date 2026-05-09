@@ -151,6 +151,105 @@ router.get("/active", async (req, res, next) => {
   }
 });
 
+const walletQuerySchema = z.object({
+  wallet: solanaAddress,
+});
+
+router.get("/:id/result", async (req, res, next) => {
+  try {
+    const { id } = parseQuery(idParamSchema, req.params);
+    const row = await prisma.market.findUnique({
+      where: { id },
+      include: {
+        bets: { orderBy: { createdAt: "asc" } },
+      },
+    });
+    if (!row) {
+      throw new AppError("NOT_FOUND", "Market not found", 404);
+    }
+
+    const market = toMarketDto(row);
+    const surviveN = row.survivePool.toNumber();
+    const rugN = row.rugPool.toNumber();
+    const resolved = row.status === "resolved";
+    const outcome = row.outcome;
+
+    let platformFee = 0;
+    if (resolved && (outcome === "rug" || outcome === "survive")) {
+      const losingPool = outcome === "rug" ? surviveN : rugN;
+      platformFee = losingPool * 0.02;
+    }
+
+    let totalDistributed = 0;
+    const payouts = row.bets.map((b) => {
+      const payoutAmount = b.payoutAmount?.toNumber() ?? 0;
+      if (b.won) totalDistributed += payoutAmount;
+      return {
+        wallet: b.bettorWallet,
+        betAmount: b.amountUsdc.toNumber(),
+        betSide: b.side,
+        payoutAmount,
+        won: b.won,
+        claimed: b.claimed,
+      };
+    });
+
+    const data = {
+      market,
+      outcome: row.outcome,
+      payouts,
+      platformFee,
+      totalDistributed,
+      rugCondition: row.rugCondition,
+      resolvedAt: row.resolvedAt,
+    };
+    const body: ApiResponse<typeof data> = { success: true, data };
+    res.json(body);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get("/:id/my-payout", async (req, res, next) => {
+  try {
+    const { id: marketId } = parseQuery(idParamSchema, req.params);
+    const { wallet } = parseQuery(walletQuerySchema, req.query);
+
+    const bet = await prisma.bet.findFirst({
+      where: { marketId, bettorWallet: wallet },
+    });
+
+    if (!bet) {
+      const data = {
+        found: false as const,
+        won: false,
+        betAmount: 0,
+        betSide: "",
+        payoutAmount: 0,
+        claimed: false,
+        claimTxSignature: null as string | null,
+      };
+      const body: ApiResponse<typeof data> = { success: true, data };
+      res.json(body);
+      return;
+    }
+
+    const data = {
+      found: true as const,
+      won: bet.won,
+      betAmount: bet.amountUsdc.toNumber(),
+      betSide: bet.side,
+      payoutAmount: bet.payoutAmount?.toNumber() ?? 0,
+      claimed: bet.claimed,
+      claimTxSignature: bet.payoutTx,
+    };
+    const body: ApiResponse<typeof data> = { success: true, data };
+    res.json(body);
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.get("/:id/chart", async (req, res, next) => {
   try {
     const { id } = parseQuery(idParamSchema, req.params);

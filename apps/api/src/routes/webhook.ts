@@ -9,20 +9,15 @@
 import { timingSafeEqual } from "node:crypto";
 
 import { Prisma, type Market as DbMarket } from "@prisma/client";
-import type { Market } from "@survivefun/types";
 import axios from "axios";
 import { createHelius } from "@helius-labs/helius-sdk";
 import express, { Router, type Request, type Response } from "express";
 
 import { connection } from "../config/solana";
 import { prisma } from "../config/database";
-import { toMarketDto } from "../lib/dto";
 import { createMarketOnChain } from "../lib/onchainProgram";
-import { detectRug } from "../services/rugDetector";
-import {
-  finalizeRugResolutionAfterChain,
-  resolveOnChain,
-} from "../jobs/resolver";
+import { dbMarketToDetectInput, detectRug } from "../services/rugDetector";
+import { processMarketResolution } from "../services/payoutService";
 import { emitNewToken } from "../websocket/socketHandler";
 
 const LOG_PREFIX = "[heliusWebhook]";
@@ -168,31 +163,14 @@ function collectTransferSenders(ev: Record<string, unknown>): string[] {
   return [...out];
 }
 
-async function resolveActiveMarketAsRug(
-  row: DbMarket,
-  dto: Market,
-  rug: Awaited<ReturnType<typeof detectRug>>,
-): Promise<void> {
-  let txSig: string;
-  try {
-    txSig = await resolveOnChain(dto, "rug");
-  } catch (e) {
-    console.log(`${LOG_PREFIX} on-chain resolve failed (immediate rug); DB unchanged`, {
-      marketId: row.id,
-      error: e instanceof Error ? e.message : String(e),
-    });
-    return;
-  }
-
-  try {
-    await finalizeRugResolutionAfterChain(row, rug, txSig);
-  } catch (e) {
-    console.error(`${LOG_PREFIX} CRITICAL: webhook rug resolve on-chain ok but DB finalize failed`, {
-      marketId: row.id,
-      txSignature: txSig,
-      error: e instanceof Error ? e.message : String(e),
-    });
-  }
+async function resolveActiveMarketAsRug(row: DbMarket): Promise<void> {
+  const rug = await detectRug(dbMarketToDetectInput(row));
+  if (!rug.isRug) return;
+  await processMarketResolution(
+    row.id,
+    "rug",
+    rug.condition ?? "unknown",
+  );
 }
 
 async function handleTokenMintEvent(ev: Record<string, unknown>): Promise<void> {
@@ -335,10 +313,7 @@ async function handleTransferEvent(ev: Record<string, unknown>): Promise<void> {
 
     for (const row of rows) {
       try {
-        const dto = toMarketDto(row);
-        const rug = await detectRug(dto);
-        if (!rug.isRug) continue;
-        await resolveActiveMarketAsRug(row, dto, rug);
+        await resolveActiveMarketAsRug(row);
       } catch (e) {
         console.log(`${LOG_PREFIX} immediate rug check failed`, {
           marketId: row.id,
