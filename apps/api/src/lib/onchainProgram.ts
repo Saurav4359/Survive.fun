@@ -1,7 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { AnchorProvider, BN, Program, Wallet, type Idl } from "@coral-xyz/anchor";
+import {
+  AnchorProvider,
+  BN,
+  BorshAccountsCoder,
+  Program,
+  Wallet,
+  type Idl,
+} from "@coral-xyz/anchor";
 import {
   Keypair,
   LAMPORTS_PER_SOL,
@@ -96,6 +103,59 @@ function marketPda(tokenMint: PublicKey, _durationSeconds: number): PublicKey {
   return pda;
 }
 
+function accountEnumVariant(status: unknown): string | null {
+  if (!status || typeof status !== "object" || Array.isArray(status)) {
+    return null;
+  }
+  const keys = Object.keys(status as Record<string, unknown>);
+  return keys[0] ?? null;
+}
+
+/** Anchor IDL enums decode as `{ resolved: {} }` or `{ Resolved: {} }` depending on version. */
+function isResolvedMarketAccount(status: unknown, outcome: unknown): boolean {
+  const v = accountEnumVariant(status);
+  if (!v || v.toLowerCase() !== "resolved") return false;
+  return outcome != null && typeof outcome === "object";
+}
+
+/**
+ * True when on-chain market account is `Resolved` with a set outcome (required for `claim_payout`).
+ */
+export async function isMarketResolvedOnChain(
+  connection: Connection,
+  tokenMintBase58: string,
+  durationSeconds: number,
+): Promise<boolean> {
+  try {
+    const idl = loadIdl();
+    const coder = new BorshAccountsCoder(idl);
+    const tokenMint = new PublicKey(tokenMintBase58);
+    const marketPk = marketPda(tokenMint, durationSeconds);
+    const ai = await connection.getAccountInfo(marketPk, "confirmed");
+    if (!ai?.data) return false;
+    const acc = coder.decode("Market", ai.data) as {
+      status: unknown;
+      outcome: unknown;
+    };
+    const ok = isResolvedMarketAccount(acc.status, acc.outcome);
+    if (process.env.DEBUG_MARKET_FETCH === "1") {
+      console.log("[onchainProgram] market fetch", {
+        marketPda: marketPk.toBase58(),
+        status: acc.status,
+        outcome: acc.outcome,
+        resolved: ok,
+      });
+    }
+    return ok;
+  } catch (e) {
+    console.log("[onchainProgram] isMarketResolvedOnChain fetch failed", {
+      tokenMint: tokenMintBase58,
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return false;
+  }
+}
+
 export async function createMarketOnChain(
   connection: Connection,
   tokenMintBase58: string,
@@ -140,6 +200,11 @@ export async function resolveMarketOnChain(
   const platformAuthority = provider.wallet.publicKey;
 
   const anchorOutcome = outcome === "rug" ? { rug: {} } : { survive: {} };
+  console.log("[onchainProgram] resolve_market submitting", {
+    marketPda: market.toBase58(),
+    outcome,
+    platformAuthority: platformAuthority.toBase58(),
+  });
   const signature = await program.methods
     .resolveMarket(anchorOutcome)
     .accounts({
@@ -147,6 +212,12 @@ export async function resolveMarketOnChain(
       platformAuthority,
     })
     .rpc();
+
+  console.log("[onchainProgram] resolve_market confirmed", {
+    signature,
+    marketPda: market.toBase58(),
+    outcome,
+  });
 
   return {
     signature,
