@@ -5,7 +5,7 @@
  * IDL can be found at `target/idl/survivefun.json`.
  */
 export type Survivefun = {
-  "address": "3shYxrDG1srw1Wxu2yVnrnEUk53m6tS8HDyVKuoYLVd1",
+  "address": "9ZqPpXBid4xzB49HjB7zE6BnTWryMuuZFTULTSJqqTd8",
   "metadata": {
     "name": "survivefun",
     "version": "0.1.0",
@@ -42,6 +42,51 @@ export type Survivefun = {
         {
           "name": "platformAuthority",
           "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "closeMarket",
+      "discriminator": [
+        88,
+        154,
+        248,
+        186,
+        48,
+        14,
+        123,
+        244
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.token_mint",
+                "account": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
         }
       ],
       "args": []
@@ -88,10 +133,6 @@ export type Survivefun = {
               {
                 "kind": "arg",
                 "path": "tokenMint"
-              },
-              {
-                "kind": "arg",
-                "path": "durationSeconds"
               }
             ]
           }
@@ -285,7 +326,7 @@ export type Survivefun = {
     {
       "code": 6000,
       "name": "marketAlreadyExists",
-      "msg": "Market already exists for this token and duration"
+      "msg": "Market already exists for this token mint"
     },
     {
       "code": 6001,
@@ -351,6 +392,11 @@ export type Survivefun = {
       "code": 6013,
       "name": "cannotResolveBeforeExpiry",
       "msg": "Market cannot be resolved before expires_at"
+    },
+    {
+      "code": 6014,
+      "name": "marketHasOpenPositions",
+      "msg": "Market cannot be closed while it has bets or non-seed pool funds"
     }
   ],
   "types": [

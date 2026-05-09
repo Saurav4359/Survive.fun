@@ -85,7 +85,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             transition={{ duration: 0.18, ease: "easeOut" }}
             style={{
               backgroundColor:
-                resolvedFlash.outcome === "survive" ? "#cdf078" : "#ef4444",
+                resolvedFlash.outcome === "survive" ? "#8aff8e" : "#ef4444",
             }}
             className="pointer-events-none fixed inset-0 z-[150]"
             aria-hidden
@@ -101,7 +101,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           {toasts.map((t) => (
             <motion.div
               key={t.id}
-              layout
               initial={{ opacity: 0, x: 32 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 32 }}

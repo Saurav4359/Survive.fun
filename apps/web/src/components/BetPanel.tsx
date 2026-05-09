@@ -20,7 +20,7 @@ function clampSol(n: number): number {
 
 /** Solana brand purple — header glyph only. */
 const SOL_BRAND = "#9945FF";
-const LIME_SELECTED = "#a3e635";
+const LIME_SELECTED = "#8aff8e";
 
 export type BetPanelProps = {
   market: Market;
@@ -179,7 +179,7 @@ export function BetPanel({ market, onBet, position = null }: BetPanelProps) {
                 setAmountError(validateAmount(c));
               }}
               placeholder="0.00"
-              className="w-full rounded-md border border-border bg-bg py-3 pl-10 pr-3 font-mono text-base font-semibold tabular-nums text-white transition-shadow focus:border-[#a3e635] focus:outline-none focus:shadow-glow-sm"
+              className="w-full rounded-md border border-border bg-bg py-3 pl-10 pr-3 font-mono text-base font-semibold tabular-nums text-white transition-shadow focus:border-[#8aff8e] focus:outline-none focus:shadow-glow-sm"
             />
           </div>
           {amountError ? (
@@ -203,7 +203,7 @@ export function BetPanel({ market, onBet, position = null }: BetPanelProps) {
                   className={
                     active
                       ? "rounded-md px-3 py-1.5 font-mono text-[10px] font-bold tabular-nums text-ink"
-                      : "rounded-md border border-border bg-bg px-3 py-1.5 font-mono text-[10px] font-bold tabular-nums text-fg-soft transition-colors hover:border-[#a3e635] hover:text-[#a3e635]"
+                      : "rounded-md border border-border bg-bg px-3 py-1.5 font-mono text-[10px] font-bold tabular-nums text-fg-soft transition-colors hover:border-[#8aff8e] hover:text-[#8aff8e]"
                   }
                   style={active ? { backgroundColor: LIME_SELECTED } : undefined}
                 >

@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useState } from "react";
 
 type Props = {
@@ -42,14 +41,17 @@ export function TokenThumb({
       className={`relative shrink-0 overflow-hidden border border-border bg-surface ${r} ${className}`}
       style={{ width: size, height: size }}
     >
-      <Image
+      {/* eslint-disable-next-line @next/next/no-img-element -- remote DexScreener PNG */}
+      <img
         src={src}
         alt=""
         width={size}
         height={size}
+        loading="lazy"
+        decoding="async"
+        draggable={false}
         className="h-full w-full object-cover"
         onError={() => setBad(true)}
-        unoptimized
       />
     </div>
   );

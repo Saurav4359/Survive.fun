@@ -46,7 +46,11 @@ export function ParticleField({
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(width, height);
     renderer.setClearColor(0x000000, 0);
-    container.appendChild(renderer.domElement);
+    const canvas = renderer.domElement;
+    canvas.style.display = "block";
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
+    container.appendChild(canvas);
 
     const positions = new Float32Array(particleCount * 3);
     for (let i = 0; i < particleCount; i += 1) {
@@ -65,7 +69,7 @@ export function ParticleField({
     );
 
     const material = new THREE.PointsMaterial({
-      color: 0xcdf078,
+      color: 0x8aff8e,
       size: 0.04,
       sizeAttenuation: true,
       transparent: true,
@@ -139,7 +143,9 @@ export function ParticleField({
     <div
       ref={containerRef}
       aria-hidden
-      className={className ?? "pointer-events-none absolute inset-0"}
+      className={
+        className ?? "pointer-events-none absolute inset-0 overflow-hidden"
+      }
     />
   );
 }

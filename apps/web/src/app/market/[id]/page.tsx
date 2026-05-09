@@ -48,11 +48,13 @@ import {
   parsePoolLamports,
 } from "@/utils/format";
 import {
+  claimPayout,
+  getBetPDA,
   placeBet as placeBetOnChain,
   resolveMarketPdaForTransaction,
 } from "@/utils/transactions";
 
-const CHART_LINE = "#cdf078";
+const CHART_LINE = "#8aff8e";
 
 function parseNum(s: string | null | undefined): number | null {
   if (s == null) return null;
@@ -144,6 +146,17 @@ export default function MarketPage() {
     return { side: "rug", stakeSol: rugTotal };
   }, [id, market, userBets]);
 
+  const userMarketBet = useMemo(() => {
+    if (!id || !userBets?.length) return null;
+    const own = userBets
+      .filter((b) => b.market.id === id && b.currency === "sol")
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+    return own[0] ?? null;
+  }, [id, userBets]);
+
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartApiRef = useRef<import("lightweight-charts").IChartApi | null>(
     null,
@@ -224,6 +237,41 @@ export default function MarketPage() {
     },
   });
 
+  const claimMut = useMutation({
+    mutationFn: async () => {
+      if (!market || !userMarketBet) {
+        throw new Error("No claimable position found.");
+      }
+      const marketPda = await resolveMarketPdaForTransaction(
+        market.tokenMint,
+        market.durationSeconds,
+        market.onChainAddress,
+      );
+      const bettor = wallet.publicKey;
+      if (!bettor) throw new Error("Connect a wallet to claim");
+      const betPda = (await getBetPDA(marketPda, bettor.toBase58())).toBase58();
+      return claimPayout(wallet, marketPda, betPda);
+    },
+    onSuccess: () => {
+      toast({
+        variant: "success",
+        title: "Payout claimed",
+        message: "Funds should appear in your wallet shortly.",
+      });
+      void queryClient.invalidateQueries({ queryKey: marketQueryKey(id) });
+      void queryClient.invalidateQueries({ queryKey: marketBetsQueryKey(id) });
+      if (userWallet) {
+        void queryClient.invalidateQueries({
+          queryKey: userBetsQueryKey(userWallet),
+        });
+      }
+    },
+    onError: (e) => {
+      const msg = e instanceof Error ? e.message : "Claim failed";
+      toast({ variant: "error", title: "Transaction failed", message: msg });
+    },
+  });
+
   const seedFlatSeries = useCallback(() => {
     const series = seriesRef.current;
     if (!series) return;
@@ -269,14 +317,26 @@ export default function MarketPage() {
     if (!el || !market) return undefined;
 
     let cancelled = false;
+    let disposed = false;
     let chart: import("lightweight-charts").IChartApi | null = null;
     let ro: ResizeObserver | null = null;
+
+    const safeResize = () => {
+      if (disposed || cancelled || !chart || !chartContainerRef.current) return;
+      try {
+        const { width, height } =
+          chartContainerRef.current.getBoundingClientRect();
+        chart.applyOptions({ width, height });
+      } catch {
+        /* chart may already be removed (ResizeObserver vs React cleanup race) */
+      }
+    };
 
     void (async () => {
       const { createChart, ColorType, CrosshairMode } = await import(
         "lightweight-charts"
       );
-      if (cancelled || !chartContainerRef.current) return;
+      if (cancelled || disposed || !chartContainerRef.current) return;
 
       chart = createChart(chartContainerRef.current, {
         layout: {
@@ -292,12 +352,12 @@ export default function MarketPage() {
           vertLine: {
             color: CHART_LINE,
             width: 1,
-            labelBackgroundColor: "#cdf078",
+            labelBackgroundColor: "#8aff8e",
           },
           horzLine: {
             color: CHART_LINE,
             width: 1,
-            labelBackgroundColor: "#cdf078",
+            labelBackgroundColor: "#8aff8e",
           },
         },
         rightPriceScale: { borderColor: "#1a1a1a" },
@@ -308,6 +368,11 @@ export default function MarketPage() {
         color: CHART_LINE,
         lineWidth: 2,
       });
+
+      if (cancelled || disposed) {
+        chart.remove();
+        return;
+      }
 
       chartApiRef.current = chart;
       seriesRef.current = series;
@@ -322,7 +387,7 @@ export default function MarketPage() {
         );
         if (r.ok) {
           const j = (await r.json()) as ApiResponse<MarketChartResponse>;
-          if (!cancelled && j.success && j.data.bars.length > 0) {
+          if (!cancelled && !disposed && j.success && j.data.bars.length > 0) {
             const pts = j.data.bars
               .map((b) => ({
                 time: b.t as UTCTimestamp,
@@ -330,7 +395,11 @@ export default function MarketPage() {
               }))
               .filter((p) => Number.isFinite(p.value) && p.value > 0);
             if (pts.length > 0) {
-              series.setData(pts);
+              try {
+                series.setData(pts);
+              } catch {
+                return;
+              }
               usedBars = true;
             }
           }
@@ -338,29 +407,42 @@ export default function MarketPage() {
       } catch {
         /* use synthetic series */
       }
+      if (cancelled || disposed) return;
       if (!usedBars) {
-        seedFlatSeries();
+        try {
+          seedFlatSeries();
+        } catch {
+          return;
+        }
       }
-      setChartReady(true);
+      if (!cancelled && !disposed) {
+        setChartReady(true);
+      }
 
       ro = new ResizeObserver(() => {
-        if (!chartContainerRef.current || !chart) return;
-        const { width, height } =
-          chartContainerRef.current.getBoundingClientRect();
-        chart.applyOptions({ width, height });
+        safeResize();
       });
       ro.observe(chartContainerRef.current);
+      safeResize();
     })();
 
     return () => {
       cancelled = true;
+      disposed = true;
       ro?.disconnect();
-      chart?.remove();
+      ro = null;
+      try {
+        chart?.remove();
+      } catch {
+        /* already disposed */
+      }
+      chart = null;
       chartApiRef.current = null;
       seriesRef.current = null;
       setChartReady(false);
     };
-  }, [id, market, seedFlatSeries, tokenHook.price, chartTf]);
+    /** Recreate chart only when market identity or timeframe changes — not on every price poll. */
+  }, [id, market?.id, seedFlatSeries, chartTf]);
 
   useEffect(() => {
     chartPriceRef.current =
@@ -381,6 +463,12 @@ export default function MarketPage() {
     : { survive: "—", rug: "—" };
   const totalPoolLabel = formatSolBetLine(totalPool / 1e9);
   const risk = inferRisk(openLiquidityUsd);
+  const claimable =
+    Boolean(userMarketBet) &&
+    market?.status === "resolved" &&
+    !userMarketBet?.claimed &&
+    market?.outcome != null &&
+    userMarketBet?.side === market?.outcome;
 
   const sortedSignals = useMemo(() => {
     const items: { label: string; value: string; Icon: typeof Droplets }[] = [];
@@ -848,6 +936,50 @@ export default function MarketPage() {
           </div>
 
           <BetPanel market={market} onBet={onBet} position={position} />
+          {position ? (
+            <div className="border border-border bg-card p-5">
+              <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+                Your position
+              </p>
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="font-mono text-xs">
+                  <p className="text-fg-muted">Side</p>
+                  <p
+                    className={`mt-0.5 font-bold uppercase tracking-[0.15em] ${
+                      position.side === "survive" ? "text-survive" : "text-rug"
+                    }`}
+                  >
+                    {position.side}
+                  </p>
+                </div>
+                <div className="font-mono text-right text-xs">
+                  <p className="text-fg-muted">Stake</p>
+                  <p className="mt-0.5 font-bold tabular-nums text-white">
+                    {formatSolBetLine(position.stakeSol)}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 border-t border-border pt-4">
+                {claimable ? (
+                  <motion.button
+                    whileTap={{ scale: 0.97 }}
+                    type="button"
+                    disabled={claimMut.isPending}
+                    onClick={() => void claimMut.mutateAsync()}
+                    className="w-full rounded-md border border-accent bg-accent px-4 py-2.5 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-ink transition-colors hover:bg-transparent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {claimMut.isPending ? "Claiming…" : "Claim payout"}
+                  </motion.button>
+                ) : (
+                  <p className="font-mono text-[11px] text-fg-muted">
+                    {market.status === "resolved"
+                      ? "No claimable payout for this position."
+                      : "Claim becomes available after market resolution."}
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : null}
         </aside>
       </div>
 
@@ -904,7 +1036,7 @@ function ProgressTimerRing({
           cx="74"
           cy="74"
           r={radius}
-          stroke={urgent ? "#ef4444" : "#cdf078"}
+          stroke={urgent ? "#ef4444" : "#8aff8e"}
           strokeWidth={stroke}
           strokeLinecap="round"
           fill="none"

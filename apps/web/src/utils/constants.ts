@@ -1,8 +1,11 @@
+import type { Idl } from "@coral-xyz/anchor";
 import { LAMPORTS_PER_SOL, PublicKey, clusterApiUrl } from "@solana/web3.js";
+
+import survivefunIdl from "@/idl/survivefun.json";
 
 /** Local Anchor `declare_id!` in `contracts/programs/survivefun` until you set env. */
 const localAnchorProgramId =
-  "3shYxrDG1srw1Wxu2yVnrnEUk53m6tS8HDyVKuoYLVd1";
+  "9ZqPpXBid4xzB49HjB7zE6BnTWryMuuZFTULTSJqqTd8";
 
 const programIdBase58 =
   process.env.NEXT_PUBLIC_PROGRAM_ID?.trim() || localAnchorProgramId;
@@ -11,6 +14,7 @@ const programIdBase58 =
  * Deployed Survive.fun program id. Override with `NEXT_PUBLIC_PROGRAM_ID` in `.env.local`.
  */
 export const PROGRAM_ID = new PublicKey(programIdBase58);
+export const IDL = survivefunIdl as Idl;
 
 export const RPC_URL =
   process.env.NEXT_PUBLIC_RPC_URL?.trim() || clusterApiUrl("devnet");

@@ -9,13 +9,13 @@
     --bg-surface: #0a0a0a;
     --bg-card: #111111;
     --border: #1a1a1a;
-    --border-accent: rgba(205, 240, 120, 0.125); /* #cdf07820 */
+    --border-accent: rgba(138, 255, 142, 0.125);
 
-    --accent: #cdf078;
-    --accent-bright: #cdf078;
-    --accent-dim: #8acc23;
+    --accent: #8aff8e;
+    --accent-bright: #8aff8e;
+    --accent-dim: #52c856;
 
-    --survive: #cdf078;
+    --survive: #8aff8e;
     --rug: #ef4444;
     --warning: #facc15;
 
@@ -23,7 +23,7 @@
     --text-muted: #525252;
     --text-soft: #a3a3a3;
     --on-accent: #000000;
-    --glow: rgba(205, 240, 120, 0.22);
+    --glow: rgba(138, 255, 142, 0.22);
 
     /* shadcn/ui semantic tokens (kept consistent with strict palette) */
     --background: var(--bg);
@@ -139,7 +139,7 @@
     box-shadow: 0 0 0 1px var(--accent), 0 0 24px var(--glow);
   }
   .glow-lime-soft {
-    box-shadow: 0 0 0 1px rgba(205, 240, 120, 0.4), 0 0 16px var(--glow);
+    box-shadow: 0 0 0 1px rgba(138, 255, 142, 0.4), 0 0 16px var(--glow);
   }
 
   /* Lime urgent pulse for timers under 5 min */

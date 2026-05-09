@@ -15,6 +15,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ComponentType, SVGProps } from "react";
 
+import { cn } from "@/lib/utils";
 import { useWalletBalances } from "@/hooks/useWalletBalances";
 import { formatSolBetLine, formatWallet } from "@/utils/format";
 
@@ -71,33 +72,16 @@ export function SidebarNav({ onNavigate }: Props) {
               key={href}
               href={href}
               onClick={onNavigate}
-              className="group relative block"
+              className="group block"
             >
-              <motion.div
-                initial={false}
-                animate={{
-                  backgroundColor: active ? "#0a0a0a" : "rgba(0,0,0,0)",
-                }}
-                whileHover={!active ? { backgroundColor: "#0a0a0a" } : undefined}
-                transition={{ duration: 0.18, ease: "easeOut" }}
-                className="relative flex items-center gap-3 overflow-hidden rounded-md px-3 py-2.5"
+              <div
+                className={cn(
+                  "relative flex items-center gap-3 rounded-md border px-3 py-2.5 transition-[border-color,background-color,box-shadow] duration-200",
+                  active
+                    ? "border-accent bg-[#0a0a0a]"
+                    : "border-border bg-transparent hover:border-accent hover:bg-[#0a0a0a] hover:shadow-glow-sm",
+                )}
               >
-                {/* Sliding lime bg from left on hover */}
-                {!active ? (
-                  <motion.span
-                    aria-hidden
-                    initial={{ x: "-100%" }}
-                    whileHover={{ x: 0 }}
-                    transition={{ duration: 0.22, ease: "easeOut" }}
-                    className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-accent"
-                  />
-                ) : null}
-                {active ? (
-                  <span
-                    aria-hidden
-                    className="absolute inset-y-0 left-0 w-[3px] bg-accent"
-                  />
-                ) : null}
                 <Icon
                   className={
                     active
@@ -115,7 +99,7 @@ export function SidebarNav({ onNavigate }: Props) {
                 >
                   {label}
                 </span>
-              </motion.div>
+              </div>
             </Link>
           );
         })}

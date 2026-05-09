@@ -49,7 +49,7 @@ export function MarketCard({ market }: { market: Market }) {
     >
       <Link
         href={`/market/${market.id}`}
-        className="relative flex flex-col gap-4 border border-border border-l-[3px] border-l-accent bg-card p-4 transition-colors duration-200 hover:border-accent hover:shadow-glow-sm"
+        className="relative flex flex-col gap-4 border border-border bg-card p-4 transition-[border-color,box-shadow] duration-200 hover:border-accent hover:shadow-glow-sm focus-visible:border-accent focus-visible:shadow-glow-sm focus-visible:outline-none"
       >
         <header className="flex items-start gap-3">
           <TokenThumb mint={market.tokenMint} ticker={ticker} size={40} />

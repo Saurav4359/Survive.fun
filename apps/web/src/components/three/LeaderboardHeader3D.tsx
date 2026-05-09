@@ -40,7 +40,11 @@ export function LeaderboardHeader3D({
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(w, h);
     renderer.setClearColor(0x000000, 0);
-    container.appendChild(renderer.domElement);
+    const canvas = renderer.domElement;
+    canvas.style.display = "block";
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
+    container.appendChild(canvas);
 
     // Build "text" out of small lime cubes arranged in a 5x7 grid per char
     const PIXEL_FONT: Record<string, string[]> = {
@@ -61,10 +65,10 @@ export function LeaderboardHeader3D({
     const xStart = -totalWidth / 2;
 
     const material = new THREE.MeshBasicMaterial({
-      color: 0xcdf078,
+      color: 0x8aff8e,
     });
     const wireMaterial = new THREE.LineBasicMaterial({
-      color: 0xcdf078,
+      color: 0x8aff8e,
       transparent: true,
       opacity: 0.55,
     });
@@ -150,7 +154,7 @@ export function LeaderboardHeader3D({
       ref={containerRef}
       aria-label={text}
       style={{ height }}
-      className="relative w-full"
+      className="relative w-full overflow-hidden"
     />
   );
 }

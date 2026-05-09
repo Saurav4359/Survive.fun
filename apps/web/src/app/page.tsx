@@ -14,14 +14,13 @@ import { LiveFeed } from "@/components/LiveFeed";
 import { MarketCard } from "@/components/MarketCard";
 import { ParticleField } from "@/components/three/ParticleField";
 import { useToast } from "@/components/ToastProvider";
-import { fetchActiveMarkets, marketsQueryKey } from "@/hooks/useMarkets";
+import { marketsQueryKey } from "@/hooks/useMarkets";
 import { fetchStats, statsQueryKey } from "@/hooks/useStats";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { useMarketSearchStore } from "@/stores/marketSearchStore";
 import { apiV1Url, MARKET_DURATIONS } from "@/utils/constants";
 import { formatSolBetLine, parsePoolLamports } from "@/utils/format";
 import { totalPoolLamports } from "@/utils/marketRisk";
-import { createMarket as createMarketOnChain } from "@/utils/transactions";
 
 const DURATION_TABS: {
   label: string;
@@ -88,7 +87,22 @@ export default function HomePage() {
 
   const marketsQuery = useQuery({
     queryKey: marketsQueryKey,
-    queryFn: fetchActiveMarkets,
+    queryFn: async (): Promise<Market[]> => {
+      const params = new URLSearchParams({
+        page: "1",
+        limit: "100",
+        status: "active",
+      });
+      const res = await fetch(`${apiV1Url("/markets")}?${params.toString()}`);
+      if (!res.ok) {
+        throw new Error(`Markets request failed (${res.status})`);
+      }
+      const body = (await res.json()) as ApiResponse<MarketListPage>;
+      if (!body.success) {
+        throw new Error(body.error.message || "Markets request failed");
+      }
+      return body.data.items;
+    },
     staleTime: 15_000,
   });
 
@@ -103,7 +117,11 @@ export default function HomePage() {
     [marketsQuery.data],
   );
   const marketsLoading = marketsQuery.isPending;
+  const marketsError =
+    marketsQuery.error instanceof Error ? marketsQuery.error : null;
   const stats = statsQuery.data;
+  const statsLoading = statsQuery.isPending;
+  const statsError = statsQuery.error instanceof Error ? statsQuery.error : null;
 
   const [tokenMint, setTokenMint] = useState("");
   const [durationSeconds, setDurationSeconds] = useState<number>(
@@ -210,11 +228,6 @@ export default function HomePage() {
       if (!publicKey) {
         throw new Error("Connect a wallet to create a market");
       }
-      const createMarketTxSignature = await createMarketOnChain(
-        wallet,
-        mint,
-        duration,
-      );
       const res = await fetch(apiV1Url("/markets"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -222,7 +235,6 @@ export default function HomePage() {
           tokenMint: mint,
           duration,
           walletAddress: publicKey.toBase58(),
-          createMarketTxSignature,
           currency: "sol",
         }),
       });
@@ -470,47 +482,62 @@ export default function HomePage() {
           aria-label="Platform statistics"
           className="mt-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4"
         >
-          {[
-            {
-              label: "Active Markets",
-              value: stats?.activeMarkets ?? 0,
-              format: (n: number) => `${Math.round(n)}`,
-            },
-            {
-              label: "Total Volume",
-              value: totalVolLamports / 1e9,
-              format: (n: number) => formatSolBetLine(n),
-            },
-            {
-              label: "Rugs Caught",
-              value: stats?.resolvedRugs ?? 0,
-              format: (n: number) => `${Math.round(n)}`,
-            },
-            {
-              label: "Biggest Win",
-              value: biggestPayoutLamports / 1e9,
-              format: (n: number) => formatSolBetLine(n),
-            },
-          ].map((stat, i) => (
-            <motion.div
-              key={stat.label}
-              initial={{ opacity: 0, y: 14 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.06, duration: 0.4 }}
-              className="border border-border border-t-2 border-t-accent bg-card px-4 py-4"
-            >
-              <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-fg-muted">
-                {stat.label}
+          {statsLoading ? (
+            Array.from({ length: 4 }).map((_, i) => (
+              <div
+                key={`stats-skeleton-${i}`}
+                className="h-[94px] animate-pulse border border-border bg-card"
+              />
+            ))
+          ) : statsError ? (
+            <div className="col-span-full border border-rug/40 bg-card px-4 py-4">
+              <p className="font-mono text-xs text-rug">
+                Failed to load stats: {statsError.message}
               </p>
-              <p className="mt-2 font-mono text-xl font-bold tabular-nums text-accent sm:text-2xl">
-                <CountUp
-                  to={stat.value}
-                  format={stat.format}
-                  delay={0.2 + i * 0.08}
-                />
-              </p>
-            </motion.div>
-          ))}
+            </div>
+          ) : (
+            [
+              {
+                label: "Active Markets",
+                value: stats?.activeMarkets ?? 0,
+                format: (n: number) => `${Math.round(n)}`,
+              },
+              {
+                label: "Total Volume",
+                value: totalVolLamports / 1e9,
+                format: (n: number) => formatSolBetLine(n),
+              },
+              {
+                label: "Rugs Caught",
+                value: stats?.resolvedRugs ?? 0,
+                format: (n: number) => `${Math.round(n)}`,
+              },
+              {
+                label: "Biggest Win",
+                value: biggestPayoutLamports / 1e9,
+                format: (n: number) => formatSolBetLine(n),
+              },
+            ].map((stat, i) => (
+              <motion.div
+                key={stat.label}
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.06, duration: 0.4 }}
+                className="border border-border border-t-2 border-t-accent bg-card px-4 py-4"
+              >
+                <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+                  {stat.label}
+                </p>
+                <p className="mt-2 font-mono text-xl font-bold tabular-nums text-accent sm:text-2xl">
+                  <CountUp
+                    to={stat.value}
+                    format={stat.format}
+                    delay={0.2 + i * 0.08}
+                  />
+                </p>
+              </motion.div>
+            ))
+          )}
         </section>
 
         {/* MARKETS GRID + LIVE FEED */}
@@ -562,6 +589,16 @@ export default function HomePage() {
                     />
                   ))}
                 </div>
+              ) : marketsError ? (
+                <EmptyState
+                  icon={Inbox}
+                  title="Failed to load markets"
+                  description={marketsError.message}
+                  action={{
+                    label: "Retry",
+                    onClick: () => void marketsQuery.refetch(),
+                  }}
+                />
               ) : filtered.length === 0 ? (
                 <EmptyState
                   icon={Inbox}

@@ -129,12 +129,6 @@ function platformAuthorityOrCreator(creator: PublicKey): PublicKey {
   }
 }
 
-function durationSeedBuf(durationSeconds: number): Buffer {
-  const b = Buffer.allocUnsafe(8);
-  b.writeBigUInt64LE(BigInt(durationSeconds), 0);
-  return b;
-}
-
 /** Wallet adapters wrap RPC failures in WalletSendTransactionError(message, inner). */
 function unwrapWalletErrors(err: unknown): unknown {
   let cur: unknown = err;
@@ -301,7 +295,7 @@ async function sendInstructions(
 }
 
 /**
- * Market PDA: `[b"market", mint, duration_seconds_le]`.
+ * Market PDA: `[b"market", mint]` (one market per token mint; duration only affects expiry in `create_market`).
  */
 export async function getMarketPDA(
   tokenMint: string,
@@ -320,7 +314,7 @@ export async function getMarketPDA(
     );
   }
   const [pda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("market"), mint.toBuffer(), durationSeedBuf(durationSeconds)],
+    [Buffer.from("market"), mint.toBuffer()],
     PROGRAM_ID,
   );
   return pda;

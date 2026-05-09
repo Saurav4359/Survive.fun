@@ -14,7 +14,7 @@ function Shimmer({ className }: { className: string }) {
 export function MarketCardSkeleton() {
   return (
     <article
-      className="flex flex-col gap-4 border border-border border-l-[3px] border-l-accent/40 bg-card p-4"
+      className="flex flex-col gap-4 border border-border bg-card p-4"
       aria-hidden
     >
       <div className="flex items-start gap-3">
