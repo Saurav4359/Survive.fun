@@ -13,6 +13,7 @@ Out of scope: business logic, frontend UI, contract code.
 | `apps/web/` | Next.js 14 frontend (deploys to **Vercel**) |
 | `apps/api/prisma/schema.prisma` | Database schema (Postgres) |
 | `apps/api/prisma/migrations/` | Versioned SQL migrations |
+| `apps/api/src/config/productionGate.ts` | Exits on boot in production if unsafe demo env flags are set |
 | `apps/api/src/scripts/helius-webhook.ts` | Helius webhook CRUD (list / register / ensure / delete) |
 | `apps/api/railway.json` | Railway build & deploy config |
 | `apps/web/vercel.json` | Vercel build config |
@@ -41,16 +42,26 @@ The **bold** name is what the code reads (`process.env.X`); the indented italici
 | **`USDC_MINT_DEVNET`** | ✅ | spec / docs | Canonical Circle devnet mint: `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`. |
 | **`BACKEND_URL`** | ✅ | webhook URL builder | Public origin of the API, e.g. `https://survivefun-api.up.railway.app`. |
 | **`FRONTEND_URL`** | ✅ | CORS guidance | Public origin of the web app, e.g. `https://survive.fun`. |
-| **`CORS_ORIGIN`** | ✅ | Express cors | Comma-separated list, set to `${FRONTEND_URL}` (and any preview origins). |
+| **`CORS_ORIGIN`** | ✅ in prod | Express + Socket.IO | Comma-separated allowed origins. **If `NODE_ENV=production` and this parses to an empty list, the process exits on startup.** In dev, omitting it keeps permissive behavior (Express reflects origin; Socket.IO uses `*`). |
 | **`HELIUS_WEBHOOK_URL`** | ✅ | webhook bootstrap | `${BACKEND_URL}/webhook/helius` — must be public HTTPS. |
 | **`HELIUS_WEBHOOK_AUTH_SECRET`** | ✅ | webhook auth | Long random string. Helius sends it as `Authorization` header; API verifies via `timingSafeEqual`. |
 | `HELIUS_NETWORK` | optional | rug detector | `mainnet` (default) or `devnet`. |
 | `AUTO_MARKET_CREATOR_WALLET` | optional | webhook auto-create | Wallet recorded as creator on Pump.fun TOKEN_MINT auto-markets. |
 | `BIRDEYE_API_KEY` | optional | OHLCV chart, graduation rule | Improves charts; not required. |
 | `PORT` | optional | Express | Railway sets this automatically; default `3001`. |
-| `NODE_ENV` | optional | Prisma logging | Set to `production` on Railway. |
+| `NODE_ENV` | optional | Prisma logging + boot guards | Set to `production` on Railway. When production, the API also enforces the rules below. |
 
 > **Local-only flags** (must NOT be set in production): `ALLOW_DB_ONLY_MARKET_CREATE=true`, `SKIP_TX_VERIFICATION=true`.
+
+### Production startup guards (`assertProductionSafeOrExit`)
+
+When **`NODE_ENV=production`**, the API exits immediately (before listening) if any of these hold:
+
+- `SKIP_TX_VERIFICATION=true`
+- `ALLOW_DB_ONLY_MARKET_CREATE=true`
+- `CORS_ORIGIN` is missing or whitespace-only (no allowed origins after parsing)
+
+Implementation: `apps/api/src/config/productionGate.ts`, called from `apps/api/src/index.ts`.
 
 ### Frontend — Vercel (`apps/web`)
 
@@ -112,6 +123,8 @@ rug_events
 platform_stats
 _prisma_migrations
 ```
+
+**Uniqueness:** migration `20260509120000_markets_active_mint_duration_unique` adds a **partial unique index** on `markets (token_mint, duration)` where `status = 'active'`. Applying it fails if duplicate active rows already exist — dedupe first. `POST /v1/markets` treats `P2002` as idempotent when it can reload the active row; otherwise responds **409** `MARKET_CONFLICT`. Helius auto-create treats `P2002` as “already listed” and skips.
 
 ---
 
@@ -203,11 +216,12 @@ vercel --prod
 
 ## 8. CORS
 
-`apps/api/src/index.ts` reads `CORS_ORIGIN` (comma-separated). Set it to the comma-joined union of:
-- production frontend (`https://survive.fun`)
-- Vercel preview origin pattern (Vercel does not expose a single hostname for previews — either disable previews via `vercel.json`, or temporarily widen `CORS_ORIGIN` while testing a preview).
+`apps/api/src/index.ts` parses `CORS_ORIGIN` as a comma-separated list (trimmed, empty entries dropped).
 
-The Socket.IO server uses the same list (or `*` if unset).
+- **Production (`NODE_ENV=production`):** the list must be **non-empty** or the process **exits**. Express and Socket.IO both use that explicit list only (no reflect-all, no `*`).
+- **Development:** if `CORS_ORIGIN` is unset or empty, Express uses `origin: true` (reflect request origin) and Socket.IO uses `*` — convenient for local tooling only.
+
+Set production values to the comma-joined union of your real frontends (e.g. `https://survive.fun`). For Vercel previews, either list preview hostnames explicitly when testing, or use a staging API with a wider allowlist — there is no single wildcard preview domain.
 
 ---
 
@@ -233,54 +247,18 @@ cd apps/api && pnpm helius:list
 
 ---
 
-## 10. Session checklist (this run)
+## 10. Doc maintenance notes
 
-| Item | Status |
-|------|--------|
-| Frontend URL | _not deployed in this session_ |
-| Backend URL | _not deployed in this session_ |
-| Program ID | `HB3uE5XQGq1xNtW9RMSrnBegwifeLzk1xyr75ofRPrtH` (devnet, from `contracts/Anchor.toml`) |
-| Helius Webhook ID | _not registered — `HELIUS_WEBHOOK_URL` empty (no public BACKEND_URL yet)_ |
-| All envs set | partial — see notes |
-| Full flow working | local-only (HTTP `/health`, `/v1/stats`, `/v1/markets/active` returned 200 against local Postgres + Redis) |
+Keep this file aligned with `apps/api/src/index.ts`, `apps/api/env.sample`, and `backend.md` when changing env vars, CORS, or migrations.
 
-### What was done this session
+**Recent production hardening (surfaces to double-check on deploy):**
 
-- Read `apps/api/env.sample`, `apps/web/env.sample`, `apps/api/.env`, `contracts/Anchor.toml`, `apps/api/prisma/schema.prisma`, `backend.md`.
-- Reconciled spec env names (`PROGRAM_ID`, `PLATFORM_WALLET_SECRET`, `SOLANA_RPC`) with the names the code actually reads (`SURVIVEFUN_PROGRAM_ID`, `PLATFORM_WALLET_SECRET_KEY`, `SOLANA_RPC_URL`); added the spec aliases as comments + dual entries in both env.sample files.
-- Added `BACKEND_URL`, `FRONTEND_URL`, `USDC_MINT_DEVNET` to `apps/api/env.sample` and `NEXT_PUBLIC_USDC_MINT` to `apps/web/env.sample`.
-- Created `apps/web/.env.local` for local dev.
-- Updated `apps/api/.env` with the full required-var set (placeholders for secrets).
-- Added scripts to `apps/api/package.json`: `helius:list`, `helius:register`, `helius:ensure`, `helius:delete`, `db:migrate:deploy`, `db:migrate:dev`, `db:generate`, `db:push`.
-- Wrote `apps/api/src/scripts/helius-webhook.ts` (list / register / ensure / delete; auto-loads `apps/api/.env`).
-- Verified Helius API key is valid (`pnpm helius:list` succeeded — no webhooks currently registered, expected because `HELIUS_WEBHOOK_URL` is unset).
-- Created the initial Prisma migration `apps/api/prisma/migrations/20260509000000_init/migration.sql` from the schema, baseline-resolved it against the existing local DB, then ran `prisma migrate deploy` and `prisma generate`. All four expected tables (`markets`, `bets`, `rug_events`, `platform_stats`) verified via `psql \dt`.
-- Booted the API on a free port (`PORT=3099`) and verified `/health`, `/v1/stats`, `/v1/markets/active` all return 200 with valid Prisma queries against the local DB.
-- API typecheck (`pnpm --filter api typecheck`) passes.
+- Fail-fast if `NODE_ENV=production` and `SKIP_TX_VERIFICATION` / `ALLOW_DB_ONLY_MARKET_CREATE` are enabled, or if `CORS_ORIGIN` is empty.
+- Partial unique index on active markets: migration `20260509120000_markets_active_mint_duration_unique`.
+- If a one-off duplicate migration folder named `20260509140000_markets_active_mint_duration_partial_unique` ever existed in a clone, it duplicated the same index — remove it from the repo and use `prisma migrate resolve --rolled-back …` on any DB that recorded a failed apply.
 
-### What still needs the user
+### Known minor issue
 
-The following require credentials / public infra that this session does not have:
-
-1. **Generate / paste a `PLATFORM_WALLET_SECRET_KEY`** (JSON byte-array of a Solana keypair holding devnet SOL). Required for on-chain `resolve_market`.
-2. **Provision Railway** (Postgres + Redis plugins + service for `apps/api`); copy the public domain into `BACKEND_URL` and `HELIUS_WEBHOOK_URL`.
-3. **Provision Vercel** (`apps/web`) with the four `NEXT_PUBLIC_*` vars; copy the public domain into `FRONTEND_URL` and `CORS_ORIGIN` on Railway.
-4. After both URLs exist, run `pnpm --filter api helius:register` (or `helius:ensure`) — record the returned `webhookID` back here.
-5. Free local port 3001 (Next.js dev server is currently bound to it; the API can't bind alongside it). Either kill the orphan `next-server` (PID was 54751 during this session) or run the web app on its default 3000 explicitly.
-
-### Known minor issue (out of devops scope, flagged for backend agent)
-
-`apps/api/src/index.ts:96-97` logs `✅ Helius webhook registered` even when `registerHeliusWebhook()` skips registration (missing env). Logging is unconditional inside the `then`. Consider moving the log inside `registerHeliusWebhook()` so it only fires on actual creation.
+`apps/api/src/index.ts` still logs `✅ Helius webhook registered` after `registerHeliusWebhook()` even when registration was skipped (missing env). Prefer tightening that log inside `registerHeliusWebhook()` when touching that code.
 
 ---
-
-## END-OF-SESSION SUMMARY
-
-```
-Frontend URL:        (not deployed this session — Vercel setup pending)
-Backend URL:         (not deployed this session — Railway setup pending)
-Program ID:          HB3uE5XQGq1xNtW9RMSrnBegwifeLzk1xyr75ofRPrtH
-Helius Webhook ID:   (not registered — needs public BACKEND_URL first)
-All envs set:        no   (need PLATFORM_WALLET_SECRET_KEY, HELIUS_WEBHOOK_URL, HELIUS_WEBHOOK_AUTH_SECRET, BACKEND_URL, FRONTEND_URL, CORS_ORIGIN)
-Full flow working:   no   (local backend ✅ verified end-to-end against Postgres + Redis; deploys not executed)
-```

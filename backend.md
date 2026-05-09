@@ -51,17 +51,19 @@ Restart the API after changing program id so DTO and verification pick up the ne
 
 This API is largely **public**: there is no session/JWT for traders; correctness relies on **Solana tx verification** (`SKIP_TX_VERIFICATION` must stay **false** in production), **Helius webhook auth** (`HELIUS_WEBHOOK_AUTH_SECRET` timing-safe compare), and **platform keys** for `resolve_market`.
 
+When **`NODE_ENV=production`**, the process **exits on startup** if `SKIP_TX_VERIFICATION=true`, `ALLOW_DB_ONLY_MARKET_CREATE=true`, or **`CORS_ORIGIN`** is empty after parsing (`apps/api/src/config/productionGate.ts` + `apps/api/src/index.ts`). Documented in **`devops.md`**.
+
 | Topic | Risk | Mitigation / status |
 |-------|------|---------------------|
-| **Bet replay / forged stakes** | High if verification disabled | **`SKIP_TX_VERIFICATION`** only for local tests — documented in `apps/api/env.sample`. |
-| **DB-only markets** | Spam / no on-chain market | **`ALLOW_DB_ONLY_MARKET_CREATE`** default false; documented as prod-unsafe. |
-| **CORS** | Misconfigured browser access | Set **`CORS_ORIGIN`** explicitly in production (comma-separated); unset uses permissive defaults suited for dev. |
+| **Bet replay / forged stakes** | High if verification disabled | **`SKIP_TX_VERIFICATION`** only for local tests — **blocked in production** at boot (see above). |
+| **DB-only markets** | Spam / no on-chain market | **`ALLOW_DB_ONLY_MARKET_CREATE`** — **blocked in production** at boot if set to `true`. |
+| **CORS** | Misconfigured browser access | **Production:** non-empty **`CORS_ORIGIN`** required or process exits. **Dev:** omit for permissive local defaults. |
 | **Socket.IO** | Room flooding | **`subscribe_market`** accepts only **UUID** `marketId` (invalid payloads ignored). |
 | **Helius webhook** | Unauthorized triggers | Rejects when secret unset or **`Authorization`** mismatch; responds **401**. Body size capped (**2mb** raw). |
 | **Outbound HTTP** | SSRF | DexScreener/Birdeye/Helius URLs are fixed templates; mints validated as **base58** before interpolation. |
 | **SQL injection** | — | Prisma parameterizes queries; no raw SQL from user input. |
 | **Secrets in logs** | — | Errors use generic **INTERNAL_ERROR** message for unknown failures (`errorHandler`). |
-| **Duplicate active markets** | Double listings | **`POST /markets`** checks **`token_mint` + `duration` + `active`** first; returns **200** + existing market. Concurrent creates may still race until a DB unique constraint is added (optional migration). |
+| **Duplicate active markets** | Double listings | **`POST /markets`** checks **`token_mint` + `duration` + `active`** first; returns **200** + existing market. **DB:** partial unique index **`markets_active_token_mint_duration_key`** on **`(token_mint, duration)`** where **`status = 'active'`** (migration **`20260509120000_markets_active_mint_duration_unique`**). **`P2002`** on create → reload active row and return **200** if found; else **409** `MARKET_CONFLICT`. **Helius** auto-create: **`P2002`** → log and skip (idempotent). **Deploy:** migration fails if duplicate active rows already exist — dedupe before `migrate deploy`. |
 | **Leaderboard** | Heavy query | Loads up to **8000** resolved bets into memory for aggregation — acceptable at small scale; consider SQL aggregation if traffic grows. |
 | **Platform signer** | Key exposure | **`PLATFORM_WALLET_SECRET_KEY`** must never be committed; limits platform authority to **`resolve_market`** + funded SOL for fees. |
 
