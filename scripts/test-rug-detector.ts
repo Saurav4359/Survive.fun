@@ -100,6 +100,7 @@ function buildMarket(overrides: Partial<Market> = {}): Market {
     onChainAddress: null,
     createdAt: now,
     totalBettors: 0,
+    currency: "usdc",
     ...overrides,
   };
 }

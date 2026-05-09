@@ -96,6 +96,7 @@ async function main(): Promise<void> {
         outcome: null,
         onChainAddress: null,
         totalBettors: 0,
+        currency: "usdc",
       },
     });
     createdMarkets.push(row);
@@ -132,6 +133,7 @@ async function main(): Promise<void> {
         marketId: market.id,
         bettorWallet: wallet,
         side: b.side,
+        currency: "usdc",
         amountUsdc: b.amountUsdc,
         potentialWin: null,
         txSignature,

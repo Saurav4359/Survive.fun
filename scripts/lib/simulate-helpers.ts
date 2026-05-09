@@ -136,6 +136,10 @@ export function logPayoutTable(args: {
   market: Market;
   bets: Bet[];
 }): void {
+  if (args.market.currency === "sol") {
+    log("Payout preview helper is USDC-only; skipping table for SOL market.");
+    return;
+  }
   const outcome = args.market.outcome;
   if (!outcome) {
     log("No outcome on market; skipping payout table.");
@@ -148,7 +152,8 @@ export function logPayoutTable(args: {
     `[simulate] Outcome: ${outcome.toUpperCase()} | survivePool: ${args.market.survivePool} USDC | rugPool: ${args.market.rugPool} USDC`,
   );
   for (const b of args.bets) {
-    const amt = decimalStringToRaw6(b.amountUsdc);
+    if (b.currency === "sol") continue;
+    const amt = decimalStringToRaw6(b.amountUsdc ?? "0");
     const claim = expectedWinnerClaimRaw({
       betSide: b.side,
       marketOutcome: outcome,
@@ -197,6 +202,7 @@ export async function pollUntilResolved(
         expiresAt: row.expiresAt.toISOString(),
         survivePool: row.survivePool.toString(),
         rugPool: row.rugPool.toString(),
+        currency: row.currency === "sol" ? "sol" : "usdc",
         openPrice: row.openPrice?.toString() ?? null,
         openLiquidity: row.openLiquidity?.toString() ?? null,
         devWallet: row.devWallet,

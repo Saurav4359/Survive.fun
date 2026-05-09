@@ -109,7 +109,13 @@ async function main(): Promise<void> {
       marketId: b.marketId,
       bettorWallet: b.bettorWallet,
       side: b.side as "survive" | "rug",
-      amountUsdc: b.amountUsdc.toString(),
+      currency: b.currency === "sol" ? "sol" as const : "usdc" as const,
+      amountUsdc:
+        b.currency === "usdc" ? b.amountUsdc.toString() : null,
+      amountLamports:
+        b.currency === "sol"
+          ? b.amountUsdc.toFixed(0).split(".")[0] ?? "0"
+          : null,
       potentialWin: b.potentialWin?.toString() ?? null,
       txSignature: b.txSignature,
       claimed: b.claimed,

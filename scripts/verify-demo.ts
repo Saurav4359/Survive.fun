@@ -243,6 +243,7 @@ async function main(): Promise<void> {
           body: JSON.stringify({
             walletAddress: "11111111111111111111111111111111",
             side: "rug",
+            currency: "usdc",
             amount: 9999, // > $50 limit; must reject
             txSignature: "verify_demo_probe_should_be_rejected",
           }),
