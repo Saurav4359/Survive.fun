@@ -5,6 +5,7 @@ import type {
   MarketListPage,
   OhlcvBar,
 } from "@survivefun/types";
+import { Prisma, type Market as DbMarket } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 
@@ -271,24 +272,54 @@ router.post("/", async (req, res, next) => {
     }
 
     const seedLamportsPerSide = "10000000";
-    const row = await prisma.market.create({
-      data: {
-        tokenMint: input.tokenMint,
-        tokenName: boot.tokenName,
-        tokenTicker: boot.tokenTicker,
-        creatorWallet: input.walletAddress,
-        durationSeconds: input.duration,
-        expiresAt,
-        survivePool: onChainAddress ? seedLamportsPerSide : "0",
-        rugPool: onChainAddress ? seedLamportsPerSide : "0",
-        openPrice: boot.openPrice,
-        openLiquidity: boot.openLiquidity,
-        devWallet: boot.devWallet,
-        status: "active",
-        onChainAddress,
-        currency: input.currency,
-      },
-    });
+    let row: DbMarket;
+    try {
+      row = await prisma.market.create({
+        data: {
+          tokenMint: input.tokenMint,
+          tokenName: boot.tokenName,
+          tokenTicker: boot.tokenTicker,
+          creatorWallet: input.walletAddress,
+          durationSeconds: input.duration,
+          expiresAt,
+          survivePool: onChainAddress ? seedLamportsPerSide : "0",
+          rugPool: onChainAddress ? seedLamportsPerSide : "0",
+          openPrice: boot.openPrice,
+          openLiquidity: boot.openLiquidity,
+          devWallet: boot.devWallet,
+          status: "active",
+          onChainAddress,
+          currency: input.currency,
+        },
+      });
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === "P2002"
+      ) {
+        const raced = await prisma.market.findFirst({
+          where: {
+            tokenMint: input.tokenMint,
+            durationSeconds: input.duration,
+            status: "active",
+          },
+        });
+        if (raced) {
+          const body: ApiResponse<Market> = {
+            success: true,
+            data: toMarketDto(raced),
+          };
+          res.status(200).json(body);
+          return;
+        }
+        throw new AppError(
+          "MARKET_CONFLICT",
+          "An active market for this token and duration already exists",
+          409,
+        );
+      }
+      throw e;
+    }
 
     const dto = toMarketDto(row);
     try {
