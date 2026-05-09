@@ -17,11 +17,18 @@ function lamportsIntegerString(d: { toFixed: (n: number) => string }): string {
 }
 
 export function toMarketDto(row: DbMarket): Market {
-  const canonicalPda = marketPdaBase58ForMintAndDuration(
-    row.tokenMint,
-    row.durationSeconds,
-  );
   const stored = row.onChainAddress?.trim() ?? null;
+  let onChainAddress: string | null = null;
+  if (stored != null) {
+    try {
+      onChainAddress = marketPdaBase58ForMintAndDuration(
+        row.tokenMint,
+        row.durationSeconds,
+      );
+    } catch {
+      onChainAddress = stored;
+    }
+  }
   return {
     id: row.id,
     tokenMint: row.tokenMint,
@@ -39,7 +46,7 @@ export function toMarketDto(row: DbMarket): Market {
       row.devSellThresholdOverride?.toString() ?? null,
     status: row.status as Market["status"],
     outcome: (row.outcome as Market["outcome"] | null) ?? null,
-    onChainAddress: stored == null ? null : canonicalPda,
+    onChainAddress,
     createdAt: row.createdAt.toISOString(),
     totalBettors: row.totalBettors,
     currency: asMarketCurrency(row.currency),
