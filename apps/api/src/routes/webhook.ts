@@ -14,8 +14,10 @@ import axios from "axios";
 import { createHelius } from "@helius-labs/helius-sdk";
 import express, { Router, type Request, type Response } from "express";
 
+import { connection } from "../config/solana";
 import { prisma } from "../config/database";
 import { toMarketDto } from "../lib/dto";
+import { createMarketOnChain } from "../lib/onchainProgram";
 import { detectRug } from "../services/rugDetector";
 import {
   finalizeRugResolutionAfterChain,
@@ -240,6 +242,23 @@ async function handleTokenMintEvent(ev: Record<string, unknown>): Promise<void> 
 
   const now = new Date();
   const expiresAt = new Date(now.getTime() + ONE_HOUR_SECONDS * 1000);
+  let chain: { signature: string; marketPda: string; platformAuthority: string };
+  try {
+    chain = await createMarketOnChain(connection, mint, ONE_HOUR_SECONDS);
+    console.log(`${LOG_PREFIX} webhook create_market on-chain success`, {
+      mint,
+      durationSeconds: ONE_HOUR_SECONDS,
+      marketPda: chain.marketPda,
+      platformAuthority: chain.platformAuthority,
+      signature: chain.signature,
+    });
+  } catch (e) {
+    console.log(`${LOG_PREFIX} webhook create_market on-chain failed`, {
+      mint,
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return;
+  }
 
   let market: DbMarket;
   try {
@@ -253,11 +272,13 @@ async function handleTokenMintEvent(ev: Record<string, unknown>): Promise<void> 
         expiresAt,
         openPrice,
         openLiquidity,
-        devWallet: null,
+        devWallet: pair?.info && isRecord(pair.info) && typeof pair.info.creatorAddress === "string"
+          ? pair.info.creatorAddress
+          : null,
         status: "active",
         outcome: null,
-        onChainAddress: null,
-        currency: "usdc",
+        onChainAddress: chain.marketPda,
+        currency: "sol",
       },
     });
   } catch (e) {
@@ -407,11 +428,16 @@ export function createHeliusWebhookRouter(): Router {
  */
 export async function registerHeliusWebhook(): Promise<void> {
   const apiKey = process.env.HELIUS_API_KEY?.trim();
-  const webhookURL = process.env.HELIUS_WEBHOOK_URL?.trim();
+  const backendUrl = process.env.BACKEND_URL?.trim();
+  const webhookURL = backendUrl
+    ? `${backendUrl.replace(/\/+$/, "")}/v1/webhook/helius`
+    : "";
   const authHeader = process.env.HELIUS_WEBHOOK_AUTH_SECRET?.trim();
 
   if (!apiKey || !webhookURL || !authHeader) {
-    console.log(`${LOG_PREFIX} registerHeliusWebhook skipped (missing HELIUS_API_KEY, HELIUS_WEBHOOK_URL, or HELIUS_WEBHOOK_AUTH_SECRET)`);
+    console.log(
+      `${LOG_PREFIX} registerHeliusWebhook skipped (missing HELIUS_API_KEY, BACKEND_URL, or HELIUS_WEBHOOK_AUTH_SECRET)`,
+    );
     return;
   }
 

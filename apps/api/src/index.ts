@@ -1,4 +1,25 @@
-import "dotenv/config";
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+
+const REQUIRED_ENV = [
+  "DATABASE_URL",
+  "REDIS_URL",
+  "HELIUS_API_KEY",
+  "PROGRAM_ID",
+  "PLATFORM_WALLET_SECRET_KEY",
+  "SOLANA_RPC",
+];
+
+for (const key of REQUIRED_ENV) {
+  const val = process.env[key];
+  if (!val || val.includes("your_") || val.includes("placeholder")) {
+    console.error(`❌ Missing or invalid env: ${key}`);
+    console.error(`Current value: ${val}`);
+    process.exit(1);
+  }
+}
+console.log("✅ All envbles loaded correctly");
 
 import { createServer } from "node:http";
 

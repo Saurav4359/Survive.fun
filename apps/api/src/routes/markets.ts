@@ -17,8 +17,9 @@ import {
   pairToMarketBootstrap,
   requireDexPairForMint,
 } from "../lib/dexscreener";
+import { marketPdaBase58ForMintAndDuration } from "../lib/marketOnChain";
+import { createMarketOnChain } from "../lib/onchainProgram";
 import { toMarketDto } from "../lib/dto";
-import { verifyCreateMarketTransaction } from "../lib/solanaTxVerify";
 import { formatZod, parseQuery } from "../lib/zodUtil";
 import { AppError } from "../middleware/errorHandler";
 import { emitMarketCreated } from "../websocket/socketHandler";
@@ -62,7 +63,6 @@ const createMarketBodySchema = z.object({
   ]),
   walletAddress: solanaAddress,
   currency: z.literal("sol").default("sol"),
-  createMarketTxSignature: z.string().min(64).max(128).optional(),
 });
 
 const idParamSchema = z.object({
@@ -79,10 +79,6 @@ const activeMarketsQuerySchema = z.object({
   tokenMint: solanaAddress.optional(),
   durationSeconds: durationSecondsQuery.optional(),
 });
-
-function allowDbOnlyMarketCreate(): boolean {
-  return process.env.ALLOW_DB_ONLY_MARKET_CREATE === "true";
-}
 
 router.get("/", async (req, res, next) => {
   try {
@@ -248,27 +244,45 @@ router.post("/", async (req, res, next) => {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + input.duration * 1000);
 
-    let onChainAddress: string | null = null;
-    const dbOnly = allowDbOnlyMarketCreate();
-    const sig = input.createMarketTxSignature?.trim();
-
-    if (dbOnly && !sig) {
-      onChainAddress = null;
-    } else if (sig) {
-      const verified = await verifyCreateMarketTransaction(
+    let onChainAddress: string;
+    try {
+      const chain = await createMarketOnChain(
         connection,
-        sig,
-        input.walletAddress,
         input.tokenMint,
         input.duration,
       );
-      onChainAddress = verified.marketPda;
-    } else {
-      throw new AppError(
-        "REQUIRE_ONCHAIN_TX",
-        "Submit create_market from your wallet, then pass createMarketTxSignature (or set ALLOW_DB_ONLY_MARKET_CREATE=true for local DB-only demo).",
-        400,
-      );
+      onChainAddress = chain.marketPda;
+      console.log("[markets] create_market on-chain success", {
+        tokenMint: input.tokenMint,
+        duration: input.duration,
+        creatorWallet: input.walletAddress,
+        platformAuthority: chain.platformAuthority,
+        marketPda: chain.marketPda,
+        signature: chain.signature,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.log("[markets] create_market on-chain failed", {
+        tokenMint: input.tokenMint,
+        duration: input.duration,
+        creatorWallet: input.walletAddress,
+        error: msg,
+      });
+      if (
+        msg.includes("MarketAlreadyExists") ||
+        msg.includes("custom program error: 0x1770")
+      ) {
+        onChainAddress = marketPdaBase58ForMintAndDuration(
+          input.tokenMint,
+          input.duration,
+        );
+      } else {
+        throw new AppError(
+          "ONCHAIN_CREATE_FAILED",
+          `create_market failed on-chain: ${msg}`,
+          502,
+        );
+      }
     }
 
     const seedLamportsPerSide = "10000000";
@@ -282,8 +296,8 @@ router.post("/", async (req, res, next) => {
           creatorWallet: input.walletAddress,
           durationSeconds: input.duration,
           expiresAt,
-          survivePool: onChainAddress ? seedLamportsPerSide : "0",
-          rugPool: onChainAddress ? seedLamportsPerSide : "0",
+          survivePool: seedLamportsPerSide,
+          rugPool: seedLamportsPerSide,
           openPrice: boot.openPrice,
           openLiquidity: boot.openLiquidity,
           devWallet: boot.devWallet,

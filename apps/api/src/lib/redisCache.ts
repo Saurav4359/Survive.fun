@@ -7,9 +7,14 @@ function connect(): IORedis | null {
     return redis;
   }
   const url = process.env.REDIS_URL?.trim();
-  if (!url) {
-    redis = null;
-    return null;
+  if (
+    !url ||
+    url.includes("placeholder") ||
+    url.includes("your_")
+  ) {
+    console.error("❌ REDIS_URL is not set correctly");
+    console.error("Current value:", process.env.REDIS_URL);
+    process.exit(1);
   }
   redis = new IORedis(url, { maxRetriesPerRequest: 3 });
   return redis;

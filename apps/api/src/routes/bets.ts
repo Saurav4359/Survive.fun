@@ -101,10 +101,6 @@ function potentialPayoutLamports(
   return (amount * (ts + tr)) / tr;
 }
 
-function skipTxVerification(): boolean {
-  return process.env.SKIP_TX_VERIFICATION === "true";
-}
-
 marketBetsRouter.post("/:id/bets", async (req, res, next) => {
   try {
     const { id: marketId } = parseQuery(marketIdParamSchema, req.params);
@@ -147,17 +143,23 @@ marketBetsRouter.post("/:id/bets", async (req, res, next) => {
     const stakeDecimal = new Prisma.Decimal(lamports.toString());
     const verifyStake = { currency: "sol" as const, lamports };
 
-    if (!skipTxVerification()) {
-      const marketPk = marketPdaBase58ForDbRow(marketRow);
-      await verifyPlaceBetTransaction(
-        connection,
-        raw.txSignature,
-        raw.walletAddress,
-        marketPk,
-        raw.side,
-        verifyStake,
-      );
-    }
+    const marketPk = marketPdaBase58ForDbRow(marketRow);
+    await verifyPlaceBetTransaction(
+      connection,
+      raw.txSignature,
+      raw.walletAddress,
+      marketPk,
+      raw.side,
+      verifyStake,
+    );
+    console.log("[bets] tx verified on Helius RPC", {
+      marketId,
+      txSignature: raw.txSignature,
+      walletAddress: raw.walletAddress,
+      side: raw.side,
+      amountLamports: lamports.toString(),
+      marketPda: marketPk,
+    });
 
     const result = await prisma.$transaction(async (tx) => {
       const market = await tx.market.findUnique({ where: { id: marketId } });
