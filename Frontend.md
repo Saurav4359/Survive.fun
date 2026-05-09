@@ -4,9 +4,9 @@ Single source of truth for the `apps/web` frontend: what it does, how it's
 built, and exactly which file is responsible for each behavior.
 
 > **Design DNA** — pure black `#000000` + lime `#cdf078` only. Zero
-> gradients, zero purple, zero white backgrounds. Space Grotesk for display,
-> JetBrains Mono for every number. Sharp, precise, intentional. Reads like a
-> $50M trading terminal, not a friendly memecoin app.
+> gradients, zero purple *decoration*, zero white backgrounds. **Exception:**
+> SOL glyph/badge `#9945FF` only (brand accent on ◎). Space Grotesk for display,
+> JetBrains Mono for every number. Sharp, precise, intentional.
 
 ---
 
@@ -54,7 +54,7 @@ built, and exactly which file is responsible for each behavior.
 | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
 | **@solana/wallet-adapter-react** + **react-ui** + **wallets** + **base**                      | Phantom integration, modal, autoconnect.                         |
 | **@solana/web3.js 1.98**                                                                      | RPC client, `Transaction`, `PublicKey`, error mapping.            |
-| **@solana/spl-token 0.4**                                                                     | USDC ATA helpers and idempotent ATA creation.                    |
+| **@solana/spl-token 0.4**                                                                     | Present in deps; **bet collateral is native SOL only** (no SPL stake path in UI). |
 | **@coral-xyz/anchor 0.31**                                                                    | `BN` for u64 encoding of instruction data.                        |
 
 ### Build / quality
@@ -179,7 +179,7 @@ button.
 - Bottom section:
   - `+ Create Market` lime button (`bg-accent text-ink`), framer
     `whileHover: scale 1.02` + `whileTap: scale 0.98`.
-  - Holdings card (USDC + SOL balance + truncated wallet) sourced from
+  - Holdings card (**SOL balance** + truncated wallet) sourced from
     `useWalletBalances`.
 
 ### `src/components/layout/TopBar.tsx`
@@ -189,7 +189,7 @@ button.
   page filters markets reactively as you type. Input gets
   `focus:border-accent focus:shadow-glow-sm` (the lime glow on focus).
 - Right side: when disconnected, `<WalletConnectButton>` (outlined lime →
-  fills lime on hover). When connected, a balance pill (mono USDC) opens a
+  fills lime on hover). When connected, a balance pill (mono **◎ SOL**) opens a
   dropdown with deposit / withdraw / history / copy address / switch wallet
   via `AnimatePresence` slide-down.
 
@@ -246,9 +246,12 @@ Hero background on the homepage.
   uses `hide-scrollbar`. Each pill links to `/market/:id`.
 - **Create market form** — Pump.fun mint input (lime border on focus, glow
   shadow), three duration pills `[1H] [6H] [24H]` backed by
-  `MARKET_DURATIONS = [3600, 21600, 86400]`. Submit runs **`createMarket` on
-  chain first** (`utils/transactions.ts`), then **POST `/v1/markets`** with
-  `createMarketTxSignature` so the backend can verify and persist the market.
+  `MARKET_DURATIONS = [3600, 21600, 86400]`. **Duplicate guard:** while mint +
+  duration resolve, **`GET /v1/markets?tokenMint=&durationSeconds=&limit=1`**;
+  if a row exists, show “Market already exists” + **View market →** and disable
+  create. Submit runs **`createMarket` on chain first** (`utils/transactions.ts`,
+  PDA seeds include duration), then **POST `/v1/markets`** with
+  `createMarketTxSignature` and `currency: "sol"`.
 - **Stats bar** — 4 cards (Active Markets, Total Volume, Rugs Caught, Biggest
   Win). Each number wrapped in `<CountUp>` for animated rollup on mount.
 - **Filter tabs** — `🔥 Hot` / `💀 High Risk` / `✅ Likely Survive` / `⚡ New`
@@ -333,14 +336,14 @@ error message, "Try again" button (framer `whileTap: 0.97`).
 
 | File                     | Responsibility                                                                             |
 | ------------------------ | ------------------------------------------------------------------------------------------ |
-| `MarketCard.tsx`         | Token avatar, risk badge (HIGH/MED/LOW), price + 24h, `<PoolBar>`, SURVIVE/RUG totals, timer, "Bet" CTA. `whileHover: scale 1.01`, `hover:shadow-glow-sm`. |
+| `MarketCard.tsx`         | Token avatar, **◎ SOL** collateral badge, risk badge, USD token **price** via `formatUsd`, `<PoolBar>` (lamports), SURVIVE/RUG pool lines via `formatPoolTotals`, timer, "Bet" CTA. `whileHover: scale 1.01`, `hover:shadow-glow-sm`. |
 | `PoolBar.tsx`            | Animated SURVIVE/RUG ratio bar. `motion.div` width animates from 0 → target with cubic-bezier. Labels are mono, side-coded lime/rug. |
 | `Timer.tsx`              | Live HH:MM:SS countdown using `setInterval`. Lime when active → rug + `.pulse-rug` under 5m → `text-fg-muted` when ended. `suppressHydrationWarning` for SSR. |
-| `BetPanel.tsx`           | SURVIVE / RUG toggle (framer spring on switch), `$` amount input ($1–$50), quick amounts `[$5][$10][$25][$50]`, parimutuel payout calc with `<CountUp>`, Place Bet button with loading spinner. |
+| `BetPanel.tsx`           | **SOL-only** collateral: header “Place a bet ◎ SOL”, balance from `useWalletBalances`, amount **0.01–10 SOL** with quick picks `QUICK_SOL_AMOUNTS`, inline validation (min/max/wallet), payout preview (`potentialPayoutLamports` + `formatSolBetLine`). On-chain bet uses Anchor `place_bet` (native transfer inside program). Props: `{ market, onBet(side, amountSolUi), position?: { side, stakeSol } }`. |
 | `LiveFeed.tsx`           | `socket.io-client` listener for `bet_placed`. New rows slide in from top via `AnimatePresence`, side-coded lime/rug left border, fade-out after 30s. Optionally scoped to a `marketId`. |
 | `RiskScore.tsx`          | Risk panel with HIGH/MEDIUM/LOW badge + Dev held / Liquidity / Token age stats. Logic in `utils/marketRisk.ts`. |
 | `WalletConnectButton.tsx`| Wraps `WalletMultiButton` and applies our outlined lime → fill on hover style. |
-| `WalletBalancePanel.tsx` | Big balance card (USDC big, SOL secondary, copy address pill, deposit/withdraw/buy/history grid, view on Solscan, switch / disconnect). |
+| `WalletBalancePanel.tsx` | Big balance card (**◎ SOL** primary, copy address pill, deposit/withdraw/buy/history grid, view on Solscan, switch / disconnect). |
 
 ### Animation utilities
 
@@ -389,7 +392,8 @@ error message, "Try again" button (framer `whileTap: 0.97`).
 | `useMarketPairsMap`        | Bulk DexScreener pair lookup keyed by mint                             | DexScreener                                |
 | `useUserBets(wallet)`      | Bets placed by a wallet                                                | `GET /v1/users/:wallet/bets`               |
 | `useStats`                 | Platform-wide aggregate stats                                          | `GET /v1/stats`                            |
-| `useWalletBalances`        | `{ usdc, sol }` for the connected wallet                               | RPC + SPL token program (USDC mint)        |
+| `useWalletBalances`        | `{ lamports, sol }` for the connected wallet; **`solToDisplay(lamports)`** helper (4 dp) | RPC `getBalance` |
+| `useSolUsdPrice`           | `{ usd, isLoading, error }` — SOL→USD from CoinGecko `simple/price`     | TanStack Query, 60s stale                    |
 | `useWatchlist`             | localStorage-backed star/unstar list                                   | Local                                      |
 | `useWebSocket`             | Per-market scoped snapshot — `{ isConnected, latestBet, poolUpdate, marketResolved, subscribeToMarket }`. Only events for the subscribed market populate the snapshot. | shared singleton |
 | `useWebSocketEvents`       | Global callbacks `{ onBetPlaced?, onPoolUpdate?, onMarketResolved? }` that fire for **every** validated event, ref-stable handlers. | shared singleton |
@@ -436,16 +440,17 @@ a hand-rolled singleton + `useSyncExternalStore`, not zustand.)
 The frontend talks to the Anchor program (`HB3uE5XQGq1xNtW9RMSrnBegwifeLzk1xyr75ofRPrtH`
 in dev, override via `NEXT_PUBLIC_PROGRAM_ID`):
 
-- **`createMarket(wallet, mint, duration)`** — encodes
-  `IX_CREATE_MARKET (8B disc) || mint (32B) || duration_le (8B u64)`,
-  derives `[b"market", mint]` PDA, ensures platform USDC ATA, and signs
-  via wallet adapter. Validates duration is in `MARKET_DURATIONS`. The homepage
+- **`createMarket(wallet, mint, duration)`** — Anchor `create_market` with
+  PDA seeds **`[b"market", mint, duration_le]`**, platform seeds **0.01 SOL per side**
+  into the market vault. Validates duration is in `MARKET_DURATIONS`. The homepage
   mutation submits this first, then **POST `/v1/markets`** with the returned
   signature so the indexer persists the market.
-- **`placeBet(wallet, marketPda, side, amountUsdc)`** — encodes
-  `IX_PLACE_BET (8B) || side (1B) || amount_le (8B u64)`, idempotently
-  creates the bettor's USDC ATA if missing, derives `[b"bet", market, bettor]`
-  PDA, and submits.
+- **`placeBet(wallet, params)`** — `PlaceBetParams`:
+  `{ marketPda, side, amount }` with **`amount`** = human SOL (e.g. `0.25`).
+  Anchor `program.methods.placeBet` with stake in lamports; native transfer is
+  **inside** the program (no separate client `SystemProgram.transfer` for the stake).
+- **`src/idl/survivefun.json`** — copy of `contracts/target/idl/survivefun.json`
+  for Anchor method builders; regenerate when the program changes.
 - **`claimPayout(wallet, marketPda, betPda)`** — single instruction, 8-byte
   discriminator only.
 - **Error mapping** — `unwrapWalletErrors` peels nested `WalletError.cause`,
@@ -453,9 +458,8 @@ in dev, override via `NEXT_PUBLIC_PROGRAM_ID`):
   `mapSendError` extracts program logs and re-throws human-readable strings
   with a "Tip: app uses devnet" hint.
 
-USDC mint defaults to Circle devnet (`4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`).
-
 ---
+
 
 ## 11. Configuration
 
@@ -467,22 +471,28 @@ USDC mint defaults to Circle devnet (`4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDnc
 | `NEXT_PUBLIC_API_URL`             | `http://localhost:3001`       | Backend origin (Socket.IO + REST host)         |
 | `NEXT_PUBLIC_API_V1_PREFIX`       | `/v1`                         | REST prefix; use `/api/v1` if the server mounts routes there |
 | `NEXT_PUBLIC_PROGRAM_ID`          | `HB3uE5...` (dev)             | Anchor program id                              |
-| `NEXT_PUBLIC_PLATFORM_AUTHORITY`  | unset (falls back to creator) | Platform USDC vault authority                  |
+| `NEXT_PUBLIC_PLATFORM_AUTHORITY`  | unset (falls back to creator) | Platform authority for seeded SOL create flow   |
 
 ### Constants (`src/utils/constants.ts`)
 
 - `API_URL`, `API_V1_PREFIX`, **`apiV1Url(path)`** — full REST URLs, e.g.
   `apiV1Url("/markets/active")` → `{API_URL}{prefix}/markets/active`.
-- `BET_LIMITS = { min: 1, max: 50 }` USDC
+- `ONCHAIN_MIN_STAKE_RAW` / `ONCHAIN_MAX_STAKE_RAW` — **10_000_000 … 10_000_000_000**
+  lamports (**0.01 – 10 SOL**), matching the program.
+- `SOL_BET_LIMITS` / `QUICK_SOL_AMOUNTS` — human SOL bounds and quick picks
+  aligned to on-chain min/max.
 - `MARKET_DURATIONS = [3600, 21600, 86400]` seconds = 1H / 6H / 24H
 
 ### Format helpers (`src/utils/format.ts`)
 
-- `formatUSDC` — `$X,XXX.XX`
-- `formatSolAmount` — adaptive decimals
+- `formatUsd` — fiat `$X,XXX.XX` for **token USD prices / liquidity**, not stake collateral
+- `formatSOL` / `formatSOLDisplay` / `formatSolBetLine` — lamports or ◎ SOL stake lines
+- `formatSolAmount` — adaptive decimals (misc)
 - `formatWallet` — `abcd…wxyz`
 - `formatTimeLeft` — `Xd Xh Xm Xs` for human times
 - `formatPool` — compact (`12.5K`, `2.4M`) for tight grid cells
+- `potentialPayoutLamports` — parimutuel gross preview (SOL pools)
+- `parsePoolLamports` — integer pool strings → `bigint` for SOL markets
 
 ---
 
@@ -552,7 +562,8 @@ Rules:
    exist solely for state — never decoration.
 3. **Zero gradients.** Solid fills only. Glow uses single-color
    `box-shadow`.
-4. **Zero purple / fuchsia / violet.**
+4. **Zero purple / fuchsia / violet** — except **SOL glyph/badge** (`#9945FF`)
+   per product spec.
 5. **Zero white backgrounds.** White is text only.
 6. **Space Grotesk for all text.**
 7. **JetBrains Mono + `tabular-nums` for every number / data field.**
@@ -611,7 +622,10 @@ apps/web/
     │   └── ui/
     │       ├── button.tsx                  # shadcn
     │       └── skeletons.tsx
+    ├── idl/
+    │   └── survivefun.json                   # Anchor IDL (sync from contracts/target/idl)
     ├── hooks/
+    │   ├── useSolUsdPrice.ts                 # CoinGecko SOL/USD for bet panel
     │   ├── useLeaderboard.ts
     │   ├── useMarket.ts
     │   ├── useMarketBetsList.ts
@@ -629,8 +643,8 @@ apps/web/
     ├── lib/
     │   └── utils.ts                        # cn()
     └── utils/
-        ├── constants.ts                    # USDC mint, RPC, API URL, BET_LIMITS, durations
-        ├── format.ts                       # USDC / SOL / wallet / time / pool formatters
+        ├── constants.ts                    # PROGRAM_ID, RPC, API URL, SOL stake bounds, durations
+        ├── format.ts                       # SOL / USD (fiat) / wallet / time / pool formatters
         ├── marketRisk.ts                   # HIGH/MEDIUM/LOW scoring
         └── transactions.ts                 # Anchor instruction builders + error mapping
 ```
@@ -649,7 +663,48 @@ the legacy `lib/gsap/*` files are orphaned and can be removed.
 
 ## 17. Frontend Agent — Session Log
 
-### 2026-05-09 (this session)
+### 2026-05-09 (SOL-only collateral UI)
+
+**Completed**
+
+- ✅ Removed **all USDC betting / balance UI** (TopBar, sidebar holdings, profile,
+  wallet panel, stats mislabeled as dollars, pool labels, etc.).
+- ✅ **SOL-only `BetPanel`**: ◎ branding, `useWalletBalances` SOL, 0.01–10 SOL
+  stakes, quick amounts, payout in SOL, inline errors.
+- ✅ **Pools & cards** — `MarketCard`, `PoolBar`, trending strips, and market
+  detail use **lamports → `formatSolBetLine`** (◎ prefix).
+- ✅ **Duplicate market UX** — `GET /v1/markets?tokenMint&durationSeconds&limit=1`
+  before create; “Market already exists” + link to `/market/:id`.
+- ✅ **`placeBet` / market page** — `getMarketPDA(mint, durationSeconds)`;
+  POST body `currency: "sol"` + lamport integer `amount`.
+- ✅ **`format.ts`** — `formatSOL`, `formatSOLDisplay`, `formatSolBetLine`,
+  `formatUsd` for fiat; no `formatUSDC` usage in app code.
+
+**Breaking changes:** none for routes; backend field names like `totalBetVolumeUsdc`
+may still hold **SOL lamports** — UI divides by 1e9.
+
+**Tests:** `pnpm --filter web typecheck` → 0 errors; `pnpm --filter web lint` → clean.
+
+### 2026-05-09 (SOL / USDC betting UI)
+
+**Completed**
+
+- ✅ **`BetPanel` SOL + USDC.** Branches on `market.currency` (no toggle — each
+  market is fixed-currency). SOL: balance, 4 dp input, program-range quick picks,
+  `≈ $… USD` via `useSolUsdPrice`, payout in SOL. USDC: prior layout and limits
+  preserved.
+- ✅ **`MarketCard` currency badge** + pool cells use `formatPoolTotals` so SOL
+  markets never show a bogus `USDC` suffix.
+- ✅ **`format.potentialPayoutUsdc`** exported for web parity with API math.
+- ✅ **`useWalletBalances`** documents `lamports`; **`solToDisplay`** for 4 dp UI.
+- ✅ **`transactions.toAnchorWallet`** cast satisfies Anchor `Wallet` typing.
+- ✅ **`Frontend.md`** updated (components, hooks, `PlaceBetParams`, IDL path).
+
+**Breaking changes:** none (`placeBet` already object-shaped on the call site).
+
+**Tests:** `pnpm --filter web typecheck` → 0 errors; `pnpm --filter web lint` → clean.
+
+### 2026-05-09 (earlier — API / websocket session)
 
 **Completed**
 
