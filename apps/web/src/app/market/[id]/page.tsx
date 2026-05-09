@@ -6,6 +6,7 @@ import type {
   BetSide,
   Market,
   MarketChartResponse,
+  Outcome,
 } from "@survivefun/types";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
@@ -26,18 +27,24 @@ import type { UTCTimestamp } from "lightweight-charts";
 
 import { BetPanel } from "@/components/BetPanel";
 import { LiveFeed } from "@/components/LiveFeed";
+import { MarketResultBanner } from "@/components/MarketResultBanner";
 import { PoolBar } from "@/components/PoolBar";
 import { Timer } from "@/components/Timer";
 import { useToast } from "@/components/ToastProvider";
 import { marketQueryKey, useMarket } from "@/hooks/useMarket";
+import { marketResultQueryKey, useMarketResult } from "@/hooks/useMarketResult";
+import { myPayoutQueryKey, useMyPayout } from "@/hooks/useMyPayout";
 import { useWatchlist } from "@/hooks/useWatchlist";
+import { useWebSocket } from "@/hooks/useWebSocket";
 import {
   marketBetsQueryKey,
   useMarketBetsList,
 } from "@/hooks/useMarketBetsList";
 import { useToken } from "@/hooks/useToken";
 import { userBetsQueryKey, useUserBets } from "@/hooks/useUserBets";
+import { postBetClaim } from "@/utils/betClaimApi";
 import { apiV1Url } from "@/utils/constants";
+import { solscanTxUrl } from "@/utils/explorer";
 import {
   formatBetStake,
   formatPool,
@@ -47,6 +54,7 @@ import {
   formatWallet,
   parsePoolLamports,
 } from "@/utils/format";
+import { formatRugConditionLabel } from "@/utils/rugConditionLabel";
 import {
   claimPayout,
   getBetPDA,
@@ -112,9 +120,32 @@ export default function MarketPage() {
   const wallet = useWallet();
   const queryClient = useQueryClient();
   const { market, isLoading, error } = useMarket(id || undefined);
+  const { marketResolved } = useWebSocket();
+  const [resolveFlashKey, setResolveFlashKey] = useState<string | null>(null);
+
+  const isResolvedWithOutcome = Boolean(
+    market?.status === "resolved" && market.outcome,
+  );
+  const { data: marketResult } = useMarketResult(
+    id || undefined,
+    isResolvedWithOutcome,
+  );
+
+  useEffect(() => {
+    if (!id || !marketResolved || marketResolved.marketId !== id) return;
+    setResolveFlashKey(
+      `${marketResolved.timestamp}:${marketResolved.outcome}`,
+    );
+  }, [id, marketResolved]);
+
   const tokenHook = useToken(market?.tokenMint);
   const { bets: marketBets } = useMarketBetsList(id || undefined);
   const userWallet = wallet.publicKey?.toBase58();
+  const { data: myPayout } = useMyPayout(
+    id || undefined,
+    userWallet,
+    isResolvedWithOutcome && Boolean(userWallet),
+  );
   const { bets: userBets } = useUserBets(userWallet);
   const toast = useToast();
 
@@ -250,7 +281,9 @@ export default function MarketPage() {
       const bettor = wallet.publicKey;
       if (!bettor) throw new Error("Connect a wallet to claim");
       const betPda = (await getBetPDA(marketPda, bettor.toBase58())).toBase58();
-      return claimPayout(wallet, marketPda, betPda);
+      const sig = await claimPayout(wallet, marketPda, betPda);
+      await postBetClaim(userMarketBet.id, sig, bettor.toBase58());
+      return sig;
     },
     onSuccess: () => {
       toast({
@@ -264,7 +297,13 @@ export default function MarketPage() {
         void queryClient.invalidateQueries({
           queryKey: userBetsQueryKey(userWallet),
         });
+        void queryClient.invalidateQueries({
+          queryKey: myPayoutQueryKey(id, userWallet),
+        });
       }
+      void queryClient.invalidateQueries({
+        queryKey: marketResultQueryKey(id),
+      });
     },
     onError: (e) => {
       const msg = e instanceof Error ? e.message : "Claim failed";
@@ -464,11 +503,14 @@ export default function MarketPage() {
   const totalPoolLabel = formatSolBetLine(totalPool / 1e9);
   const risk = inferRisk(openLiquidityUsd);
   const claimable =
-    Boolean(userMarketBet) &&
-    market?.status === "resolved" &&
-    !userMarketBet?.claimed &&
-    market?.outcome != null &&
-    userMarketBet?.side === market?.outcome;
+    userMarketBet != null &&
+    market != null &&
+    market.status === "resolved" &&
+    market.outcome != null &&
+    userMarketBet.side === market.outcome &&
+    !userMarketBet.claimed &&
+    (myPayout === undefined ||
+      (myPayout.found && myPayout.won && !myPayout.claimed));
 
   const sortedSignals = useMemo(() => {
     const items: { label: string; value: string; Icon: typeof Droplets }[] = [];
@@ -530,9 +572,32 @@ export default function MarketPage() {
   }
 
   const expiresAt = new Date(market.expiresAt);
+  const showResolutionBanner =
+    market.status === "resolved" && market.outcome != null;
+  const resolutionOutcome = market.outcome as Outcome;
+  const resolutionSubtitle =
+    resolutionOutcome === "rug"
+      ? formatRugConditionLabel(
+          marketResult?.rugCondition ?? market.rugCondition,
+        )
+      : "Token survived the full duration";
+
+  const payoutTxSig =
+    (typeof claimMut.data === "string" ? claimMut.data : null) ??
+    (myPayout?.found === true ? myPayout.claimTxSignature : null);
 
   return (
-    <div className="mx-auto min-h-full max-w-[1440px] px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+    <>
+      {showResolutionBanner ? (
+        <div className="relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] w-screen max-w-none">
+          <MarketResultBanner
+            outcome={resolutionOutcome}
+            subtitle={resolutionSubtitle}
+            flashKey={resolveFlashKey}
+          />
+        </div>
+      ) : null}
+      <div className="mx-auto min-h-full max-w-[1440px] px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
       <Link
         href="/"
         className="inline-flex items-center gap-2 font-mono text-xs font-medium uppercase tracking-[0.15em] text-fg-muted transition-colors hover:text-accent"
@@ -936,7 +1001,100 @@ export default function MarketPage() {
           </div>
 
           <BetPanel market={market} onBet={onBet} position={position} />
-          {position ? (
+          {market.status === "resolved" ? (
+            userWallet ? (
+              myPayout === undefined ? (
+                <div className="border border-border bg-card p-5 font-mono text-xs text-fg-muted">
+                  Loading payout…
+                </div>
+              ) : myPayout.found && myPayout.won ? (
+                <div className="border-2 border-accent bg-card p-5 shadow-glow-sm">
+                  <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-accent">
+                    🎉 You won!
+                  </p>
+                  <p className="mt-3 font-mono text-sm text-white">
+                    Your bet:{" "}
+                    <span className="font-bold text-white">
+                      {formatSolBetLine(myPayout.betAmount / LAMPORTS_PER_SOL)}{" "}
+                      <span
+                        className={
+                          myPayout.betSide === "survive"
+                            ? "text-survive"
+                            : "text-rug"
+                        }
+                      >
+                        {myPayout.betSide.toUpperCase()}
+                      </span>
+                    </span>
+                  </p>
+                  <p className="mt-2 font-mono text-sm text-fg-muted">
+                    Your payout:{" "}
+                    <span className="font-bold tabular-nums text-accent">
+                      {formatSolBetLine(myPayout.payoutAmount / LAMPORTS_PER_SOL)}
+                    </span>
+                  </p>
+                  <div className="mt-4 border-t border-border pt-4">
+                    {claimable ? (
+                      <motion.button
+                        whileTap={{ scale: 0.97 }}
+                        type="button"
+                        disabled={claimMut.isPending}
+                        onClick={() => void claimMut.mutateAsync()}
+                        className="w-full rounded-md border border-accent bg-accent px-4 py-2.5 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-ink transition-colors hover:bg-transparent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {claimMut.isPending ? "Claiming…" : "Claim payout"}
+                      </motion.button>
+                    ) : payoutTxSig ? (
+                      <a
+                        href={solscanTxUrl(payoutTxSig)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block text-center font-mono text-[11px] font-bold uppercase tracking-[0.12em] text-accent underline-offset-2 hover:underline"
+                      >
+                        View transaction ↗
+                      </a>
+                    ) : myPayout.claimed ? (
+                      <p className="text-center font-mono text-[11px] font-bold text-accent">
+                        Claimed ✅
+                      </p>
+                    ) : (
+                      <p className="font-mono text-[11px] text-fg-muted">
+                        Payout recorded.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ) : myPayout.found ? (
+                <div className="border-2 border-rug bg-card p-5 opacity-50">
+                  <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-rug">
+                    💀 You lost
+                  </p>
+                  <p className="mt-3 font-mono text-sm text-white">
+                    Your bet:{" "}
+                    <span className="font-bold">
+                      {formatSolBetLine(myPayout.betAmount / LAMPORTS_PER_SOL)}{" "}
+                      <span
+                        className={
+                          myPayout.betSide === "survive"
+                            ? "text-survive"
+                            : "text-rug"
+                        }
+                      >
+                        {myPayout.betSide.toUpperCase()}
+                      </span>
+                    </span>
+                  </p>
+                  <p className="mt-2 font-mono text-xs text-fg-muted">
+                    Better luck next time.
+                  </p>
+                </div>
+              ) : null
+            ) : (
+              <div className="border border-border bg-card p-5 font-mono text-xs text-fg-muted">
+                Connect your wallet to see resolution payout for your address.
+              </div>
+            )
+          ) : position ? (
             <div className="border border-border bg-card p-5">
               <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-fg-muted">
                 Your position
@@ -960,23 +1118,9 @@ export default function MarketPage() {
                 </div>
               </div>
               <div className="mt-4 border-t border-border pt-4">
-                {claimable ? (
-                  <motion.button
-                    whileTap={{ scale: 0.97 }}
-                    type="button"
-                    disabled={claimMut.isPending}
-                    onClick={() => void claimMut.mutateAsync()}
-                    className="w-full rounded-md border border-accent bg-accent px-4 py-2.5 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-ink transition-colors hover:bg-transparent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {claimMut.isPending ? "Claiming…" : "Claim payout"}
-                  </motion.button>
-                ) : (
-                  <p className="font-mono text-[11px] text-fg-muted">
-                    {market.status === "resolved"
-                      ? "No claimable payout for this position."
-                      : "Claim becomes available after market resolution."}
-                  </p>
-                )}
+                <p className="font-mono text-[11px] text-fg-muted">
+                  Claim becomes available after market resolution.
+                </p>
               </div>
             </div>
           ) : null}
@@ -987,7 +1131,8 @@ export default function MarketPage() {
       <section className="mt-12">
         <LiveFeed marketId={market.id} maxRows={20} heading="Last 20 Bets" />
       </section>
-    </div>
+      </div>
+    </>
   );
 }
 

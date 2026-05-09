@@ -128,6 +128,10 @@ export function useMarket(marketId: string | undefined): {
         outcome: marketResolved.outcome,
         survivePool: marketResolved.survivePool,
         rugPool: marketResolved.rugPool,
+        rugCondition:
+          marketResolved.rugCondition !== undefined
+            ? marketResolved.rugCondition
+            : prev?.rugCondition ?? null,
       }),
     );
   }, [marketResolved, marketId, queryClient]);

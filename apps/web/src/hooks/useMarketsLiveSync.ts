@@ -4,7 +4,10 @@ import type { Market, MarketStatus } from "@survivefun/types";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { marketQueryKey } from "./useMarket";
+import { marketResultQueryKey } from "./useMarketResult";
 import { marketsQueryKey } from "./useMarkets";
+import { myPayoutQueryKey } from "./useMyPayout";
+import { userBetsQueryKey } from "./useUserBets";
 import { useWebSocketEvents } from "./useWebSocket";
 
 /**
@@ -70,6 +73,8 @@ export function useMarketsLiveSync(): void {
             outcome: r.outcome,
             survivePool: r.survivePool,
             rugPool: r.rugPool,
+            rugCondition:
+              r.rugCondition !== undefined ? r.rugCondition : m.rugCondition,
           };
         });
         return mutated ? next : prev;
@@ -84,7 +89,29 @@ export function useMarketsLiveSync(): void {
           outcome: r.outcome,
           survivePool: r.survivePool,
           rugPool: r.rugPool,
+          rugCondition:
+            r.rugCondition !== undefined ? r.rugCondition : prev.rugCondition,
         };
+      });
+
+      void queryClient.invalidateQueries({
+        queryKey: marketResultQueryKey(r.marketId),
+      });
+    },
+    onPayoutReady: (p) => {
+      void queryClient.invalidateQueries({
+        queryKey: myPayoutQueryKey(p.marketId, p.wallet),
+      });
+    },
+    onPayoutClaimed: (p) => {
+      void queryClient.invalidateQueries({
+        queryKey: myPayoutQueryKey(p.marketId, p.wallet),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: userBetsQueryKey(p.wallet),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: marketResultQueryKey(p.marketId),
       });
     },
   });

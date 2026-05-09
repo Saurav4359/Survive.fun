@@ -52,6 +52,10 @@ let subscribedMarketId: string | null = null;
 const betListeners = new Set<(b: BetPlaced) => void>();
 const poolListeners = new Set<(p: PoolUpdatePayload) => void>();
 const resolvedListeners = new Set<(r: MarketResolved) => void>();
+const payoutReadyListeners = new Set<(p: SocketEvents["payout_ready"]) => void>();
+const payoutClaimedListeners = new Set<
+  (p: SocketEvents["payout_claimed"]) => void
+>();
 
 function emitSnapshot(): void {
   snapshotListeners.forEach((fn) => fn());
@@ -118,6 +122,25 @@ function isMarketResolved(v: unknown): v is MarketResolved {
   );
 }
 
+function isPayoutReady(v: unknown): v is SocketEvents["payout_ready"] {
+  if (!isRecord(v)) return false;
+  return (
+    typeof v.wallet === "string" &&
+    typeof v.amount === "string" &&
+    typeof v.marketId === "string"
+  );
+}
+
+function isPayoutClaimed(v: unknown): v is SocketEvents["payout_claimed"] {
+  if (!isRecord(v)) return false;
+  return (
+    typeof v.wallet === "string" &&
+    typeof v.marketId === "string" &&
+    typeof v.betId === "string" &&
+    typeof v.amount === "string"
+  );
+}
+
 function onSocketConnect(): void {
   patchSnapshot({ isConnected: true });
   // Re-subscribe after reconnect so the API resumes scoped delivery.
@@ -172,12 +195,36 @@ function onMarketResolved(raw: unknown): void {
   }
 }
 
+function onPayoutReady(raw: unknown): void {
+  if (!isPayoutReady(raw)) return;
+  payoutReadyListeners.forEach((fn) => {
+    try {
+      fn(raw);
+    } catch {
+      /* ignore listener throw */
+    }
+  });
+}
+
+function onPayoutClaimed(raw: unknown): void {
+  if (!isPayoutClaimed(raw)) return;
+  payoutClaimedListeners.forEach((fn) => {
+    try {
+      fn(raw);
+    } catch {
+      /* ignore listener throw */
+    }
+  });
+}
+
 function bindHandlers(socket: Socket): void {
   socket.on("connect", onSocketConnect);
   socket.on("disconnect", onSocketDisconnect);
   socket.on("bet_placed", onBetPlaced);
   socket.on("pool_update", onPoolUpdate);
   socket.on("market_resolved", onMarketResolved);
+  socket.on("payout_ready", onPayoutReady);
+  socket.on("payout_claimed", onPayoutClaimed);
 }
 
 function unbindHandlers(socket: Socket): void {
@@ -186,6 +233,8 @@ function unbindHandlers(socket: Socket): void {
   socket.off("bet_placed", onBetPlaced);
   socket.off("pool_update", onPoolUpdate);
   socket.off("market_resolved", onMarketResolved);
+  socket.off("payout_ready", onPayoutReady);
+  socket.off("payout_claimed", onPayoutClaimed);
 }
 
 function acquireSocket(): Socket {
@@ -283,6 +332,8 @@ export function useWebSocketEvents(handlers: {
   onBetPlaced?: (b: BetPlaced) => void;
   onPoolUpdate?: (p: PoolUpdatePayload) => void;
   onMarketResolved?: (r: MarketResolved) => void;
+  onPayoutReady?: (p: SocketEvents["payout_ready"]) => void;
+  onPayoutClaimed?: (p: SocketEvents["payout_claimed"]) => void;
 }): { isConnected: boolean } {
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
@@ -310,15 +361,23 @@ export function useWebSocketEvents(handlers: {
       handlersRef.current.onPoolUpdate?.(p);
     const onResolved = (r: MarketResolved) =>
       handlersRef.current.onMarketResolved?.(r);
+    const onPayReady = (p: SocketEvents["payout_ready"]) =>
+      handlersRef.current.onPayoutReady?.(p);
+    const onPayClaimed = (p: SocketEvents["payout_claimed"]) =>
+      handlersRef.current.onPayoutClaimed?.(p);
 
     betListeners.add(onBet);
     poolListeners.add(onPool);
     resolvedListeners.add(onResolved);
+    payoutReadyListeners.add(onPayReady);
+    payoutClaimedListeners.add(onPayClaimed);
 
     return () => {
       betListeners.delete(onBet);
       poolListeners.delete(onPool);
       resolvedListeners.delete(onResolved);
+      payoutReadyListeners.delete(onPayReady);
+      payoutClaimedListeners.delete(onPayClaimed);
     };
   }, []);
 

@@ -1,26 +1,44 @@
 "use client";
 
-import type { BetPlaced, BetSide } from "@survivefun/types";
+import type {
+  ApiResponse,
+  BetPlaced,
+  BetSide,
+  MarketResultPayload,
+  MarketResolved,
+} from "@survivefun/types";
+import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { AnimatePresence, motion } from "framer-motion";
 import { Zap } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { useWebSocketEvents } from "@/hooks/useWebSocket";
+import { gsap, useGSAP } from "@/lib/gsap/register";
+import { apiV1Url } from "@/utils/constants";
+import { formatBetStake, formatSolBetLine, formatWallet } from "@/utils/format";
 
-import { formatBetStake, formatWallet } from "@/utils/format";
-
-type FeedRow = {
-  id: string;
-  wallet: string;
-  side: BetSide;
-  stakeLabel: string;
-  at: Date;
-};
+type FeedRow =
+  | {
+      kind: "bet";
+      id: string;
+      wallet: string;
+      side: BetSide;
+      stakeLabel: string;
+      at: Date;
+    }
+  | {
+      kind: "resolved";
+      id: string;
+      headline: string;
+      at: Date;
+      outcome: MarketResolved["outcome"];
+    };
 
 const FADE_AFTER_MS = 30_000;
 
 function normalizeBetPayload(raw: BetPlaced, fallbackId: string): FeedRow {
   return {
+    kind: "bet",
     id: `${raw.bettorWallet}-${raw.timestamp}-${fallbackId}`,
     wallet: raw.bettorWallet,
     side: raw.side,
@@ -47,6 +65,11 @@ function rowOpacity(at: Date, now: number): number {
 }
 
 function FeedRowCard({ row, opacity }: { row: FeedRow; opacity: number }) {
+  if (row.kind === "resolved") {
+    return (
+      <ResolutionFeedCard row={row} opacity={opacity} />
+    );
+  }
   return (
     <motion.div
       key={row.id}
@@ -74,6 +97,68 @@ function FeedRowCard({ row, opacity }: { row: FeedRow; opacity: number }) {
             )}{" "}
             <span className="text-fg-muted">·</span>{" "}
             <span className="tabular-nums text-accent">{row.stakeLabel}</span>
+          </p>
+        </div>
+        <time
+          dateTime={row.at.toISOString()}
+          className="shrink-0 font-mono text-[10px] tabular-nums text-fg-muted"
+        >
+          {formatTime(row.at)}
+        </time>
+      </div>
+    </motion.div>
+  );
+}
+
+function ResolutionFeedCard({
+  row,
+  opacity,
+}: {
+  row: Extract<FeedRow, { kind: "resolved" }>;
+  opacity: number;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useGSAP(
+    () => {
+      const el = rootRef.current;
+      if (!el) return;
+      gsap.fromTo(
+        el,
+        { rotation: -2, transformOrigin: "50% 50%" },
+        {
+          rotation: 2,
+          duration: 0.22,
+          yoyo: true,
+          repeat: 2,
+          ease: "sine.inOut",
+        },
+      );
+    },
+    { scope: rootRef, dependencies: [row.id] },
+  );
+
+  const border =
+    row.outcome === "rug"
+      ? "border border-rug/60 border-l-[3px] border-l-rug bg-card"
+      : "border border-accent/50 border-l-[3px] border-l-accent bg-card";
+
+  return (
+    <motion.div
+      initial={{ y: -16, opacity: 0 }}
+      animate={{ y: 0, opacity }}
+      exit={{ opacity: 0, height: 0, marginBottom: 0, paddingTop: 0, paddingBottom: 0 }}
+      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+      style={{ opacity }}
+      className={`${border} px-3 py-2.5`}
+    >
+      <div ref={rootRef} className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="font-mono text-[11px] font-semibold leading-snug text-white">
+            {row.headline}
+          </p>
+          <p className="mt-2 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+            Resolved
           </p>
         </div>
         <time
@@ -123,6 +208,42 @@ export function LiveFeed({
     return () => window.clearInterval(id);
   }, []);
 
+  const pushResolutionRow = useCallback(
+    async (r: MarketResolved) => {
+      if (marketId && r.marketId !== marketId) return;
+      const at = new Date(r.timestamp);
+      const rowId = `resolved-${r.marketId}-${r.timestamp}`;
+      let headline = `${r.outcome === "rug" ? "💀" : "✅"} Market ${r.outcome === "rug" ? "rugged" : "survived"}`;
+
+      try {
+        const res = await fetch(
+          apiV1Url(`/markets/${encodeURIComponent(r.marketId)}/result`),
+        );
+        const j = (await res.json()) as ApiResponse<MarketResultPayload>;
+        if (j.success && j.data) {
+          const t = j.data.market.tokenTicker ?? "TOKEN";
+          const distSol = j.data.totalDistributed / LAMPORTS_PER_SOL;
+          const winSide = r.outcome === "rug" ? "RUG" : "SURVIVE";
+          const verb = r.outcome === "rug" ? "RUGGED" : "SURVIVED";
+          const emoji = r.outcome === "rug" ? "💀" : "✅";
+          headline = `${emoji} $${t} ${verb} — ${winSide} bettors won ${formatSolBetLine(distSol)}`;
+        }
+      } catch {
+        /* keep fallback headline */
+      }
+
+      const resolvedRow: Extract<FeedRow, { kind: "resolved" }> = {
+        kind: "resolved",
+        id: rowId,
+        headline,
+        at,
+        outcome: r.outcome,
+      };
+      setRows((prev) => [resolvedRow, ...prev].slice(0, maxRows));
+    },
+    [marketId, maxRows],
+  );
+
   const { isConnected } = useWebSocketEvents({
     onBetPlaced: (payload) => {
       if (marketId && payload.marketId !== marketId) return;
@@ -131,6 +252,9 @@ export function LiveFeed({
         `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       );
       setRows((prev) => [row, ...prev].slice(0, maxRows));
+    },
+    onMarketResolved: (r) => {
+      void pushResolutionRow(r);
     },
   });
 

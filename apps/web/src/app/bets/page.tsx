@@ -12,13 +12,17 @@ import { CountUp } from "@/components/CountUp";
 import { EmptyState } from "@/components/EmptyState";
 import { Timer } from "@/components/Timer";
 import { useToast } from "@/components/ToastProvider";
+import { marketResultQueryKey } from "@/hooks/useMarketResult";
+import { myPayoutQueryKey } from "@/hooks/useMyPayout";
 import { userBetsQueryKey, useUserBets } from "@/hooks/useUserBets";
+import { postBetClaim } from "@/utils/betClaimApi";
 import {
   formatBetStake,
   formatNativeBetAmount,
   formatSolBetLine,
   parsePoolLamports,
 } from "@/utils/format";
+import { solscanTxUrl } from "@/utils/explorer";
 import {
   claimPayout,
   getBetPDA,
@@ -96,9 +100,11 @@ export default function BetsPage() {
       const bettor = walletAdapter.publicKey;
       if (!bettor) throw new Error("Connect a wallet to claim");
       const betPda = (await getBetPDA(marketPda, bettor.toBase58())).toBase58();
-      return claimPayout(walletAdapter, marketPda, betPda);
+      const sig = await claimPayout(walletAdapter, marketPda, betPda);
+      await postBetClaim(bet.id, sig, bettor.toBase58());
+      return sig;
     },
-    onSuccess: () => {
+    onSuccess: (_sig, bet) => {
       toast({
         variant: "success",
         title: "Payout claimed",
@@ -108,7 +114,13 @@ export default function BetsPage() {
         void queryClient.invalidateQueries({
           queryKey: userBetsQueryKey(wallet),
         });
+        void queryClient.invalidateQueries({
+          queryKey: myPayoutQueryKey(bet.market.id, wallet),
+        });
       }
+      void queryClient.invalidateQueries({
+        queryKey: marketResultQueryKey(bet.market.id),
+      });
     },
     onError: (e) => {
       const msg = e instanceof Error ? e.message : "Claim failed";
@@ -367,11 +379,11 @@ export default function BetsPage() {
                         const winDisplay =
                           winRaw != null ? formatNativeBetAmount(winRaw) : "—";
                         const claimable = outcome === "won" && !bet.claimed;
-                        const rowBg =
+                        const rowEdge =
                           outcome === "won"
-                            ? "bg-survive/[0.06]"
+                            ? "border-l-4 border-l-accent"
                             : outcome === "lost"
-                              ? "bg-rug/[0.04] opacity-75"
+                              ? "border-l-4 border-l-rug opacity-50"
                               : "";
 
                         return (
@@ -380,7 +392,7 @@ export default function BetsPage() {
                             initial={{ opacity: 0, x: -8 }}
                             animate={{ opacity: 1, x: 0 }}
                             transition={{ delay: idx * 0.03 }}
-                            className={`border-b border-border/80 transition-colors hover:bg-bg ${rowBg}`}
+                            className={`border-b border-border/80 transition-colors hover:bg-bg ${rowEdge}`}
                           >
                             <td className="px-4 py-3">
                               <span className="font-semibold text-white">
@@ -405,15 +417,17 @@ export default function BetsPage() {
                                   expiresAt={new Date(bet.market.expiresAt)}
                                 />
                               ) : outcome === "won" ? (
-                                <span className="font-bold text-survive">
-                                  WON
+                                <span className="font-bold tabular-nums text-accent">
+                                  WON {winDisplay}
                                 </span>
                               ) : (
-                                <span className="font-bold text-rug">LOST</span>
+                                <span className="font-bold tabular-nums text-rug">
+                                  LOST {formatBetStake(bet)}
+                                </span>
                               )}
                             </td>
                             <td className="px-4 py-3 tabular-nums text-fg-soft">
-                              {winDisplay}
+                              {outcome === "active" ? winDisplay : "—"}
                             </td>
                             <td className="px-4 py-3">
                               {claimable ? (
@@ -426,6 +440,21 @@ export default function BetsPage() {
                                 >
                                   {claimMut.isPending ? "…" : "Claim"}
                                 </motion.button>
+                              ) : outcome === "won" && bet.claimed ? (
+                                <span className="font-mono text-[10px] font-bold text-accent">
+                                  Claimed ✅
+                                </span>
+                              ) : outcome === "won" &&
+                                bet.payoutTx != null &&
+                                bet.payoutTx.length > 0 ? (
+                                <a
+                                  href={solscanTxUrl(bet.payoutTx)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-accent underline-offset-2 hover:underline"
+                                >
+                                  Tx ↗
+                                </a>
                               ) : (
                                 <span className="text-fg-muted">—</span>
                               )}
@@ -451,6 +480,12 @@ export default function BetsPage() {
                     const winDisplay =
                       winRaw != null ? formatNativeBetAmount(winRaw) : "—";
                     const claimable = outcome === "won" && !bet.claimed;
+                    const cardEdge =
+                      outcome === "won"
+                        ? "border-l-4 border-l-accent"
+                        : outcome === "lost"
+                          ? "border-l-4 border-l-rug opacity-50"
+                          : "border-l-[3px] border-l-accent";
 
                     return (
                       <motion.article
@@ -458,13 +493,7 @@ export default function BetsPage() {
                         initial={{ opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: idx * 0.04 }}
-                        className={`space-y-3 border border-border bg-card p-4 ${
-                          outcome === "won"
-                            ? "border-l-[3px] border-l-survive"
-                            : outcome === "lost"
-                              ? "border-l-[3px] border-l-rug opacity-80"
-                              : "border-l-[3px] border-l-accent"
-                        }`}
+                        className={`space-y-3 border border-border bg-card p-4 ${cardEdge}`}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div>
@@ -500,12 +529,12 @@ export default function BetsPage() {
                                   expiresAt={new Date(bet.market.expiresAt)}
                                 />
                               ) : outcome === "won" ? (
-                                <span className="font-bold text-survive">
-                                  WON
+                                <span className="font-bold tabular-nums text-accent">
+                                  WON {winDisplay}
                                 </span>
                               ) : (
-                                <span className="font-bold text-rug">
-                                  LOST
+                                <span className="font-bold tabular-nums text-rug">
+                                  LOST {formatBetStake(bet)}
                                 </span>
                               )}
                             </dd>
@@ -513,7 +542,7 @@ export default function BetsPage() {
                           <div>
                             <dt className="text-fg-muted">Win</dt>
                             <dd className="mt-0.5 tabular-nums text-fg-soft">
-                              {winDisplay}
+                              {outcome === "active" ? winDisplay : "—"}
                             </dd>
                           </div>
                         </dl>
@@ -528,6 +557,21 @@ export default function BetsPage() {
                             >
                               {claimMut.isPending ? "…" : "Claim"}
                             </motion.button>
+                          ) : outcome === "won" && bet.claimed ? (
+                            <span className="font-mono text-xs font-bold text-accent">
+                              Claimed ✅
+                            </span>
+                          ) : outcome === "won" &&
+                            bet.payoutTx != null &&
+                            bet.payoutTx.length > 0 ? (
+                            <a
+                              href={solscanTxUrl(bet.payoutTx)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-mono text-xs font-bold text-accent underline-offset-2 hover:underline"
+                            >
+                              View tx ↗
+                            </a>
                           ) : (
                             <span className="font-mono text-xs text-fg-muted">
                               —
