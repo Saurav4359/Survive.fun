@@ -18,7 +18,10 @@ import {
   requireDexPairForMint,
 } from "../lib/dexscreener";
 import { marketPdaBase58ForMintAndDuration } from "../lib/marketOnChain";
-import { createMarketOnChain } from "../lib/onchainProgram";
+import {
+  createMarketOnChain,
+  isMarketResolvedOnChain,
+} from "../lib/onchainProgram";
 import { toMarketDto } from "../lib/dto";
 import { formatZod, parseQuery } from "../lib/zodUtil";
 import { AppError } from "../middleware/errorHandler";
@@ -215,6 +218,28 @@ router.get("/:id/my-payout", async (req, res, next) => {
     const { id: marketId } = parseQuery(idParamSchema, req.params);
     const { wallet } = parseQuery(walletQuerySchema, req.query);
 
+    const marketRow = await prisma.market.findUnique({
+      where: { id: marketId },
+    });
+    if (!marketRow) {
+      throw new AppError("NOT_FOUND", "Market not found", 404);
+    }
+
+    let onChainResolved = false;
+    try {
+      onChainResolved = await isMarketResolvedOnChain(
+        connection,
+        marketRow.tokenMint,
+        marketRow.durationSeconds,
+      );
+    } catch (e) {
+      console.log("[markets] my-payout on-chain status check failed", {
+        marketId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+      onChainResolved = false;
+    }
+
     const bet = await prisma.bet.findFirst({
       where: { marketId, bettorWallet: wallet },
     });
@@ -228,6 +253,7 @@ router.get("/:id/my-payout", async (req, res, next) => {
         payoutAmount: 0,
         claimed: false,
         claimTxSignature: null as string | null,
+        onChainResolved,
       };
       const body: ApiResponse<typeof data> = { success: true, data };
       res.json(body);
@@ -242,6 +268,7 @@ router.get("/:id/my-payout", async (req, res, next) => {
       payoutAmount: bet.payoutAmount?.toNumber() ?? 0,
       claimed: bet.claimed,
       claimTxSignature: bet.payoutTx,
+      onChainResolved,
     };
     const body: ApiResponse<typeof data> = { success: true, data };
     res.json(body);
