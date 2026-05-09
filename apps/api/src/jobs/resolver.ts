@@ -4,27 +4,19 @@
  * REDIS_URL is set, else setInterval. Emits `market_resolved` via Socket.IO.
  *
  * Resolution is chain-first: we submit `resolve_market` and only update the DB
- * (and emit / RugEvent) after `sendAndConfirmTransaction` succeeds, so indexer
- * state stays aligned with the program (no “resolved” UI while still Active on-chain).
+ * (and emit / RugEvent) after the on-chain call succeeds, so indexer state
+ * stays aligned with the program.
  */
-
-import { createHash } from "node:crypto";
 
 import type { Market as DbMarket, Prisma } from "@prisma/client";
 import type { Market, Outcome as MarketOutcome } from "@survivefun/types";
 import { Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
-import {
-  Keypair,
-  PublicKey,
-  sendAndConfirmTransaction,
-  Transaction,
-  TransactionInstruction,
-} from "@solana/web3.js";
 
-import { connection, getProgramId } from "../config/solana";
+import { connection } from "../config/solana";
 import { prisma } from "../config/database";
 import { toMarketDto } from "../lib/dto";
+import { resolveMarketOnChain } from "../lib/onchainProgram";
 import { detectRug } from "../services/rugDetector";
 import { emitMarketResolved } from "../websocket/socketHandler";
 
@@ -33,68 +25,8 @@ const QUEUE_NAME = "survive-market-resolver";
 const TICK_MS = 30_000;
 const JOB_SCHEDULER_ID = "survive-market-resolver-every-30s";
 
-/** Anchor `Outcome`: `Survive` = 0, `Rug` = 1 (declaration order in program). */
-const OUTCOME_SURVIVE_U8 = 0;
-const OUTCOME_RUG_U8 = 1;
-
 let resolverStarted = false;
 let fallbackInterval: ReturnType<typeof setInterval> | undefined;
-
-function anchorIxDiscriminator(name: string): Buffer {
-  const preimage = `global:${name}`;
-  const hash = createHash("sha256").update(preimage).digest();
-  return Buffer.from(hash.subarray(0, 8));
-}
-
-let platformKeypairCache: Keypair | null = null;
-
-function loadPlatformKeypair(): Keypair {
-  if (platformKeypairCache) return platformKeypairCache;
-  const raw =
-    process.env.PLATFORM_WALLET_SECRET_KEY?.trim() ??
-    process.env.PLATFORM_AUTHORITY_SECRET_KEY?.trim();
-  if (!raw) {
-    throw new Error(
-      "PLATFORM_WALLET_SECRET_KEY (or PLATFORM_AUTHORITY_SECRET_KEY) must be set to resolve on-chain",
-    );
-  }
-  let secret: Uint8Array;
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) {
-      throw new Error("secret key JSON must be a number array");
-    }
-    secret = Uint8Array.from(parsed.map((n) => Number(n)));
-  } catch {
-    throw new Error(
-      "PLATFORM_WALLET_SECRET_KEY must be a JSON array of byte values (Solana CLI format)",
-    );
-  }
-  platformKeypairCache = Keypair.fromSecretKey(secret);
-  return platformKeypairCache;
-}
-
-function durationSeedLe(durationSeconds: number): Buffer {
-  const b = Buffer.allocUnsafe(8);
-  b.writeBigUInt64LE(BigInt(durationSeconds), 0);
-  return b;
-}
-
-function marketPda(tokenMint: PublicKey, durationSeconds: number): PublicKey {
-  const [pda] = PublicKey.findProgramAddressSync(
-    [
-      Buffer.from("market"),
-      tokenMint.toBuffer(),
-      durationSeedLe(durationSeconds),
-    ],
-    getProgramId(),
-  );
-  return pda;
-}
-
-function marketAccountPk(dto: Market): PublicKey {
-  return marketPda(new PublicKey(dto.tokenMint), dto.durationSeconds);
-}
 
 /**
  * Submits `resolve_market` as the platform authority (signer from env).
@@ -103,36 +35,22 @@ export async function resolveOnChain(
   market: Market,
   outcome: MarketOutcome,
 ): Promise<string> {
-  const platform = loadPlatformKeypair();
-  const marketPk = marketAccountPk(market);
-  const outcomeU8 =
-    outcome === "rug" ? OUTCOME_RUG_U8 : OUTCOME_SURVIVE_U8;
-
-  const disc = anchorIxDiscriminator("resolve_market");
-  const data = Buffer.concat([disc, Buffer.from([outcomeU8])]);
-
-  const ix = new TransactionInstruction({
-    programId: getProgramId(),
-    keys: [
-      { pubkey: marketPk, isSigner: false, isWritable: true },
-      { pubkey: platform.publicKey, isSigner: true, isWritable: false },
-    ],
-    data,
-  });
-
-  const tx = new Transaction().add(ix);
-  const latest = await connection.getLatestBlockhash("confirmed");
-  tx.recentBlockhash = latest.blockhash;
-  tx.lastValidBlockHeight = latest.lastValidBlockHeight;
-  tx.feePayer = platform.publicKey;
-
-  const signature = await sendAndConfirmTransaction(
+  const out = await resolveMarketOnChain(
     connection,
-    tx,
-    [platform],
-    { commitment: "confirmed" },
+    market.tokenMint,
+    market.durationSeconds,
+    outcome,
   );
-  return signature;
+  console.log(`${LOG_PREFIX} resolve_market on-chain success`, {
+    marketId: market.id,
+    tokenMint: market.tokenMint,
+    durationSeconds: market.durationSeconds,
+    outcome,
+    marketPda: out.marketPda,
+    platformAuthority: out.platformAuthority,
+    signature: out.signature,
+  });
+  return out.signature;
 }
 
 function rugEventType(
