@@ -63,6 +63,8 @@ export type MyPayoutPayload =
       payoutAmount: number;
       claimed: false;
       claimTxSignature: null;
+      /** Solana program market account is `Resolved` with outcome (required before `claim_payout`). */
+      onChainResolved: boolean;
     }
   | {
       found: true;
@@ -72,6 +74,7 @@ export type MyPayoutPayload =
       payoutAmount: number;
       claimed: boolean;
       claimTxSignature: string | null;
+      onChainResolved: boolean;
     };
 
 // --- Bet types ---
