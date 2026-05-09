@@ -17,6 +17,7 @@
     "simulate-rug": "ts-node --project tsconfig.scripts.json scripts/simulate-rug.ts",
     "simulate-survive": "ts-node --project tsconfig.scripts.json scripts/simulate-survive.ts",
     "test-resolution": "prisma generate --schema=apps/api/prisma/schema.prisma && tsx scripts/test-resolution.ts",
+    "check-onchain": "prisma generate --schema=apps/api/prisma/schema.prisma && tsx scripts/check-onchain.ts",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f --tail=200",
