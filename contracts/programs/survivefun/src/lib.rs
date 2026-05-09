@@ -63,7 +63,7 @@ pub struct PlaceBet<'info> {
     pub bettor: Signer<'info>,
 
     #[account(
-        init,
+        init_if_needed,
         payer = bettor,
         space = 8 + crate::state::bet::Bet::INIT_SPACE,
         seeds = [b"bet", market.key().as_ref(), bettor.key().as_ref()],
@@ -79,6 +79,9 @@ pub struct ResolveMarket<'info> {
     #[account(mut)]
     pub market: Account<'info, crate::state::market::Market>,
 
+    #[account(
+        constraint = platform_authority.key() == market.platform_authority @ crate::instructions::create_market::SurviveError::Unauthorized
+    )]
     pub platform_authority: Signer<'info>,
 }
 
@@ -97,6 +100,9 @@ pub struct ClaimPayout<'info> {
     #[account(mut)]
     pub bettor: Signer<'info>,
 
-    #[account(mut)]
+    #[account(
+        mut,
+        constraint = platform_authority.key() == market.platform_authority @ crate::instructions::create_market::SurviveError::Unauthorized
+    )]
     pub platform_authority: UncheckedAccount<'info>,
 }

@@ -29,6 +29,18 @@ Same token mint + same duration → same PDA → second `create_market` hits **`
 
 See prior sections in git history; includes **`MarketAlreadyExists`**, bet bounds, **`InsufficientRent`**, etc.
 
+### Authorization (production)
+
+- **`Market.platform_authority`** is set once in **`create_market`** from the **`platform_authority`** signer. It is the canonical resolver and platform fee recipient for that market.
+- **`resolve_market`** and **`claim_payout`** require **`platform_authority`** to match **`market.platform_authority`** (arbitrary signers cannot resolve or steal fee routing).
+- **`resolve_market`** rejects resolution before **`market.expires_at`** (**`CannotResolveBeforeExpiry`**).
+- **Account layout:** adding `platform_authority` changes the `Market` account size; existing on-chain `Market` accounts from before this layout are **incompatible** — upgrade the program and use **new** markets (or migrate off old PDAs).
+
+### Local tests vs deploy
+
+- **`integration-test` Cargo feature:** allows **10-second** market durations for **`anchor test -- --features integration-test`** only. **Do not** deploy a binary built with this feature to devnet/mainnet.
+- **Production:** `anchor build` with **no** `integration-test` (durations: 1h / 6h / 24h only).
+
 ---
 
 ## Tests

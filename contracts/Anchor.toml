@@ -16,7 +16,8 @@ cluster = "Localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-# Local validator (default cluster in [provider]): spins up validator + runs same TS suite.
+# Local validator: build with integration-test (10s markets for resolve tests), then run TS suite.
+# Production deploy: use plain `anchor build` only (never `--features integration-test`).
 test = "pnpm exec ts-mocha -p ./tsconfig.json -t 1000000 'tests/**/*.ts'"
 # Devnet integration — always skip redeploy to avoid burning SOL (~1.8 SOL per upgrade).
 # After changing Rust: `anchor build && anchor deploy --provider.cluster devnet` once, then use this.

@@ -6,6 +6,7 @@ use crate::state::market::MarketStatus;
 
 pub fn place_bet(ctx: Context<crate::PlaceBet>, side: BetSide, amount: u64) -> Result<()> {
     let market_key = ctx.accounts.market.key();
+    let bettor_key = ctx.accounts.bettor.key();
 
     require!(
         ctx.accounts.market.status == MarketStatus::Active,
@@ -19,7 +20,7 @@ pub fn place_bet(ctx: Context<crate::PlaceBet>, side: BetSide, amount: u64) -> R
     require!(amount <= MAX_BET_LAMPORTS, SurviveError::BetTooLarge);
 
     let ix = anchor_lang::solana_program::system_instruction::transfer(
-        &ctx.accounts.bettor.key(),
+        &bettor_key,
         &ctx.accounts.market.key(),
         amount,
     );
@@ -44,22 +45,34 @@ pub fn place_bet(ctx: Context<crate::PlaceBet>, side: BetSide, amount: u64) -> R
             .ok_or(SurviveError::ArithmeticOverflow)?;
     }
 
-    market.total_bettors = market
-        .total_bettors
-        .checked_add(1)
-        .ok_or(SurviveError::ArithmeticOverflow)?;
-
     let bet = &mut ctx.accounts.bet;
-    bet.market = market_key;
-    bet.bettor = ctx.accounts.bettor.key();
-    bet.side = side;
-    bet.amount = amount;
-    bet.claimed = false;
-    bet.bump = ctx.bumps.bet;
+    let is_new = bet.market == Pubkey::default();
+
+    if is_new {
+        market.total_bettors = market
+            .total_bettors
+            .checked_add(1)
+            .ok_or(SurviveError::ArithmeticOverflow)?;
+        bet.market = market_key;
+        bet.bettor = bettor_key;
+        bet.side = side;
+        bet.amount = amount;
+        bet.claimed = false;
+        bet.bump = ctx.bumps.bet;
+    } else {
+        require!(bet.market == market_key, SurviveError::Unauthorized);
+        require!(bet.bettor == bettor_key, SurviveError::Unauthorized);
+        require!(!bet.claimed, SurviveError::AlreadyClaimed);
+        require!(bet.side == side, SurviveError::BetSideMismatch);
+        bet.amount = bet
+            .amount
+            .checked_add(amount)
+            .ok_or(SurviveError::ArithmeticOverflow)?;
+    }
 
     emit!(BetPlaced {
         market: market_key,
-        bettor: ctx.accounts.bettor.key(),
+        bettor: bettor_key,
         side,
         amount,
         timestamp: Clock::get()?.unix_timestamp,

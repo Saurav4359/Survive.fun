@@ -8,6 +8,10 @@ pub fn resolve_market(ctx: Context<ResolveMarket>, outcome: Outcome) -> Result<(
     let market = &mut ctx.accounts.market;
 
     require!(market.status == MarketStatus::Active, SurviveError::MarketNotActive);
+    require!(
+        Clock::get()?.unix_timestamp >= market.expires_at,
+        SurviveError::CannotResolveBeforeExpiry
+    );
 
     market.status = MarketStatus::Resolved;
     market.outcome = Some(outcome);

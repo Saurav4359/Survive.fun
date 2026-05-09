@@ -27,5 +27,7 @@ pub struct Market {
     pub status: MarketStatus,
     pub outcome: Option<Outcome>,
     pub platform_fee_bps: u64,
+    /// Resolver + fee recipient; set once in `create_market` from `platform_authority` signer.
+    pub platform_authority: Pubkey,
     pub bump: u8,
 }

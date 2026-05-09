@@ -32,8 +32,12 @@ pub enum SurviveError {
     ZeroWinningPool,
     #[msg("Arithmetic overflow")]
     ArithmeticOverflow,
+    #[msg("Add stake on the same side as your existing bet (cannot switch survive/rug)")]
+    BetSideMismatch,
     #[msg("Insufficient lamports to preserve rent on market")]
     InsufficientRent,
+    #[msg("Market cannot be resolved before expires_at")]
+    CannotResolveBeforeExpiry,
 }
 
 #[event]
@@ -62,9 +66,14 @@ pub struct PayoutClaimed {
     pub timestamp: i64,
 }
 
+fn duration_allowed(duration_seconds: u64) -> bool {
+    matches!(duration_seconds, 3600 | 21_600 | 86_400)
+        || (cfg!(feature = "integration-test") && duration_seconds == 10)
+}
+
 pub fn create_market(ctx: Context<crate::CreateMarket>, token_mint: Pubkey, duration_seconds: u64) -> Result<()> {
     require!(
-        duration_seconds == 3600 || duration_seconds == 21_600 || duration_seconds == 86_400,
+        duration_allowed(duration_seconds),
         SurviveError::InvalidDuration
     );
 
@@ -117,6 +126,7 @@ pub fn create_market(ctx: Context<crate::CreateMarket>, token_mint: Pubkey, dura
     market.status = MarketStatus::Active;
     market.outcome = None;
     market.platform_fee_bps = 200;
+    market.platform_authority = ctx.accounts.platform_authority.key();
     market.bump = ctx.bumps.market;
 
     Ok(())
