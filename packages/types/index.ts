@@ -26,10 +26,53 @@ export interface Market {
   devSellThresholdOverride: string | null;
   status: MarketStatus;
   outcome: Outcome | null;
+  resolvedAt: string | null;
+  rugCondition: string | null;
   onChainAddress: string | null;
   createdAt: string;
   totalBettors: number;
 }
+
+/** Row from `GET /v1/markets/:id/result` (SOL: `betAmount` / `payoutAmount` are lamports). */
+export interface MarketResultPayoutRow {
+  wallet: string;
+  betAmount: number;
+  betSide: BetSide;
+  payoutAmount: number;
+  won: boolean;
+  claimed: boolean;
+}
+
+export interface MarketResultPayload {
+  market: Market;
+  outcome: Outcome | null;
+  payouts: MarketResultPayoutRow[];
+  platformFee: number;
+  totalDistributed: number;
+  rugCondition: string | null;
+  resolvedAt: string | null;
+}
+
+/** `GET /v1/markets/:id/my-payout?wallet=` — SOL stakes are lamports in `betAmount` / `payoutAmount`. */
+export type MyPayoutPayload =
+  | {
+      found: false;
+      won: false;
+      betAmount: number;
+      betSide: string;
+      payoutAmount: number;
+      claimed: false;
+      claimTxSignature: null;
+    }
+  | {
+      found: true;
+      won: boolean;
+      betAmount: number;
+      betSide: BetSide;
+      payoutAmount: number;
+      claimed: boolean;
+      claimTxSignature: string | null;
+    };
 
 // --- Bet types ---
 
@@ -48,7 +91,9 @@ export interface Bet {
   /** Estimated payout in the market currency (USDC decimal or lamports integer string). */
   potentialWin: string | null;
   txSignature: string;
+  won: boolean;
   claimed: boolean;
+  claimedAt: string | null;
   payoutAmount: string | null;
   payoutTx: string | null;
   createdAt: string;
@@ -255,6 +300,7 @@ export interface MarketResolved {
   survivePool: string;
   rugPool: string;
   timestamp: string;
+  rugCondition?: string | null;
 }
 
 export type SocketEvents = {
@@ -271,6 +317,17 @@ export type SocketEvents = {
     eventType: RugEvent["eventType"];
   };
   market_resolved: MarketResolved;
+  payout_ready: {
+    wallet: string;
+    amount: string;
+    marketId: string;
+  };
+  payout_claimed: {
+    wallet: string;
+    marketId: string;
+    betId: string;
+    amount: string;
+  };
   new_token: {
     tokenMint: string;
     tokenName: string | null;
