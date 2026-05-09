@@ -199,3 +199,29 @@ All listed REST and webhook routes above are implemented in `apps/api/src`.
 7. **Breaking changes:** Response shapes are extended (`Market.currency`, `Bet` stake fields). Clients must treat `amountUsdc` as nullable when `currency === "sol"` (use `amountLamports`). No removal of USDC defaults.
 
 Migration: `apps/api/prisma/migrations/20260208120000_add_market_bet_currency/migration.sql`
+
+---
+
+## Backend engineer progress (current session)
+
+### Task status
+
+- Task 1 (env update): ✅ `apps/api/.env` updated with requested keys and backend compatibility vars.
+- Task 2 (IDL copy): ⚠️ Copied to backend path only (`apps/api/src/idl/survivefun.json`). I did not modify `apps/web` per your backend-only rule.
+- Task 3 (create market route): ✅ `POST /v1/markets` validates request, fetches DexScreener, calls on-chain `create_market` via IDL, persists to DB only after chain success.
+- Task 4 (place bet route): ✅ `POST /v1/markets/:id/bets` verifies tx (program id + side + amount + market + bettor) against RPC before DB write and socket emit.
+- Task 5 (resolver): ✅ `resolveOnChain` now uses IDL-backed Anchor call (`resolve_market`) and logs signature/details.
+- Task 6 (Helius webhooks): ✅ register uses `HELIUS_API_KEY` + `${BACKEND_URL}/v1/webhook/helius`; intake responds 200 immediately and processes TOKEN_MINT / TRANSFER asynchronously.
+- Task 7 (demo seed): ✅ `scripts/setup-demo.ts` now seeds 3 markets and 15 mixed bets ($5-$50 range).
+
+### Files updated this session
+
+- `apps/api/.env`
+- `apps/api/src/config/solana.ts`
+- `apps/api/src/idl/survivefun.json`
+- `apps/api/src/lib/onchainProgram.ts`
+- `apps/api/src/routes/markets.ts`
+- `apps/api/src/routes/bets.ts`
+- `apps/api/src/jobs/resolver.ts`
+- `apps/api/src/routes/webhook.ts`
+- `scripts/setup-demo.ts`
