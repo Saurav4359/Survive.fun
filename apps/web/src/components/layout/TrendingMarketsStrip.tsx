@@ -5,8 +5,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
-import { totalPoolUsdc } from "@/utils/marketRisk";
-import { formatPool } from "@/utils/format";
+import { formatSolBetLine } from "@/utils/format";
+import { totalPoolLamports } from "@/utils/marketRisk";
 
 function TokenThumb({
   mint,
@@ -48,7 +48,7 @@ type RowProps = {
 
 function StripRow({ rank, market, pair }: RowProps) {
   const ticker = market.tokenTicker?.trim() || "—";
-  const pool = totalPoolUsdc(market);
+  const pool = totalPoolLamports(market);
   return (
     <Link
       href={`/market/${market.id}`}
@@ -63,7 +63,7 @@ function StripRow({ rank, market, pair }: RowProps) {
           ${ticker}
         </p>
         <p className="truncate font-mono text-[10px] text-muted-foreground">
-          Pool {formatPool(pool)} USDC
+          Pool {formatSolBetLine(pool / 1e9)}
         </p>
       </div>
     </Link>
@@ -78,7 +78,7 @@ type Props = {
 export function TrendingMarketsStrip({ markets, pairByMint }: Props) {
   const ranked = useMemo(() => {
     return [...markets]
-      .sort((a, b) => totalPoolUsdc(b) - totalPoolUsdc(a))
+      .sort((a, b) => totalPoolLamports(b) - totalPoolLamports(a))
       .slice(0, 12);
   }, [markets]);
 

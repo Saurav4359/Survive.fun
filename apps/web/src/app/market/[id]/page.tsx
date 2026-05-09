@@ -8,6 +8,7 @@ import type {
   MarketChartResponse,
 } from "@survivefun/types";
 import { useWallet } from "@solana/wallet-adapter-react";
+import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -36,8 +37,19 @@ import {
 import { useToken } from "@/hooks/useToken";
 import { userBetsQueryKey, useUserBets } from "@/hooks/useUserBets";
 import { apiV1Url } from "@/utils/constants";
-import { formatPool, formatUSDC, formatWallet } from "@/utils/format";
-import { getMarketPDA, placeBet as placeBetOnChain } from "@/utils/transactions";
+import {
+  formatBetStake,
+  formatPool,
+  formatPoolTotals,
+  formatSolBetLine,
+  formatUsd,
+  formatWallet,
+  parsePoolLamports,
+} from "@/utils/format";
+import {
+  placeBet as placeBetOnChain,
+  resolveMarketPdaForTransaction,
+} from "@/utils/transactions";
 
 const CHART_LINE = "#cdf078";
 
@@ -112,26 +124,24 @@ export default function MarketPage() {
    * Derive the user's existing position on this market from the API so it
    * persists across reloads. Sums every bet the user has placed on this id.
    */
-  const position = useMemo<{
-    side: BetSide;
-    amountUsdc: number;
-  } | null>(() => {
-    if (!id || !userBets || userBets.length === 0) return null;
+  const position = useMemo<{ side: BetSide; stakeSol: number } | null>(() => {
+    if (!id || !market || !userBets || userBets.length === 0) return null;
     let surviveTotal = 0;
     let rugTotal = 0;
     for (const b of userBets) {
       if (b.market.id !== id) continue;
-      const amt = Number.parseFloat(b.amountUsdc);
+      if (b.currency !== "sol") continue;
+      const amt = Number(BigInt(b.amountLamports ?? "0")) / LAMPORTS_PER_SOL;
       if (!Number.isFinite(amt)) continue;
       if (b.side === "survive") surviveTotal += amt;
       else if (b.side === "rug") rugTotal += amt;
     }
     if (surviveTotal === 0 && rugTotal === 0) return null;
     if (surviveTotal >= rugTotal) {
-      return { side: "survive", amountUsdc: surviveTotal };
+      return { side: "survive", stakeSol: surviveTotal };
     }
-    return { side: "rug", amountUsdc: rugTotal };
-  }, [id, userBets]);
+    return { side: "rug", stakeSol: rugTotal };
+  }, [id, market, userBets]);
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartApiRef = useRef<import("lightweight-charts").IChartApi | null>(
@@ -150,19 +160,26 @@ export default function MarketPage() {
   const placeBetMut = useMutation({
     mutationFn: async ({
       side,
-      amountUsdc,
+      amountUi,
       m,
     }: {
       side: BetSide;
-      amountUsdc: number;
+      amountUi: number;
       m: Market;
     }) => {
-      const marketPda =
-        m.onChainAddress?.trim() ||
-        (await getMarketPDA(m.tokenMint)).toBase58();
-      const sig = await placeBetOnChain(wallet, marketPda, side, amountUsdc);
+      const marketPda = await resolveMarketPdaForTransaction(
+        m.tokenMint,
+        m.durationSeconds,
+        m.onChainAddress,
+      );
+      const sig = await placeBetOnChain(wallet, {
+        marketPda,
+        side,
+        amount: amountUi,
+      });
       const pk = wallet.publicKey;
       if (!pk) throw new Error("Connect a wallet to place a bet");
+      const apiAmount = Number(BigInt(Math.round(amountUi * LAMPORTS_PER_SOL)));
       const res = await fetch(
         apiV1Url(`/markets/${encodeURIComponent(id)}/bets`),
         {
@@ -170,7 +187,8 @@ export default function MarketPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             side,
-            amount: amountUsdc,
+            currency: "sol",
+            amount: apiAmount,
             txSignature: sig,
             walletAddress: pk.toBase58(),
           }),
@@ -221,8 +239,10 @@ export default function MarketPage() {
     chartApiRef.current?.timeScale().fitContent();
   }, []);
 
-  const survive = parseNum(market?.survivePool) ?? 0;
-  const rug = parseNum(market?.rugPool) ?? 0;
+  const survive = market
+    ? Number(parsePoolLamports(market.survivePool))
+    : 0;
+  const rug = market ? Number(parsePoolLamports(market.rugPool)) : 0;
   const openLiquidityUsd =
     tokenHook.liquidity ?? parseNum(market?.openLiquidity);
   const pairCreatedAtSeconds = tokenHook.pair?.pairCreatedAt ?? null;
@@ -347,14 +367,18 @@ export default function MarketPage() {
   }, [market?.openPrice, tokenHook.price, market]);
 
   const onBet = useCallback(
-    async (side: BetSide, amountUsdc: number) => {
+    async (side: BetSide, amountUi: number) => {
       if (!market) return;
-      await placeBetMut.mutateAsync({ side, amountUsdc, m: market });
+      await placeBetMut.mutateAsync({ side, amountUi, m: market });
     },
     [placeBetMut, market],
   );
 
   const totalPool = survive + rug;
+  const poolSideLabels = market
+    ? formatPoolTotals(survive, rug)
+    : { survive: "—", rug: "—" };
+  const totalPoolLabel = formatSolBetLine(totalPool / 1e9);
   const risk = inferRisk(openLiquidityUsd);
 
   const sortedSignals = useMemo(() => {
@@ -363,7 +387,7 @@ export default function MarketPage() {
       label: "Liquidity",
       value:
         openLiquidityUsd != null && Number.isFinite(openLiquidityUsd)
-          ? formatUSDC(openLiquidityUsd)
+          ? formatUsd(openLiquidityUsd)
           : "—",
       Icon: Droplets,
     });
@@ -457,7 +481,7 @@ export default function MarketPage() {
                   Price
                 </p>
                 <p className="mt-0.5 font-mono text-2xl font-bold tabular-nums text-white sm:text-3xl">
-                  {displayPriceUsd != null ? formatUSDC(displayPriceUsd) : "—"}
+                  {displayPriceUsd != null ? formatUsd(displayPriceUsd) : "—"}
                 </p>
               </div>
               <div>
@@ -637,7 +661,7 @@ export default function MarketPage() {
                     </dt>
                     <dd className="mt-1 font-mono text-sm font-medium text-white">
                       {openLiquidityUsd != null
-                        ? formatUSDC(openLiquidityUsd)
+                        ? formatUsd(openLiquidityUsd)
                         : "—"}
                     </dd>
                   </div>
@@ -746,7 +770,7 @@ export default function MarketPage() {
                                 {row.side === "survive" ? "SURVIVE" : "RUG"}
                               </td>
                               <td className="py-2.5 tabular-nums text-white">
-                                {formatUSDC(Number.parseFloat(row.amountUsdc))}
+                                {formatBetStake(row)}
                               </td>
                             </tr>
                           );
@@ -789,7 +813,7 @@ export default function MarketPage() {
                   Survive
                 </p>
                 <p className="mt-1 font-bold tabular-nums text-survive">
-                  {formatUSDC(survive)}
+                  {poolSideLabels.survive}
                 </p>
               </div>
               <div>
@@ -797,7 +821,7 @@ export default function MarketPage() {
                   Rug
                 </p>
                 <p className="mt-1 font-bold tabular-nums text-rug">
-                  {formatUSDC(rug)}
+                  {poolSideLabels.rug}
                 </p>
               </div>
               <div>
@@ -805,7 +829,7 @@ export default function MarketPage() {
                   Total
                 </p>
                 <p className="mt-1 font-bold tabular-nums text-white">
-                  {formatUSDC(totalPool)}
+                  {totalPoolLabel}
                 </p>
               </div>
               <div>

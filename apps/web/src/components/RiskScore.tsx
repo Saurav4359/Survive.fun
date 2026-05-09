@@ -1,7 +1,7 @@
 import type { Token } from "@survivefun/types";
 import { AlertTriangle, Droplets, Timer, UserRound } from "lucide-react";
 
-import { formatUSDC } from "@/utils/format";
+import { formatUsd } from "@/utils/format";
 import { computeRiskLevel, type RiskLevel } from "@/utils/marketRisk";
 
 export type { RiskLevel };
@@ -71,7 +71,7 @@ export function RiskScore({
       : "—";
   const liqLabel =
     liquidityUsd != null && Number.isFinite(liquidityUsd)
-      ? formatUSDC(liquidityUsd)
+      ? formatUsd(liquidityUsd)
       : "—";
   const ageLabel = formatTokenAge(pairCreatedAt ?? null);
 

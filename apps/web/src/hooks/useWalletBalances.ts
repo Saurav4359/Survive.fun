@@ -1,13 +1,18 @@
-import {
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-  getAssociatedTokenAddressSync,
-  TOKEN_PROGRAM_ID,
-} from "@solana/spl-token";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { useQuery } from "@tanstack/react-query";
 
-import { RPC_URL, USDC_MINT } from "@/utils/constants";
+import { RPC_URL } from "@/utils/constants";
+
+/** Lamports → display SOL with exactly 4 fractional digits (JetBrains Mono in UI). */
+export function solToDisplay(lamports: bigint | number): string {
+  const n =
+    typeof lamports === "bigint"
+      ? Number(lamports) / LAMPORTS_PER_SOL
+      : lamports / LAMPORTS_PER_SOL;
+  if (!Number.isFinite(n)) return "0.0000";
+  return n.toFixed(4);
+}
 
 export function walletBalancesQueryKey(walletAddress: string | null) {
   return ["wallet-balances", walletAddress, RPC_URL] as const;
@@ -27,33 +32,11 @@ export function useWalletBalances() {
         throw new Error("Wallet not connected");
       }
 
-      const ata = getAssociatedTokenAddressSync(
-        USDC_MINT,
-        publicKey,
-        false,
-        TOKEN_PROGRAM_ID,
-        ASSOCIATED_TOKEN_PROGRAM_ID,
-      );
-
-      const [lamports, tokenBal] = await Promise.all([
-        connection.getBalance(publicKey, "confirmed"),
-        connection.getTokenAccountBalance(ata).catch(() => null),
-      ]);
-
-      let usdc = 0;
-      if (tokenBal != null) {
-        const v = tokenBal.value;
-        if (v.uiAmount != null) {
-          usdc = v.uiAmount;
-        } else {
-          const raw = Number(v.amount);
-          usdc = Number.isFinite(raw) ? raw / 10 ** v.decimals : 0;
-        }
-      }
+      const lamports = await connection.getBalance(publicKey, "confirmed");
 
       return {
+        lamports,
         sol: lamports / LAMPORTS_PER_SOL,
-        usdc: Number.isFinite(usdc) ? usdc : 0,
       };
     },
   });

@@ -16,7 +16,7 @@ import { usePathname } from "next/navigation";
 import type { ComponentType, SVGProps } from "react";
 
 import { useWalletBalances } from "@/hooks/useWalletBalances";
-import { formatSolAmount, formatUSDC, formatWallet } from "@/utils/format";
+import { formatSolBetLine, formatWallet } from "@/utils/format";
 
 type NavItem = {
   href: string;
@@ -146,12 +146,10 @@ export function SidebarNav({ onNavigate }: Props) {
               <p className="font-mono text-sm font-semibold tabular-nums text-white">
                 {balances.isPending
                   ? "—"
-                  : formatUSDC(balances.data?.usdc ?? 0)}
+                  : formatSolBetLine(balances.data?.sol ?? 0)}
               </p>
               <p className="font-mono text-[11px] tabular-nums text-fg-soft">
-                {balances.isPending
-                  ? "—"
-                  : `${formatSolAmount(balances.data?.sol ?? 0)} SOL`}
+                Wallet balance
               </p>
               <p className="truncate font-mono text-[10px] text-fg-muted">
                 {formatWallet(publicKey.toBase58())}

@@ -6,66 +6,76 @@ import { Shield, Skull } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { CountUp } from "@/components/CountUp";
-import { BET_LIMITS } from "@/utils/constants";
-import { formatUSDC } from "@/utils/format";
+import { solToDisplay, useWalletBalances } from "@/hooks/useWalletBalances";
+import { QUICK_SOL_AMOUNTS, SOL_BET_LIMITS } from "@/utils/constants";
+import {
+  formatSolBetLine,
+  parsePoolLamports,
+  potentialPayoutLamports,
+} from "@/utils/format";
 
-function parsePool(value: string): number {
-  const n = Number.parseFloat(value);
-  return Number.isFinite(n) ? n : 0;
+function clampSol(n: number): number {
+  return Math.min(SOL_BET_LIMITS.max, Math.max(SOL_BET_LIMITS.min, n));
 }
 
-function clampAmount(n: number): number {
-  return Math.min(BET_LIMITS.max, Math.max(BET_LIMITS.min, n));
-}
-
-/** Parimutuel-style gross payout if this side wins (includes returned stake). */
-function potentialPayoutUsdc(
-  side: BetSide,
-  survive: number,
-  rug: number,
-  amount: number,
-): number {
-  if (amount <= 0 || !Number.isFinite(amount)) return 0;
-  if (side === "survive") {
-    const ts = survive + amount;
-    const tr = rug;
-    if (ts <= 0) return amount;
-    return (amount * (ts + tr)) / ts;
-  }
-  const tr = rug + amount;
-  const ts = survive;
-  if (tr <= 0) return amount;
-  return (amount * (ts + tr)) / tr;
-}
-
-const QUICK_AMOUNTS = [5, 10, 25, 50] as const;
+/** Solana brand purple — header glyph only. */
+const SOL_BRAND = "#9945FF";
+const LIME_SELECTED = "#a3e635";
 
 export type BetPanelProps = {
   market: Market;
-  onBet: (side: BetSide, amountUsdc: number) => void | Promise<void>;
-  position?: { side: BetSide; amountUsdc: number } | null;
+  onBet: (side: BetSide, amountUi: number) => void | Promise<void>;
+  position?: { side: BetSide; stakeSol: number } | null;
 };
 
 export function BetPanel({ market, onBet, position = null }: BetPanelProps) {
   const [side, setSide] = useState<BetSide>("survive");
-  const [amount, setAmount] = useState<number>(5);
+  const [amountSol, setAmountSol] = useState<number>(0.1);
   const [pending, setPending] = useState(false);
+  const [amountError, setAmountError] = useState<string | null>(null);
 
-  const survive = parsePool(market.survivePool);
-  const rug = parsePool(market.rugPool);
+  const balances = useWalletBalances();
 
-  const payout = useMemo(
-    () => potentialPayoutUsdc(side, survive, rug, amount),
-    [side, survive, rug, amount],
+  const surviveLamports = parsePoolLamports(market.survivePool);
+  const rugLamports = parsePoolLamports(market.rugPool);
+
+  const payoutLamports = useMemo(
+    () =>
+      potentialPayoutLamports(
+        side,
+        surviveLamports,
+        rugLamports,
+        solUiToLamportsSafe(amountSol),
+      ),
+    [side, surviveLamports, rugLamports, amountSol],
   );
+  const payoutSolNum = Number(payoutLamports) / 1e9;
 
-  const setClamped = (n: number) => setAmount(clampAmount(n));
+  const walletSol = balances.data?.sol ?? null;
+
+  function validateAmount(ui: number): string | null {
+    if (!Number.isFinite(ui)) return "Enter a valid amount.";
+    if (ui < SOL_BET_LIMITS.min) {
+      return `Minimum bet is ${SOL_BET_LIMITS.min} SOL.`;
+    }
+    if (ui > SOL_BET_LIMITS.max) {
+      return `Maximum bet is ${SOL_BET_LIMITS.max} SOL.`;
+    }
+    if (walletSol != null && ui > walletSol) {
+      return "Amount exceeds wallet SOL balance.";
+    }
+    return null;
+  }
 
   async function handlePlaceBet() {
-    const a = clampAmount(amount);
+    const clamped = clampSol(amountSol);
+    const err = validateAmount(clamped);
+    setAmountError(err);
+    if (err) return;
+
     setPending(true);
     try {
-      await onBet(side, a);
+      await onBet(side, clamped);
     } finally {
       setPending(false);
     }
@@ -75,17 +85,25 @@ export function BetPanel({ market, onBet, position = null }: BetPanelProps) {
 
   return (
     <div className="border border-border bg-card">
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
         <h3 className="font-display text-xs font-bold uppercase tracking-[0.2em] text-white">
-          Place a bet
+          Place a bet{" "}
+          <span className="font-mono text-[10px] tracking-[0.18em]" style={{ color: SOL_BRAND }}>
+            ◎ SOL
+          </span>
         </h3>
-        <span className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-fg-muted">
-          USDC · devnet
-        </span>
       </div>
 
       <div className="space-y-4 p-4">
-        {/* Side toggle */}
+        {balances.data != null ? (
+          <p className="font-mono text-[10px] text-fg-muted">
+            Balance:{" "}
+            <span className="tabular-nums text-white">
+              ◎ {solToDisplay(balances.data.lamports)} SOL
+            </span>
+          </p>
+        ) : null}
+
         <div className="relative grid grid-cols-2 gap-0 border border-border bg-bg p-1">
           <motion.div
             layout
@@ -94,7 +112,7 @@ export function BetPanel({ market, onBet, position = null }: BetPanelProps) {
             className="pointer-events-none absolute top-1 bottom-1 w-[calc(50%-4px)]"
             style={{
               left: side === "survive" ? 4 : "calc(50% + 0px)",
-              backgroundColor: side === "survive" ? "#cdf078" : "#ef4444",
+              backgroundColor: side === "survive" ? LIME_SELECTED : "#ef4444",
             }}
           />
           <button
@@ -127,84 +145,101 @@ export function BetPanel({ market, onBet, position = null }: BetPanelProps) {
           </button>
         </div>
 
-        {/* Amount */}
         <div className="space-y-2">
           <label
-            htmlFor="bet-amount"
+            htmlFor="bet-amount-sol"
             className="block font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-fg-muted"
           >
-            Amount ({formatUSDC(BET_LIMITS.min)} – {formatUSDC(BET_LIMITS.max)})
+            Amount ({SOL_BET_LIMITS.min} – {SOL_BET_LIMITS.max} SOL)
           </label>
           <div className="relative">
             <span
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-base font-bold text-fg-muted"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-base font-bold tabular-nums text-fg-soft"
               aria-hidden
             >
-              $
+              ◎
             </span>
             <input
-              id="bet-amount"
+              id="bet-amount-sol"
               type="number"
               inputMode="decimal"
-              min={BET_LIMITS.min}
-              max={BET_LIMITS.max}
-              step={1}
-              value={Number.isFinite(amount) ? amount : BET_LIMITS.min}
+              min={SOL_BET_LIMITS.min}
+              max={SOL_BET_LIMITS.max}
+              step={0.0001}
+              value={Number.isFinite(amountSol) ? amountSol : SOL_BET_LIMITS.min}
               onChange={(e) => {
                 const v = Number.parseFloat(e.target.value);
                 if (!Number.isFinite(v)) {
-                  setAmount(BET_LIMITS.min);
+                  setAmountSol(SOL_BET_LIMITS.min);
+                  setAmountError(validateAmount(SOL_BET_LIMITS.min));
                   return;
                 }
-                setClamped(v);
+                const c = clampSol(v);
+                setAmountSol(c);
+                setAmountError(validateAmount(c));
               }}
-              className="w-full rounded-md border border-border bg-bg py-3 pl-8 pr-3 font-mono text-base font-semibold tabular-nums text-white transition-shadow focus:border-accent focus:outline-none focus:shadow-glow-sm"
+              placeholder="0.00"
+              className="w-full rounded-md border border-border bg-bg py-3 pl-10 pr-3 font-mono text-base font-semibold tabular-nums text-white transition-shadow focus:border-[#a3e635] focus:outline-none focus:shadow-glow-sm"
             />
           </div>
+          {amountError ? (
+            <p className="font-mono text-[10px] text-rug" role="alert">
+              {amountError}
+            </p>
+          ) : null}
           <div className="flex flex-wrap gap-1.5">
-            {QUICK_AMOUNTS.map((q) => {
-              const active = amount === q;
+            {QUICK_SOL_AMOUNTS.map((q) => {
+              const active = Math.abs(amountSol - q) < 1e-9;
+              const pick = clampSol(q);
               return (
                 <motion.button
                   key={q}
                   type="button"
                   whileTap={{ scale: 0.95 }}
-                  onClick={() => setClamped(q)}
+                  onClick={() => {
+                    setAmountSol(pick);
+                    setAmountError(validateAmount(pick));
+                  }}
                   className={
                     active
-                      ? "rounded-md bg-accent px-3 py-1.5 font-mono text-[10px] font-bold tabular-nums text-ink"
-                      : "rounded-md border border-accent/60 bg-bg px-3 py-1.5 font-mono text-[10px] font-bold tabular-nums text-accent transition-colors hover:border-accent hover:bg-accent hover:text-ink"
+                      ? "rounded-md px-3 py-1.5 font-mono text-[10px] font-bold tabular-nums text-ink"
+                      : "rounded-md border border-border bg-bg px-3 py-1.5 font-mono text-[10px] font-bold tabular-nums text-fg-soft transition-colors hover:border-[#a3e635] hover:text-[#a3e635]"
                   }
+                  style={active ? { backgroundColor: LIME_SELECTED } : undefined}
                 >
-                  ${q}
+                  {q} SOL
                 </motion.button>
               );
             })}
           </div>
         </div>
 
-        {/* Potential win */}
         <div className="border border-border bg-bg px-4 py-3">
           <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-fg-muted">
             If {sideLabel} wins:
           </p>
-          <p className="mt-1 font-mono text-2xl font-bold tabular-nums text-accent">
+          <p
+            className="mt-1 font-mono text-2xl font-bold tabular-nums"
+            style={{ color: LIME_SELECTED }}
+          >
             <CountUp
-              key={`${side}-${amount}-${survive}-${rug}`}
-              to={payout}
+              key={`${side}-${amountSol}-${surviveLamports}-${rugLamports}`}
+              to={payoutSolNum}
               duration={0.5}
-              format={(n) => formatUSDC(n)}
+              format={(n) => formatSolBetLine(n)}
             />
           </p>
           <p className="mt-1 font-mono text-[10px] text-fg-muted">
-            ${amount} → {formatUSDC(payout)} (gross)
+            {formatSolBetLine(amountSol)} → {formatSolBetLine(payoutSolNum)}{" "}
+            (gross)
           </p>
         </div>
 
-        {/* Place bet */}
         <motion.button
           type="button"
-          whileHover={market.status === "active" && !pending ? { scale: 1.01 } : undefined}
+          whileHover={
+            market.status === "active" && !pending ? { scale: 1.01 } : undefined
+          }
           whileTap={{ scale: 0.97 }}
           disabled={pending || market.status !== "active"}
           onClick={() => void handlePlaceBet()}
@@ -236,13 +271,18 @@ export function BetPanel({ market, onBet, position = null }: BetPanelProps) {
             <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-fg-muted">
               Your position
             </p>
-            <p className="mt-1 font-mono text-sm font-semibold text-white">
+            <p className="mt-1 font-mono text-sm font-semibold tabular-nums text-white">
               {position.side === "survive" ? "SURVIVE" : "RUG"} ·{" "}
-              {formatUSDC(position.amountUsdc)}
+              {formatSolBetLine(position.stakeSol)}
             </p>
           </motion.div>
         ) : null}
       </div>
     </div>
   );
+}
+
+function solUiToLamportsSafe(sol: number): bigint {
+  if (!Number.isFinite(sol) || sol <= 0) return 0n;
+  return BigInt(Math.floor(sol * 1e9));
 }

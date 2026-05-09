@@ -1,5 +1,7 @@
 import type { Market, TokenPair } from "@survivefun/types";
 
+import { parsePoolLamports } from "@/utils/format";
+
 export type RiskLevel = "HIGH" | "MEDIUM" | "LOW";
 
 export function computeRiskLevel(input: {
@@ -56,10 +58,9 @@ export function riskLevelForMarket(
 
 /** Higher = more “about to rug” for featured strip. */
 export function aboutToRugScore(market: Market, pair: TokenPair | null): number {
-  const survive = Number.parseFloat(market.survivePool);
-  const rug = Number.parseFloat(market.rugPool);
-  const total =
-    Number.isFinite(survive) && Number.isFinite(rug) ? survive + rug : 0;
+  const survive = Number(parsePoolLamports(market.survivePool));
+  const rug = Number(parsePoolLamports(market.rugPool));
+  const total = survive + rug;
   let score = total > 0 ? (rug / total) * 45 : 0;
   const h24 = pair?.priceChange?.h24;
   if (h24 != null && Number.isFinite(h24) && h24 < 0) {
@@ -71,9 +72,9 @@ export function aboutToRugScore(market: Market, pair: TokenPair | null): number 
   return score;
 }
 
-export function totalPoolUsdc(market: Market): number {
-  const s = Number.parseFloat(market.survivePool);
-  const r = Number.parseFloat(market.rugPool);
-  const t = (Number.isFinite(s) ? s : 0) + (Number.isFinite(r) ? r : 0);
-  return t;
+/** Total pool depth in lamports. */
+export function totalPoolLamports(market: Market): number {
+  const s = Number(parsePoolLamports(market.survivePool));
+  const r = Number(parsePoolLamports(market.rugPool));
+  return s + r;
 }

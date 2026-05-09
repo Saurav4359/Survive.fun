@@ -13,8 +13,17 @@ import { EmptyState } from "@/components/EmptyState";
 import { Timer } from "@/components/Timer";
 import { useToast } from "@/components/ToastProvider";
 import { userBetsQueryKey, useUserBets } from "@/hooks/useUserBets";
-import { formatUSDC } from "@/utils/format";
-import { claimPayout, getBetPDA, getMarketPDA } from "@/utils/transactions";
+import {
+  formatBetStake,
+  formatNativeBetAmount,
+  formatSolBetLine,
+  parsePoolLamports,
+} from "@/utils/format";
+import {
+  claimPayout,
+  getBetPDA,
+  resolveMarketPdaForTransaction,
+} from "@/utils/transactions";
 
 type BetFilter = "all" | "active" | "won" | "lost";
 
@@ -43,12 +52,13 @@ function matchesFilter(b: BetWithMarket, filter: BetFilter): boolean {
 }
 
 function poolSharePct(b: BetWithMarket): number | null {
-  const survive = Number.parseFloat(b.market.survivePool);
-  const rug = Number.parseFloat(b.market.rugPool);
+  const survive = Number(parsePoolLamports(b.market.survivePool));
+  const rug = Number(parsePoolLamports(b.market.rugPool));
   const total = survive + rug;
   if (!Number.isFinite(total) || total <= 0) return null;
-  const amt = Number.parseFloat(b.amountUsdc);
-  if (!Number.isFinite(amt)) return null;
+  if (b.currency !== "sol") return null;
+  const amt = Number(BigInt(b.amountLamports ?? "0"));
+  if (!Number.isFinite(amt) || amt <= 0) return null;
   return (amt / total) * 100;
 }
 
@@ -78,9 +88,11 @@ export default function BetsPage() {
   const claimMut = useMutation({
     mutationFn: async (bet: BetWithMarket) => {
       const m = bet.market;
-      const marketPda =
-        m.onChainAddress?.trim() ||
-        (await getMarketPDA(m.tokenMint)).toBase58();
+      const marketPda = await resolveMarketPdaForTransaction(
+        m.tokenMint,
+        m.durationSeconds,
+        m.onChainAddress,
+      );
       const bettor = walletAdapter.publicKey;
       if (!bettor) throw new Error("Connect a wallet to claim");
       const betPda = (await getBetPDA(marketPda, bettor.toBase58())).toBase58();
@@ -111,28 +123,40 @@ export default function BetsPage() {
 
   const summary = useMemo(() => {
     if (bets.length === 0) {
-      return { totalBet: 0, totalWon: 0, winRatePct: 0, openBets: 0 };
+      return {
+        totalBetSol: 0,
+        totalWonSol: 0,
+        winRatePct: 0,
+        openBets: 0,
+      };
     }
-    let totalBet = 0;
-    let totalWon = 0;
+    let totalBetSol = 0;
+    let totalWonSol = 0;
     let wins = 0;
     let resolved = 0;
     let openBets = 0;
     for (const b of bets) {
-      const amt = Number.parseFloat(b.amountUsdc);
-      if (Number.isFinite(amt)) totalBet += amt;
+      if (b.currency !== "sol") continue;
+      const lam = Number(BigInt(b.amountLamports ?? "0"));
+      if (Number.isFinite(lam)) totalBetSol += lam / 1e9;
       const o = rowOutcome(b);
       if (o === "active") openBets += 1;
       if (o === "won" || o === "lost") resolved += 1;
       if (o === "won") {
         wins += 1;
-        const pay =
-          b.payoutAmount != null ? Number.parseFloat(b.payoutAmount) : 0;
-        if (Number.isFinite(pay)) totalWon += pay;
+        const payRaw = b.payoutAmount;
+        if (payRaw != null) {
+          totalWonSol += Number(BigInt(payRaw.split(".")[0] ?? "0")) / 1e9;
+        }
       }
     }
     const winRatePct = resolved > 0 ? (wins / resolved) * 100 : 0;
-    return { totalBet, totalWon, winRatePct, openBets };
+    return {
+      totalBetSol,
+      totalWonSol,
+      winRatePct,
+      openBets,
+    };
   }, [bets]);
 
   return (
@@ -166,33 +190,67 @@ export default function BetsPage() {
             aria-label="Betting summary"
             className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4"
           >
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0, duration: 0.4 }}
+              className="border border-border border-t-2 border-t-accent bg-card px-4 py-4"
+            >
+              <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+                Total Bet
+              </p>
+              <div className="mt-2 font-mono text-xl font-bold tabular-nums text-accent sm:text-2xl">
+                {isLoading ? (
+                  "—"
+                ) : (
+                  <CountUp
+                    to={summary.totalBetSol}
+                    format={(n) => formatSolBetLine(n)}
+                    delay={0.2}
+                  />
+                )}
+              </div>
+            </motion.div>
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.06, duration: 0.4 }}
+              className="border border-border border-t-2 border-t-accent bg-card px-4 py-4"
+            >
+              <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+                Won
+              </p>
+              <div className="mt-2 font-mono text-xl font-bold tabular-nums text-accent sm:text-2xl">
+                {isLoading ? (
+                  "—"
+                ) : (
+                  <CountUp
+                    to={summary.totalWonSol}
+                    format={(n) => formatSolBetLine(n)}
+                    delay={0.25}
+                  />
+                )}
+              </div>
+            </motion.div>
             {[
-              {
-                label: "Total Bet",
-                value: summary.totalBet,
-                format: (n: number) => formatUSDC(n),
-              },
-              {
-                label: "Won",
-                value: summary.totalWon,
-                format: (n: number) => formatUSDC(n),
-              },
               {
                 label: "Win Rate",
                 value: summary.winRatePct,
                 format: (n: number) => `${n.toFixed(1)}%`,
+                delay: 0.12,
               },
               {
                 label: "Open",
                 value: summary.openBets,
                 format: (n: number) => `${Math.round(n)}`,
+                delay: 0.18,
               },
             ].map((s, i) => (
               <motion.div
                 key={s.label}
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.06, duration: 0.4 }}
+                transition={{ delay: s.delay, duration: 0.4 }}
                 className="border border-border border-t-2 border-t-accent bg-card px-4 py-4"
               >
                 <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-fg-muted">
@@ -300,12 +358,14 @@ export default function BetsPage() {
                       {filtered.map((bet, idx) => {
                         const outcome = rowOutcome(bet);
                         const poolPct = poolSharePct(bet);
-                        const winAmt =
+                        const winRaw =
                           outcome === "won" && bet.payoutAmount != null
-                            ? Number.parseFloat(bet.payoutAmount)
+                            ? bet.payoutAmount
                             : outcome === "won" && bet.potentialWin != null
-                              ? Number.parseFloat(bet.potentialWin)
+                              ? bet.potentialWin
                               : null;
+                        const winDisplay =
+                          winRaw != null ? formatNativeBetAmount(winRaw) : "—";
                         const claimable = outcome === "won" && !bet.claimed;
                         const rowBg =
                           outcome === "won"
@@ -334,7 +394,7 @@ export default function BetsPage() {
                               <SideBadge side={bet.side} />
                             </td>
                             <td className="px-4 py-3 tabular-nums text-fg-soft">
-                              {formatUSDC(Number.parseFloat(bet.amountUsdc))}
+                              {formatBetStake(bet)}
                             </td>
                             <td className="px-4 py-3 tabular-nums text-fg-muted">
                               {poolPct != null ? `${poolPct.toFixed(1)}%` : "—"}
@@ -353,9 +413,7 @@ export default function BetsPage() {
                               )}
                             </td>
                             <td className="px-4 py-3 tabular-nums text-fg-soft">
-                              {winAmt != null && Number.isFinite(winAmt)
-                                ? formatUSDC(winAmt)
-                                : "—"}
+                              {winDisplay}
                             </td>
                             <td className="px-4 py-3">
                               {claimable ? (
@@ -384,12 +442,14 @@ export default function BetsPage() {
                   {filtered.map((bet, idx) => {
                     const outcome = rowOutcome(bet);
                     const poolPct = poolSharePct(bet);
-                    const winAmt =
+                    const winRaw =
                       outcome === "won" && bet.payoutAmount != null
-                        ? Number.parseFloat(bet.payoutAmount)
+                        ? bet.payoutAmount
                         : outcome === "won" && bet.potentialWin != null
-                          ? Number.parseFloat(bet.potentialWin)
+                          ? bet.potentialWin
                           : null;
+                    const winDisplay =
+                      winRaw != null ? formatNativeBetAmount(winRaw) : "—";
                     const claimable = outcome === "won" && !bet.claimed;
 
                     return (
@@ -421,7 +481,7 @@ export default function BetsPage() {
                           <div>
                             <dt className="text-fg-muted">Bet</dt>
                             <dd className="mt-0.5 tabular-nums text-fg-soft">
-                              {formatUSDC(Number.parseFloat(bet.amountUsdc))}
+                              {formatBetStake(bet)}
                             </dd>
                           </div>
                           <div>
@@ -453,9 +513,7 @@ export default function BetsPage() {
                           <div>
                             <dt className="text-fg-muted">Win</dt>
                             <dd className="mt-0.5 tabular-nums text-fg-soft">
-                              {winAmt != null && Number.isFinite(winAmt)
-                                ? formatUSDC(winAmt)
-                                : "—"}
+                              {winDisplay}
                             </dd>
                           </div>
                         </dl>

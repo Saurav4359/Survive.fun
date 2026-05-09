@@ -1,4 +1,4 @@
-const usdcFormatter = new Intl.NumberFormat("en-US", {
+const usdFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
   minimumFractionDigits: 2,
@@ -10,11 +10,48 @@ const poolFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 
-export function formatUSDC(amount: number): string {
-  return usdcFormatter.format(amount);
+import type { Bet, BetSide } from "@survivefun/types";
+
+/** Fiat USD for token prices / liquidity (not stake collateral). */
+export function formatUsd(amount: number): string {
+  return usdFormatter.format(amount);
 }
 
-/** SOL balance for wallet UI (trims trailing zeros). */
+/** Lamports → `"x.xxxx SOL"` */
+export function formatSOL(lamports: number): string {
+  if (!Number.isFinite(lamports)) return "0.0000 SOL";
+  return `${(lamports / 1e9).toFixed(4)} SOL`;
+}
+
+/** Human SOL → `"◎ x.xxxx"` */
+export function formatSOLDisplay(sol: number): string {
+  if (!Number.isFinite(sol)) return "◎ 0.0000";
+  return `◎ ${sol.toFixed(4)}`;
+}
+
+export function formatBetStake(bet: Pick<Bet, "amountLamports">): string {
+  const lamports = BigInt(bet.amountLamports ?? "0");
+  return formatSolBetLine(Number(lamports) / 1e9);
+}
+
+/** Pool / payout strings from API: lamports integer string. */
+export function formatNativeBetAmount(amountStr: string | null | undefined): string {
+  if (amountStr == null || amountStr === "") return "—";
+  const lamports = BigInt(amountStr.split(".")[0] ?? "0");
+  return formatSolBetLine(Number(lamports) / 1e9);
+}
+
+export function formatPoolTotals(
+  surviveLamports: number,
+  rugLamports: number,
+): { survive: string; rug: string } {
+  return {
+    survive: formatSolBetLine(surviveLamports / 1e9),
+    rug: formatSolBetLine(rugLamports / 1e9),
+  };
+}
+
+/** Adaptive SOL display (legacy helper). */
 export function formatSolAmount(sol: number): string {
   if (!Number.isFinite(sol)) return "0";
   if (sol === 0) return "0";
@@ -22,6 +59,42 @@ export function formatSolAmount(sol: number): string {
     return sol.toLocaleString("en-US", { maximumFractionDigits: 4 });
   }
   return sol.toLocaleString("en-US", { maximumFractionDigits: 6 });
+}
+
+/** Bet panel / confirmations — 4 dp, ◎ prefix. */
+export function formatSolBetLine(sol: number): string {
+  if (!Number.isFinite(sol)) return "◎ 0.0000 SOL";
+  return `◎ ${sol.toFixed(4)} SOL`;
+}
+
+/** Parimutuel gross payout in lamports (SOL pools). */
+export function potentialPayoutLamports(
+  side: BetSide,
+  surviveLamports: bigint,
+  rugLamports: bigint,
+  stakeLamports: bigint,
+): bigint {
+  if (stakeLamports <= 0n) return 0n;
+  if (side === "survive") {
+    const ts = surviveLamports + stakeLamports;
+    const tr = rugLamports;
+    if (ts === 0n) return stakeLamports;
+    return (stakeLamports * (ts + tr)) / ts;
+  }
+  const tr = rugLamports + stakeLamports;
+  const ts = surviveLamports;
+  if (tr === 0n) return stakeLamports;
+  return (stakeLamports * (ts + tr)) / tr;
+}
+
+export function parsePoolLamports(value: string): bigint {
+  const s = value.trim().split(".")[0] ?? "0";
+  try {
+    const n = BigInt(s === "" ? "0" : s);
+    return n < 0n ? 0n : n;
+  } catch {
+    return 0n;
+  }
 }
 
 export function formatWallet(address: string): string {
@@ -53,6 +126,7 @@ export function formatTimeLeft(expiresAt: Date): string {
   return parts.join(" ");
 }
 
+/** Compact number for tight labels (pool totals use `formatSolBetLine` instead). */
 export function formatPool(amount: number): string {
   return poolFormatter.format(amount);
 }

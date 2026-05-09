@@ -1,16 +1,8 @@
-import { PublicKey, clusterApiUrl } from "@solana/web3.js";
-
-/**
- * Circle USDC on Solana devnet (canonical mint).
- * @see https://developers.circle.com/stablecoins/docs/usdc-on-test-networks
- */
-export const USDC_MINT = new PublicKey(
-  "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
-);
+import { LAMPORTS_PER_SOL, PublicKey, clusterApiUrl } from "@solana/web3.js";
 
 /** Local Anchor `declare_id!` in `contracts/programs/survivefun` until you set env. */
 const localAnchorProgramId =
-  "HB3uE5XQGq1xNtW9RMSrnBegwifeLzk1xyr75ofRPrtH";
+  "3shYxrDG1srw1Wxu2yVnrnEUk53m6tS8HDyVKuoYLVd1";
 
 const programIdBase58 =
   process.env.NEXT_PUBLIC_PROGRAM_ID?.trim() || localAnchorProgramId;
@@ -38,10 +30,20 @@ export function apiV1Url(path: string): string {
   return `${API_URL}${API_V1_PREFIX}${p}`;
 }
 
-export const BET_LIMITS = {
-  min: 1,
-  max: 50,
+/** On-chain min/max stake (lamports) — matches program `MIN_BET_LAMPORTS` / `MAX_BET_LAMPORTS`. */
+export const ONCHAIN_MIN_STAKE_RAW = 10_000_000n;
+export const ONCHAIN_MAX_STAKE_RAW = 10_000_000_000n;
+
+/** Human SOL bounds (0.01 – 10 SOL). */
+export const SOL_BET_LIMITS = {
+  min: Number(ONCHAIN_MIN_STAKE_RAW) / LAMPORTS_PER_SOL,
+  max: Number(ONCHAIN_MAX_STAKE_RAW) / LAMPORTS_PER_SOL,
 } as const;
+
+export const QUICK_SOL_AMOUNTS = [0.1, 0.5, 1, 2] as const;
+
+/** Platform seeds 0.01 SOL per side into new markets (`PLATFORM_SEED_LAMPORTS_PER_SIDE`). */
+export const PLATFORM_SEED_LAMPORTS_TOTAL = 20_000_000n;
 
 export const MARKET_DURATIONS = [3600, 21600, 86400] as const;
 

@@ -1,13 +1,14 @@
 "use client";
 
 import { useWallet } from "@solana/wallet-adapter-react";
+import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { motion } from "framer-motion";
 import { User } from "lucide-react";
 import Link from "next/link";
 
 import { useUserBets } from "@/hooks/useUserBets";
 import { useWalletBalances } from "@/hooks/useWalletBalances";
-import { formatSolAmount, formatUSDC, formatWallet } from "@/utils/format";
+import { formatSolBetLine, formatWallet } from "@/utils/format";
 
 export default function ProfilePage() {
   const { publicKey, connected } = useWallet();
@@ -16,28 +17,30 @@ export default function ProfilePage() {
   const { bets } = useUserBets(wallet);
 
   const stats = (() => {
-    let total = 0;
-    let won = 0;
+    let totalSol = 0;
+    let wonSol = 0;
     let openCount = 0;
     let resolvedCount = 0;
     let wins = 0;
     for (const b of bets) {
-      const amt = Number.parseFloat(b.amountUsdc);
-      if (Number.isFinite(amt)) total += amt;
+      if (b.currency !== "sol") continue;
+      const lam = Number(BigInt(b.amountLamports ?? "0"));
+      if (Number.isFinite(lam)) totalSol += lam / LAMPORTS_PER_SOL;
       if (b.market.status === "active") openCount += 1;
       if (b.market.status === "resolved") {
         resolvedCount += 1;
         const winSide = b.market.outcome;
         if (winSide && winSide === b.side) {
           wins += 1;
-          const pay =
-            b.payoutAmount != null ? Number.parseFloat(b.payoutAmount) : 0;
-          if (Number.isFinite(pay)) won += pay;
+          const raw = b.payoutAmount;
+          if (raw != null) {
+            wonSol += Number(BigInt(raw.split(".")[0] ?? "0")) / LAMPORTS_PER_SOL;
+          }
         }
       }
     }
     const winRate = resolvedCount > 0 ? (wins / resolvedCount) * 100 : 0;
-    return { total, won, openCount, winRate };
+    return { totalSol, wonSol, openCount, winRate };
   })();
 
   return (
@@ -66,17 +69,14 @@ export default function ProfilePage() {
           <section className="mt-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
             {[
               [
-                "USDC Balance",
-                balances.isPending ? "—" : formatUSDC(balances.data?.usdc ?? 0),
-              ],
-              [
                 "SOL Balance",
                 balances.isPending
                   ? "—"
-                  : `${formatSolAmount(balances.data?.sol ?? 0)} SOL`,
+                  : formatSolBetLine(balances.data?.sol ?? 0),
               ],
-              ["Total Bet", formatUSDC(stats.total)],
-              ["Total Won", formatUSDC(stats.won)],
+              ["Total Bet", formatSolBetLine(stats.totalSol)],
+              ["Total Won", formatSolBetLine(stats.wonSol)],
+              ["Open Positions", String(stats.openCount)],
             ].map(([label, value]) => (
               <div
                 key={label}
@@ -95,10 +95,10 @@ export default function ProfilePage() {
           <section className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="border border-border bg-card p-5">
               <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-fg-muted">
-                Open positions
+                Your bets
               </p>
-              <p className="mt-2 font-mono text-3xl font-bold tabular-nums text-white">
-                {stats.openCount}
+              <p className="mt-2 font-mono text-sm text-fg-muted">
+                Stakes and payouts are SOL-only on-chain.
               </p>
               <Link
                 href="/bets"

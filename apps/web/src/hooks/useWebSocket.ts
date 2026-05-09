@@ -89,7 +89,9 @@ function isBetPlaced(v: unknown): v is BetPlaced {
     typeof v.marketId === "string" &&
     typeof v.bettorWallet === "string" &&
     (v.side === "survive" || v.side === "rug") &&
+    (v.currency === "sol" || v.currency === "usdc") &&
     typeof v.amountUsdc === "string" &&
+    (v.amountLamports === null || typeof v.amountLamports === "string") &&
     typeof v.survivePool === "string" &&
     typeof v.rugPool === "string" &&
     typeof v.timestamp === "string"

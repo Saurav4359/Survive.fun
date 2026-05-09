@@ -20,7 +20,7 @@ import { useToast } from "@/components/ToastProvider";
 import { WalletConnectButton } from "@/components/WalletConnectButton";
 import { useWalletBalances } from "@/hooks/useWalletBalances";
 import { RPC_URL } from "@/utils/constants";
-import { formatSolAmount, formatUSDC, formatWallet } from "@/utils/format";
+import { formatSolBetLine, formatWallet } from "@/utils/format";
 
 const DEFAULT_CONNECT_CLASS =
   "!rounded-md !border !border-accent !bg-transparent !px-4 !py-2 !font-mono !text-[11px] !font-bold !uppercase !tracking-[0.15em] !text-accent hover:!bg-accent hover:!text-ink transition-colors";
@@ -51,7 +51,6 @@ export function WalletBalancePanel({
   const [hideAmounts, setHideAmounts] = useState(false);
 
   const balances = useWalletBalances();
-  const usdc = balances.data?.usdc ?? 0;
   const sol = balances.data?.sol ?? 0;
   const loading = balances.isPending && connected;
   const addr = publicKey?.toBase58();
@@ -127,15 +126,13 @@ export function WalletBalancePanel({
         ) : (
           <>
             <p className="font-mono text-3xl font-bold tabular-nums tracking-tight text-white sm:text-[2.5rem]">
-              {hideAmounts ? "••••" : formatUSDC(usdc)}
+              {hideAmounts ? "••••" : formatSolBetLine(sol)}
             </p>
             <p className="mt-1 font-mono text-sm text-fg-soft">
-              {hideAmounts
-                ? "••• SOL"
-                : `${formatSolAmount(sol)} SOL available`}
+              {hideAmounts ? "••••" : "Available for bets & fees"}
             </p>
             <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.15em] text-fg-muted">
-              USDC · {rpcCluster()}
+              SOL · {rpcCluster()}
             </p>
           </>
         )}

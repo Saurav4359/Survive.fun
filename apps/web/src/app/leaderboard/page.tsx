@@ -6,7 +6,7 @@ import { useState } from "react";
 
 import { LeaderboardHeader3D } from "@/components/three/LeaderboardHeader3D";
 import { useLeaderboard } from "@/hooks/useLeaderboard";
-import { formatUSDC, formatWallet } from "@/utils/format";
+import { formatNativeBetAmount, formatWallet } from "@/utils/format";
 
 type LeaderTab = "winners" | "rug-callers" | "biggest-payouts";
 
@@ -97,8 +97,8 @@ export default function LeaderboardPage() {
             <tbody>
               {rows.map((row, idx) => {
                 const rank = idx + 1;
-                const won = Number.parseFloat(row.totalWon);
-                const best = Number.parseFloat(row.bestPayout);
+                const won = row.totalWon;
+                const best = row.bestPayout;
                 return (
                   <motion.tr
                     key={`${tab}-${idx}-${row.wallet}`}
@@ -118,13 +118,13 @@ export default function LeaderboardPage() {
                       {formatWallet(row.wallet)}
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums text-survive">
-                      {formatUSDC(Number.isFinite(won) ? won : 0)}
+                      {formatNativeBetAmount(won)}
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums text-fg-soft">
                       {row.winRatePct.toFixed(1)}%
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums text-accent">
-                      {formatUSDC(Number.isFinite(best) ? best : 0)}
+                      {formatNativeBetAmount(best)}
                     </td>
                   </motion.tr>
                 );

@@ -6,25 +6,27 @@ import { Zap } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { useWebSocketEvents } from "@/hooks/useWebSocket";
-import { formatUSDC, formatWallet } from "@/utils/format";
+
+import { formatBetStake, formatWallet } from "@/utils/format";
 
 type FeedRow = {
   id: string;
   wallet: string;
   side: BetSide;
-  amountUsdc: number;
+  stakeLabel: string;
   at: Date;
 };
 
 const FADE_AFTER_MS = 30_000;
 
 function normalizeBetPayload(raw: BetPlaced, fallbackId: string): FeedRow {
-  const amount = Number.parseFloat(raw.amountUsdc);
   return {
     id: `${raw.bettorWallet}-${raw.timestamp}-${fallbackId}`,
     wallet: raw.bettorWallet,
     side: raw.side,
-    amountUsdc: Number.isFinite(amount) ? amount : 0,
+    stakeLabel: formatBetStake({
+      amountLamports: raw.amountLamports ?? "0",
+    }),
     at: new Date(raw.timestamp),
   };
 }
@@ -71,9 +73,7 @@ function FeedRowCard({ row, opacity }: { row: FeedRow; opacity: number }) {
               <span className="text-rug">Rug</span>
             )}{" "}
             <span className="text-fg-muted">·</span>{" "}
-            <span className="tabular-nums text-accent">
-              {formatUSDC(row.amountUsdc)}
-            </span>
+            <span className="tabular-nums text-accent">{row.stakeLabel}</span>
           </p>
         </div>
         <time

@@ -1,51 +1,37 @@
-import { BN } from "@coral-xyz/anchor";
+import {
+  AnchorProvider,
+  BN,
+  type Idl,
+  Program,
+  type Wallet as AnchorWallet,
+} from "@coral-xyz/anchor";
 import type { BetSide } from "@survivefun/types";
 import type { WalletContextState } from "@solana/wallet-adapter-react";
 import { WalletError } from "@solana/wallet-adapter-base";
 import {
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-  TOKEN_PROGRAM_ID,
-  createAssociatedTokenAccountIdempotentInstruction,
-  getAccount,
-  getAssociatedTokenAddressSync,
-} from "@solana/spl-token";
-import {
   Connection,
+  LAMPORTS_PER_SOL,
   PublicKey,
   SendTransactionError,
   SystemProgram,
   Transaction,
   TransactionInstruction,
+  VersionedTransaction,
 } from "@solana/web3.js";
 
+import survivefunIdl from "@/idl/survivefun.json";
 import {
   MARKET_DURATIONS,
+  ONCHAIN_MAX_STAKE_RAW,
+  ONCHAIN_MIN_STAKE_RAW,
+  PLATFORM_SEED_LAMPORTS_TOTAL,
   PROGRAM_ID,
   RPC_URL,
-  USDC_MINT,
+  SOL_BET_LIMITS,
 } from "@/utils/constants";
 
-/** On-chain USDC uses 6 decimals; amounts in instructions are raw units. */
-const USDC_DECIMALS = 6;
-
-/** Matches `instructions/create_market.rs` seed transfers (10 USDC each side). */
-const PLATFORM_SEED_RAW_PER_SIDE = 10_000_000n;
-
-/** Matches `MIN_BET_USDC` / `MAX_BET_USDC` in the program (raw units). */
-const MIN_BET_RAW = 1_000_000n;
-const MAX_BET_RAW = 50_000_000n;
-
-/**
- * Anchor instruction discriminators: first 8 bytes of sha256("global:<snake_case_fn>").
- * Must match `anchor idl build` output — if instruction names change, regenerate from IDL.
- *
- * - create_market  ← sha256("global:create_market")[0..8] → 67e261ebc8bcfbfe
- * - place_bet      ← sha256("global:place_bet")[0..8]     → de3e43dc3fa67e21
- * - claim_payout   ← sha256("global:claim_payout")[0..8]  → 7ff0843ee3c69285
- */
-const IX_CREATE_MARKET = Buffer.from("67e261ebc8bcfbfe", "hex");
-const IX_PLACE_BET = Buffer.from("de3e43dc3fa67e21", "hex");
-const IX_CLAIM_PAYOUT = Buffer.from("7ff0843ee3c69285", "hex");
+const MIN_BET_RAW = ONCHAIN_MIN_STAKE_RAW;
+const MAX_BET_RAW = ONCHAIN_MAX_STAKE_RAW;
 
 function getConnection(): Connection {
   return new Connection(RPC_URL, "confirmed");
@@ -64,6 +50,72 @@ function assertWalletReady(wallet: WalletContextState): PublicKey {
   return wallet.publicKey;
 }
 
+function toAnchorWallet(wallet: WalletContextState): AnchorWallet {
+  const publicKey = assertWalletReady(wallet);
+  if (!wallet.signTransaction) {
+    throw new Error("Wallet cannot sign transactions.");
+  }
+  const signTransaction = wallet.signTransaction.bind(wallet);
+  const signAllTransactions = wallet.signAllTransactions?.bind(wallet);
+
+  return {
+    publicKey,
+    signTransaction,
+    signAllTransactions:
+      signAllTransactions ??
+      (async <T extends Transaction | VersionedTransaction>(
+        txs: T[],
+      ): Promise<T[]> => {
+        const out: T[] = [];
+        for (const t of txs) {
+          if (!(t instanceof Transaction)) {
+            throw new Error("Only legacy Transaction is supported for this wallet.");
+          }
+          out.push((await signTransaction(t)) as T);
+        }
+        return out;
+      }),
+  } as AnchorWallet;
+}
+
+function normalizeMarketPda(marketPda: string | PublicKey): string {
+  return typeof marketPda === "string" ? marketPda.trim() : marketPda.toBase58();
+}
+
+function solUiToLamports(amountSol: number): bigint {
+  if (!Number.isFinite(amountSol) || amountSol <= 0) {
+    throw new Error("Bet amount must be a positive number.");
+  }
+  const lamports = Math.floor(amountSol * LAMPORTS_PER_SOL);
+  return BigInt(lamports);
+}
+
+async function assertSufficientSolForBet(
+  owner: PublicKey,
+  stakeLamports: bigint,
+): Promise<void> {
+  const connection = getConnection();
+  const balance = await connection.getBalance(owner, "confirmed");
+  const rentExempt = await connection.getMinimumBalanceForRentExemption(256);
+  const feeBuffer = 50_000;
+  const needed = Number(stakeLamports) + rentExempt + feeBuffer;
+  if (balance < needed) {
+    throw new Error(
+      `Insufficient SOL (need ~${(needed / LAMPORTS_PER_SOL).toFixed(4)} SOL including bet account rent).`,
+    );
+  }
+}
+
+async function assertSufficientSolBalance(owner: PublicKey, minLamports: bigint): Promise<void> {
+  const connection = getConnection();
+  const balance = BigInt(await connection.getBalance(owner, "confirmed"));
+  if (balance < minLamports) {
+    throw new Error(
+      `Insufficient SOL (need at least ${(Number(minLamports) / LAMPORTS_PER_SOL).toFixed(4)} SOL).`,
+    );
+  }
+}
+
 function platformAuthorityOrCreator(creator: PublicKey): PublicKey {
   const raw = process.env.NEXT_PUBLIC_PLATFORM_AUTHORITY?.trim();
   if (!raw) return creator;
@@ -76,80 +128,10 @@ function platformAuthorityOrCreator(creator: PublicKey): PublicKey {
   }
 }
 
-function mapChainSide(side: BetSide): number {
-  if (side === "survive") return 0;
-  if (side === "rug") return 1;
-  throw new Error(`Unsupported bet side: ${String(side)}`);
-}
-
-function usdcRawFromUi(amountUsdc: number): bigint {
-  if (!Number.isFinite(amountUsdc) || amountUsdc <= 0) {
-    throw new Error("Bet amount must be a positive number.");
-  }
-  const raw = BigInt(Math.round(amountUsdc * 10 ** USDC_DECIMALS));
-  return raw;
-}
-
-function encodeCreateMarketData(tokenMint: PublicKey, durationSeconds: number): Buffer {
-  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
-    throw new Error("Duration must be a positive number of seconds.");
-  }
-  const allowed = MARKET_DURATIONS as readonly number[];
-  if (!allowed.includes(durationSeconds)) {
-    throw new Error(
-      `Invalid market duration: ${durationSeconds}s. Allowed: ${allowed.join(", ")}.`,
-    );
-  }
-  const durationBuf = new BN(durationSeconds).toArrayLike(Buffer, "le", 8);
-  return Buffer.concat([IX_CREATE_MARKET, tokenMint.toBuffer(), durationBuf]);
-}
-
-function encodePlaceBetData(side: BetSide, amountRaw: bigint): Buffer {
-  const sideByte = Buffer.from([mapChainSide(side)]);
-  const amountBuf = Buffer.alloc(8);
-  amountBuf.writeBigUInt64LE(amountRaw);
-  return Buffer.concat([IX_PLACE_BET, sideByte, amountBuf]);
-}
-
-async function ensureUsdcAtaIx(
-  payer: PublicKey,
-  owner: PublicKey,
-): Promise<TransactionInstruction | null> {
-  const connection = getConnection();
-  const ata = getAssociatedTokenAddressSync(USDC_MINT, owner, false);
-  try {
-    await getAccount(connection, ata);
-    return null;
-  } catch {
-    return createAssociatedTokenAccountIdempotentInstruction(
-      payer,
-      ata,
-      owner,
-      USDC_MINT,
-    );
-  }
-}
-
-async function assertSufficientUsdc(owner: PublicKey, requiredRaw: bigint): Promise<void> {
-  const connection = getConnection();
-  const ata = getAssociatedTokenAddressSync(USDC_MINT, owner, false);
-  let balanceRaw = 0n;
-  try {
-    const acc = await getAccount(connection, ata);
-    balanceRaw = acc.amount;
-  } catch {
-    if (requiredRaw > 0n) {
-      throw new Error(
-        "Insufficient USDC: no associated token account. Fund USDC for this wallet first.",
-      );
-    }
-    return;
-  }
-  if (balanceRaw < requiredRaw) {
-    throw new Error(
-      `Insufficient USDC balance (need at least ${(Number(requiredRaw) / 1e6).toFixed(2)} USDC).`,
-    );
-  }
+function durationSeedBuf(durationSeconds: number): Buffer {
+  const b = Buffer.allocUnsafe(8);
+  b.writeBigUInt64LE(BigInt(durationSeconds), 0);
+  return b;
 }
 
 /** Wallet adapters wrap RPC failures in WalletSendTransactionError(message, inner). */
@@ -169,10 +151,6 @@ function unwrapWalletErrors(err: unknown): unknown {
   return cur;
 }
 
-/**
- * Bundlers sometimes duplicate `@solana/web3.js`, so `instanceof SendTransactionError` fails.
- * Fall back on duck typing + constructor name.
- */
 function asSendTransactionError(err: unknown): SendTransactionError | null {
   if (err instanceof SendTransactionError) return err;
   if (typeof err !== "object" || err === null) return null;
@@ -216,8 +194,7 @@ async function mapSendError(
 
     if (/insufficient funds|InsufficientFunds|insufficient lamports/i.test(blob)) {
       return new Error(
-        "Insufficient SOL for fees or insufficient USDC for this transaction." +
-          devnetClusterHint(),
+        "Insufficient SOL for fees or stake." + devnetClusterHint(),
       );
     }
     if (/Insufficient/i.test(blob)) {
@@ -323,25 +300,56 @@ async function sendInstructions(
 }
 
 /**
- * Derives the market PDA: seeds `[b"market", token_mint]`.
+ * Market PDA: `[b"market", mint, duration_seconds_le]`.
  */
-export async function getMarketPDA(tokenMint: string): Promise<PublicKey> {
+export async function getMarketPDA(
+  tokenMint: string,
+  durationSeconds: number,
+): Promise<PublicKey> {
   let mint: PublicKey;
   try {
     mint = new PublicKey(tokenMint);
   } catch {
     throw new Error("Invalid token mint address.");
   }
+  const allowed = MARKET_DURATIONS as readonly number[];
+  if (!allowed.includes(durationSeconds)) {
+    throw new Error(
+      `Invalid market duration: ${durationSeconds}s. Allowed: ${allowed.join(", ")}.`,
+    );
+  }
   const [pda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("market", "utf8"), mint.toBuffer()],
+    [Buffer.from("market"), mint.toBuffer(), durationSeedBuf(durationSeconds)],
     PROGRAM_ID,
   );
   return pda;
 }
 
 /**
- * Derives the bet PDA: seeds `[b"bet", market, bettor]`.
+ * API `onChainAddress` may still reference a market account from a **previous**
+ * program deployment. Anchor then fails with 3007 (`AccountOwnedByWrongProgram`).
+ * Always derive the PDA for the **current** `PROGRAM_ID`; reuse stored address only
+ * when it matches derived or is on-chain owned by `PROGRAM_ID`.
  */
+export async function resolveMarketPdaForTransaction(
+  tokenMint: string,
+  durationSeconds: number,
+  storedOnChainAddress: string | null | undefined,
+): Promise<string> {
+  const derived = (await getMarketPDA(tokenMint, durationSeconds)).toBase58();
+  const stored = storedOnChainAddress?.trim();
+  if (!stored || stored === derived) return derived;
+
+  try {
+    const connection = getConnection();
+    const info = await connection.getAccountInfo(new PublicKey(stored));
+    if (info?.owner.equals(PROGRAM_ID)) return stored;
+  } catch {
+    /* invalid pubkey */
+  }
+  return derived;
+}
+
 export async function getBetPDA(
   marketPDA: string,
   walletAddress: string,
@@ -355,16 +363,14 @@ export async function getBetPDA(
     throw new Error("Invalid market PDA or wallet address.");
   }
   const [pda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("bet", "utf8"), market.toBuffer(), bettor.toBuffer()],
+    [Buffer.from("bet"), market.toBuffer(), bettor.toBuffer()],
     PROGRAM_ID,
   );
   return pda;
 }
 
 /**
- * Creates a market via `create_market`.
- * Requires the platform USDC vault to fund two 10 USDC seed transfers (see program).
- * If `NEXT_PUBLIC_PLATFORM_AUTHORITY` is unset, the connected wallet is used as platform authority (dev convenience).
+ * `create_market` — platform authority pays two 0.01 SOL seed transfers into the market vault.
  */
 export async function createMarket(
   wallet: WalletContextState,
@@ -372,6 +378,8 @@ export async function createMarket(
   duration: number,
 ): Promise<string> {
   const creator = assertWalletReady(wallet);
+  const platformAuthority = platformAuthorityOrCreator(creator);
+
   let mintPk: PublicKey;
   try {
     mintPk = new PublicKey(tokenMint);
@@ -379,100 +387,91 @@ export async function createMarket(
     throw new Error("Invalid token mint address.");
   }
 
-  const platformAuthority = platformAuthorityOrCreator(creator);
-  const platformUsdcAta = getAssociatedTokenAddressSync(
-    USDC_MINT,
-    platformAuthority,
-    false,
-  );
+  const allowed = MARKET_DURATIONS as readonly number[];
+  if (!allowed.includes(duration)) {
+    throw new Error(
+      `Invalid market duration: ${duration}s. Allowed: ${allowed.join(", ")}.`,
+    );
+  }
 
-  const seedTotal = PLATFORM_SEED_RAW_PER_SIDE * 2n;
-  await assertSufficientUsdc(platformAuthority, seedTotal);
+  await assertSufficientSolBalance(platformAuthority, PLATFORM_SEED_LAMPORTS_TOTAL);
 
-  const market = await getMarketPDA(tokenMint);
-  const marketEscrow = getAssociatedTokenAddressSync(USDC_MINT, market, true);
-
-  const ix = new TransactionInstruction({
-    programId: PROGRAM_ID,
-    keys: [
-      { pubkey: creator, isSigner: true, isWritable: true },
-      { pubkey: platformAuthority, isSigner: true, isWritable: false },
-      { pubkey: platformUsdcAta, isSigner: false, isWritable: true },
-      { pubkey: USDC_MINT, isSigner: false, isWritable: false },
-      { pubkey: market, isSigner: false, isWritable: true },
-      { pubkey: marketEscrow, isSigner: false, isWritable: true },
-      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-      {
-        pubkey: ASSOCIATED_TOKEN_PROGRAM_ID,
-        isSigner: false,
-        isWritable: false,
-      },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-    ],
-    data: encodeCreateMarketData(mintPk, duration),
+  const marketPk = await getMarketPDA(tokenMint, duration);
+  const connection = getConnection();
+  const provider = new AnchorProvider(connection, toAnchorWallet(wallet), {
+    commitment: "confirmed",
   });
+  const program = new Program(survivefunIdl as Idl, provider);
+
+  const ix = await program.methods
+    .createMarket(mintPk, new BN(duration))
+    .accounts({
+      creator,
+      platformAuthority,
+      market: marketPk,
+      systemProgram: SystemProgram.programId,
+    })
+    .instruction();
 
   return sendInstructions(wallet, [ix]);
 }
 
+export interface PlaceBetParams {
+  side: BetSide;
+  /** Stake in SOL (human, e.g. 0.25). */
+  amount: number;
+  marketPda: string | PublicKey;
+}
+
 /**
- * Places a bet: SPL transfer into market escrow + `place_bet`.
- * `amountUsdc` is a UI amount (e.g. `5` = 5 USDC).
+ * Native SOL stake via program `place_bet` (transfer + bet account init).
  */
 export async function placeBet(
   wallet: WalletContextState,
-  marketPDA: string,
-  side: BetSide,
-  amountUsdc: number,
+  params: PlaceBetParams,
 ): Promise<string> {
+  const marketPda = normalizeMarketPda(params.marketPda);
   const bettor = assertWalletReady(wallet);
+  const lamports = solUiToLamports(params.amount);
+  if (lamports < MIN_BET_RAW || lamports > MAX_BET_RAW) {
+    throw new Error(
+      `Bet must be between ${SOL_BET_LIMITS.min} and ${SOL_BET_LIMITS.max} SOL.`,
+    );
+  }
+  await assertSufficientSolForBet(bettor, lamports);
 
   let marketPk: PublicKey;
   try {
-    marketPk = new PublicKey(marketPDA);
+    marketPk = new PublicKey(marketPda);
   } catch {
     throw new Error("Invalid market PDA.");
   }
 
-  const amountRaw = usdcRawFromUi(amountUsdc);
-  if (amountRaw < MIN_BET_RAW || amountRaw > MAX_BET_RAW) {
-    throw new Error(
-      `Bet must be between ${Number(MIN_BET_RAW) / 1e6} and ${Number(MAX_BET_RAW) / 1e6} USDC.`,
-    );
-  }
-
-  await assertSufficientUsdc(bettor, amountRaw);
-
-  const maybeAtaIx = await ensureUsdcAtaIx(bettor, bettor);
-  const bettorUsdc = getAssociatedTokenAddressSync(USDC_MINT, bettor, false);
-  const marketEscrow = getAssociatedTokenAddressSync(USDC_MINT, marketPk, true);
-
-  const ix = new TransactionInstruction({
-    programId: PROGRAM_ID,
-    keys: [
-      { pubkey: marketPk, isSigner: false, isWritable: true },
-      { pubkey: bettor, isSigner: true, isWritable: true },
-      {
-        pubkey: await getBetPDA(marketPDA, bettor.toBase58()),
-        isSigner: false,
-        isWritable: true,
-      },
-      { pubkey: bettorUsdc, isSigner: false, isWritable: true },
-      { pubkey: marketEscrow, isSigner: false, isWritable: true },
-      { pubkey: USDC_MINT, isSigner: false, isWritable: false },
-      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-    ],
-    data: encodePlaceBetData(side, amountRaw),
+  const betPk = await getBetPDA(marketPda, bettor.toBase58());
+  const connection = getConnection();
+  const provider = new AnchorProvider(connection, toAnchorWallet(wallet), {
+    commitment: "confirmed",
   });
+  const program = new Program(survivefunIdl as Idl, provider);
 
-  const ixs = maybeAtaIx ? [maybeAtaIx, ix] : [ix];
-  return sendInstructions(wallet, ixs);
+  const sideArg =
+    params.side === "survive"
+      ? { survive: {} as Record<string, never> }
+      : { rug: {} as Record<string, never> };
+
+  const ix = await program.methods
+    .placeBet(sideArg, new BN(lamports.toString()))
+    .accounts({
+      market: marketPk,
+      bettor,
+      bet: betPk,
+      systemProgram: SystemProgram.programId,
+    })
+    .instruction();
+
+  return sendInstructions(wallet, [ix]);
 }
 
-/**
- * Claims winnings via `claim_payout`.
- */
 export async function claimPayout(
   wallet: WalletContextState,
   marketPDA: string,
@@ -490,33 +489,22 @@ export async function claimPayout(
   }
 
   const platformAuthority = platformAuthorityOrCreator(bettor);
-  const platformUsdcAta = getAssociatedTokenAddressSync(
-    USDC_MINT,
-    platformAuthority,
-    false,
-  );
-  const bettorUsdc = getAssociatedTokenAddressSync(USDC_MINT, bettor, false);
-  const marketEscrow = getAssociatedTokenAddressSync(USDC_MINT, marketPk, true);
 
-  const ix = new TransactionInstruction({
-    programId: PROGRAM_ID,
-    keys: [
-      { pubkey: marketPk, isSigner: false, isWritable: true },
-      { pubkey: betPk, isSigner: false, isWritable: true },
-      { pubkey: bettor, isSigner: true, isWritable: false },
-      { pubkey: bettorUsdc, isSigner: false, isWritable: true },
-      { pubkey: platformUsdcAta, isSigner: false, isWritable: true },
-      {
-        pubkey: platformAuthority,
-        isSigner: false,
-        isWritable: false,
-      },
-      { pubkey: marketEscrow, isSigner: false, isWritable: true },
-      { pubkey: USDC_MINT, isSigner: false, isWritable: false },
-      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-    ],
-    data: IX_CLAIM_PAYOUT,
+  const connection = getConnection();
+  const provider = new AnchorProvider(connection, toAnchorWallet(wallet), {
+    commitment: "confirmed",
   });
+  const program = new Program(survivefunIdl as Idl, provider);
+
+  const ix = await program.methods
+    .claimPayout()
+    .accounts({
+      market: marketPk,
+      bet: betPk,
+      bettor,
+      platformAuthority,
+    })
+    .instruction();
 
   return sendInstructions(wallet, [ix]);
 }

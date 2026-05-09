@@ -7,7 +7,7 @@ import { Flame } from "lucide-react";
 import { LiveFeed } from "@/components/LiveFeed";
 import { MarketCard } from "@/components/MarketCard";
 import { fetchActiveMarkets, marketsQueryKey } from "@/hooks/useMarkets";
-import { totalPoolUsdc } from "@/utils/marketRisk";
+import { totalPoolLamports } from "@/utils/marketRisk";
 
 export default function HotMarketsPage() {
   const { data: markets = [], isPending } = useQuery({
@@ -17,7 +17,7 @@ export default function HotMarketsPage() {
   });
 
   const hot = [...markets].sort(
-    (a, b) => totalPoolUsdc(b) - totalPoolUsdc(a),
+    (a, b) => totalPoolLamports(b) - totalPoolLamports(a),
   );
 
   return (

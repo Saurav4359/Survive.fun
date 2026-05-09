@@ -5,15 +5,10 @@ import { motion } from "framer-motion";
 import { Clock, TrendingUp } from "lucide-react";
 import Link from "next/link";
 
-import { formatPool, formatUSDC } from "@/utils/format";
+import { formatPoolTotals, formatUsd, parsePoolLamports } from "@/utils/format";
 
 import { PoolBar } from "./PoolBar";
 import { Timer } from "./Timer";
-
-function parseAmount(value: string): number {
-  const n = Number.parseFloat(value);
-  return Number.isFinite(n) ? n : 0;
-}
 
 type RiskLevel = "HIGH" | "MEDIUM" | "LOW";
 
@@ -32,11 +27,14 @@ const RISK_STYLES: Record<RiskLevel, string> = {
   LOW: "border-accent/60 text-accent",
 };
 
+const SOL_BADGE = "#9945FF";
+
 export function MarketCard({ market }: { market: Market }) {
   const name = market.tokenName?.trim() || "Unknown token";
   const ticker = market.tokenTicker?.trim() || "—";
-  const survive = parseAmount(market.survivePool);
-  const rug = parseAmount(market.rugPool);
+  const survive = Number(parsePoolLamports(market.survivePool));
+  const rug = Number(parsePoolLamports(market.rugPool));
+  const poolCells = formatPoolTotals(survive, rug);
   const open = market.openPrice;
   const priceNum = open != null ? Number.parseFloat(open) : NaN;
   const hasPrice = Number.isFinite(priceNum);
@@ -69,11 +67,19 @@ export function MarketCard({ market }: { market: Market }) {
               ${ticker}
             </p>
           </div>
-          <span
-            className={`shrink-0 rounded-sm border px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider bg-bg ${RISK_STYLES[risk]}`}
-          >
-            {risk}
-          </span>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <span
+              className="inline-flex items-center gap-1 rounded-sm border border-border bg-bg px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.15em]"
+              style={{ color: SOL_BADGE }}
+            >
+              <span aria-hidden>◎</span> SOL
+            </span>
+            <span
+              className={`rounded-sm border px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider bg-bg ${RISK_STYLES[risk]}`}
+            >
+              {risk}
+            </span>
+          </div>
         </header>
 
         <div className="flex items-end justify-between gap-3 border border-border bg-bg px-3 py-2">
@@ -82,7 +88,7 @@ export function MarketCard({ market }: { market: Market }) {
               Price
             </p>
             <p className="mt-0.5 font-mono text-base font-semibold tabular-nums text-white">
-              {hasPrice ? formatUSDC(priceNum) : "—"}
+              {hasPrice ? formatUsd(priceNum) : "—"}
             </p>
           </div>
           <div className="flex items-center gap-1.5 text-right">
@@ -103,18 +109,18 @@ export function MarketCard({ market }: { market: Market }) {
         <div className="grid grid-cols-2 gap-2 font-mono text-[11px]">
           <div className="border border-border bg-bg px-2.5 py-1.5">
             <p className="text-[9px] font-bold uppercase tracking-wider text-survive">
-              Survive
+              Survive pool
             </p>
-            <p className="mt-0.5 tabular-nums text-white">
-              {formatPool(survive)} USDC
+            <p className="mt-0.5 font-mono tabular-nums text-white">
+              {poolCells.survive}
             </p>
           </div>
           <div className="border border-border bg-bg px-2.5 py-1.5">
             <p className="text-[9px] font-bold uppercase tracking-wider text-rug">
-              Rug
+              Rug pool
             </p>
-            <p className="mt-0.5 tabular-nums text-white">
-              {formatPool(rug)} USDC
+            <p className="mt-0.5 font-mono tabular-nums text-white">
+              {poolCells.rug}
             </p>
           </div>
         </div>

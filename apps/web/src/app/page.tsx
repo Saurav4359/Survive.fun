@@ -1,10 +1,11 @@
 "use client";
 
-import type { ApiResponse, Market } from "@survivefun/types";
+import type { ApiResponse, Market, MarketListPage } from "@survivefun/types";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { ArrowRight, Flame, Inbox, Skull } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { CountUp } from "@/components/CountUp";
@@ -17,9 +18,9 @@ import { fetchActiveMarkets, marketsQueryKey } from "@/hooks/useMarkets";
 import { fetchStats, statsQueryKey } from "@/hooks/useStats";
 import { useMarketSearchStore } from "@/stores/marketSearchStore";
 import { apiV1Url, MARKET_DURATIONS } from "@/utils/constants";
-import { formatPool, formatUSDC } from "@/utils/format";
+import { formatSolBetLine, parsePoolLamports } from "@/utils/format";
+import { totalPoolLamports } from "@/utils/marketRisk";
 import { createMarket as createMarketOnChain } from "@/utils/transactions";
-import { totalPoolUsdc } from "@/utils/marketRisk";
 
 const DURATION_TABS: {
   label: string;
@@ -44,7 +45,7 @@ function applyFilter(markets: Market[], filter: FilterKey): Market[] {
   switch (filter) {
     case "hot":
       return [...markets].sort(
-        (a, b) => totalPoolUsdc(b) - totalPoolUsdc(a),
+        (a, b) => totalPoolLamports(b) - totalPoolLamports(a),
       );
     case "high-risk":
       return [...markets].sort((a, b) => {
@@ -54,8 +55,8 @@ function applyFilter(markets: Market[], filter: FilterKey): Market[] {
       });
     case "likely":
       return [...markets].sort((a, b) => {
-        const sA = Number.parseFloat(a.survivePool) || 0;
-        const sB = Number.parseFloat(b.survivePool) || 0;
+        const sA = Number(parsePoolLamports(a.survivePool));
+        const sB = Number(parsePoolLamports(b.survivePool));
         return sB - sA;
       });
     case "new":
@@ -101,9 +102,28 @@ export default function HomePage() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>("hot");
 
+  const trimmedMint = tokenMint.trim();
+  const duplicateMarketQuery = useQuery({
+    queryKey: ["existing-market", trimmedMint, durationSeconds],
+    enabled: /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(trimmedMint),
+    staleTime: 10_000,
+    queryFn: async () => {
+      const u = new URL(apiV1Url("/markets"));
+      u.searchParams.set("tokenMint", trimmedMint);
+      u.searchParams.set("durationSeconds", String(durationSeconds));
+      u.searchParams.set("limit", "1");
+      u.searchParams.set("status", "active");
+      const r = await fetch(u.toString());
+      const body = (await r.json()) as ApiResponse<MarketListPage>;
+      if (!r.ok || !body.success) return null;
+      return body.data.items[0] ?? null;
+    },
+  });
+  const existingMarket = duplicateMarketQuery.data;
+
   const trending = useMemo(() => {
     return [...markets]
-      .sort((a, b) => totalPoolUsdc(b) - totalPoolUsdc(a))
+      .sort((a, b) => totalPoolLamports(b) - totalPoolLamports(a))
       .slice(0, 12);
   }, [markets]);
 
@@ -143,6 +163,7 @@ export default function HomePage() {
           duration,
           walletAddress: publicKey.toBase58(),
           createMarketTxSignature,
+          currency: "sol",
         }),
       });
       const body = (await res.json()) as ApiResponse<Market>;
@@ -176,10 +197,11 @@ export default function HomePage() {
     },
   });
 
-  const totalVol = stats
+  /** API fields still named `*Usdc`; values are lamports for SOL collateral. */
+  const totalVolLamports = stats
     ? Number.parseFloat(stats.totalBetVolumeUsdc) || 0
     : 0;
-  const biggest =
+  const biggestPayoutLamports =
     stats?.largestPayoutUsdc != null
       ? Number.parseFloat(stats.largestPayoutUsdc) || 0
       : 0;
@@ -246,7 +268,7 @@ export default function HomePage() {
                       ${m.tokenTicker ?? "—"}
                     </p>
                     <p className="truncate font-mono text-[10px] text-fg-muted">
-                      Pool {formatPool(totalPoolUsdc(m))} USDC
+                      Pool {formatSolBetLine(totalPoolLamports(m) / 1e9)}
                     </p>
                   </div>
                 </a>
@@ -284,6 +306,23 @@ export default function HomePage() {
               />
             </div>
 
+            {existingMarket ? (
+              <div className="rounded-md border border-accent/35 bg-bg px-4 py-4">
+                <p className="font-mono text-sm font-bold text-white">
+                  Market already exists
+                </p>
+                <p className="mt-1 font-mono text-[11px] text-fg-muted">
+                  A market for this token and duration is already live.
+                </p>
+                <Link
+                  href={`/market/${existingMarket.id}`}
+                  className="mt-4 inline-flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-accent transition-colors hover:text-white"
+                >
+                  View market →
+                </Link>
+              </div>
+            ) : null}
+
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div
                 className="flex flex-wrap gap-1.5"
@@ -319,7 +358,10 @@ export default function HomePage() {
                 }
                 whileTap={{ scale: 0.97 }}
                 disabled={
-                  createMarket.isPending || !publicKey || !tokenMint.trim()
+                  createMarket.isPending ||
+                  !publicKey ||
+                  !tokenMint.trim() ||
+                  Boolean(existingMarket)
                 }
                 onClick={() => {
                   setCreateError(null);
@@ -334,6 +376,9 @@ export default function HomePage() {
                   }
                   if (!mint) {
                     setCreateError("Paste the token mint address first.");
+                    return;
+                  }
+                  if (existingMarket) {
                     return;
                   }
                   void createMarket.mutateAsync({
@@ -373,8 +418,8 @@ export default function HomePage() {
             },
             {
               label: "Total Volume",
-              value: totalVol,
-              format: (n: number) => formatUSDC(n),
+              value: totalVolLamports / 1e9,
+              format: (n: number) => formatSolBetLine(n),
             },
             {
               label: "Rugs Caught",
@@ -383,8 +428,8 @@ export default function HomePage() {
             },
             {
               label: "Biggest Win",
-              value: biggest,
-              format: (n: number) => formatUSDC(n),
+              value: biggestPayoutLamports / 1e9,
+              format: (n: number) => formatSolBetLine(n),
             },
           ].map((stat, i) => (
             <motion.div

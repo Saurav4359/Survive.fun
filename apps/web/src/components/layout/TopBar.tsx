@@ -12,7 +12,7 @@ import { WalletConnectButton } from "@/components/WalletConnectButton";
 import { useWalletBalances } from "@/hooks/useWalletBalances";
 import { useMarketSearchStore } from "@/stores/marketSearchStore";
 import { RPC_URL } from "@/utils/constants";
-import { formatUSDC } from "@/utils/format";
+import { formatSolBetLine } from "@/utils/format";
 
 function rpcCluster(): "devnet" | "testnet" | "mainnet-beta" {
   const u = RPC_URL.toLowerCase();
@@ -44,8 +44,8 @@ export function TopBar({ onMenuClick }: Props) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
-  const usdc = balances.data?.usdc ?? 0;
-  const displayBalance = formatUSDC(usdc);
+  const sol = balances.data?.sol ?? 0;
+  const displayBalance = formatSolBetLine(sol);
 
   useEffect(() => {
     if (!open) return;
@@ -123,10 +123,10 @@ export function TopBar({ onMenuClick }: Props) {
                     Your balance
                   </p>
                   <p className="px-4 pt-2 font-mono text-2xl font-bold tabular-nums text-white">
-                    {formatUSDC(usdc)}
+                    {formatSolBetLine(sol)}
                   </p>
                   <p className="px-4 pt-1 font-mono text-xs text-fg-soft">
-                    USDC · betting
+                    SOL · {rpcCluster()}
                   </p>
                   <div className="mt-3 grid grid-cols-2 gap-2 px-3">
                     <a

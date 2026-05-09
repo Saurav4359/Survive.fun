@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 
-import { formatUSDC } from "@/utils/format";
+import { formatPoolTotals } from "@/utils/format";
 
 function clampPct(n: number): number {
   if (!Number.isFinite(n)) return 0;
@@ -15,6 +15,7 @@ export function PoolBar({
   rugPool,
   showLabels = true,
 }: {
+  /** Pool depth in lamports (integer). */
   survivePool: number;
   rugPool: number;
   showLabels?: boolean;
@@ -26,8 +27,10 @@ export function PoolBar({
 
   const surviveLabel = `SURVIVE ${survivePct.toFixed(1)}%`;
   const rugLabel = `RUG ${rugPct.toFixed(1)}%`;
-  const surviveUsd = formatUSDC(survivePool);
-  const rugUsd = formatUSDC(rugPool);
+  const { survive: surviveAmt, rug: rugAmt } = formatPoolTotals(
+    survivePool,
+    rugPool,
+  );
 
   // Defer initial fill to next tick so animation runs from 0 → target.
   const mounted = useRef(false);
@@ -65,8 +68,8 @@ export function PoolBar({
 
       {showLabels ? (
         <div className="flex items-center justify-between font-mono text-[10px] tabular-nums">
-          <span className="text-survive/85">{surviveUsd}</span>
-          <span className="text-rug/85">{rugUsd}</span>
+          <span className="text-survive/85">{surviveAmt}</span>
+          <span className="text-rug/85">{rugAmt}</span>
         </div>
       ) : null}
     </div>
