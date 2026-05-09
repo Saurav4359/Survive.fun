@@ -35,3 +35,6 @@ pnpm-debug.log*
 # Demo / test artifacts (devnet keypairs; do NOT commit)
 scripts/.demo-wallets/
 testing.md.local
+
+# Local clone / reference only (nested repo)
+wallet-adapter/
