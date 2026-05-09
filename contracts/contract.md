@@ -1,12 +1,28 @@
 # Survive.fun — Smart Contract Status
 
-**New Program ID:** `3shYxrDG1srw1Wxu2yVnrnEUk53m6tS8HDyVKuoYLVd1`  
-**Old Program ID:** `HB3uE5XQGq1xNtW9RMSrnBegwifeLzk1xyr75ofRPrtH`  
+**Current Program ID (devnet):** `9ZqPpXBid4xzB49HjB7zE6BnTWryMuuZFTULTSJqqTd8`  
+**Previous Program ID:** `3shYxrDG1srw1Wxu2yVnrnEUk53m6tS8HDyVKuoYLVd1` (superseded — new keypair + layout)  
+**Older Program ID:** `HB3uE5XQGq1xNtW9RMSrnBegwifeLzk1xyr75ofRPrtH`  
 **Deploy wallet:** `~/.config/solana/id.json` → address `9LL4o1q9SWFuSdDQgWxqLpKB6wnwrZpVHDKCr1RQRidT`  
-**Deploy date:** 2026-05-09 — **devnet deployment confirmed** (program loaded at ID above; upgrade authority: deploy wallet).  
+**Deploy date:** 2026-05-09 — **devnet** program deploy + IDL init (upgrade authority: deploy wallet).  
 **Cluster:** Solana devnet (**live**)  
 **Build:** passing (`anchor build`, Anchor 0.31.1; compiler warnings only from Anchor macros, **zero errors**)  
-**IDL:** `contracts/target/idl/survivefun.json` (synced to `apps/web/src/idl/survivefun.json`)
+**IDL:** `contracts/target/idl/survivefun.json` (copied to `apps/web/src/idl/survivefun.json` and `apps/api/src/idl/survivefun.json`)
+
+---
+
+## Latest deploy run (2026-05-09)
+
+- **Market PDA:** `seeds = [b"market", token_mint]` only — fixes `AccountDidNotDeserialize` from stale PDAs that used extra seed bytes; **one market account per token mint** (duration still passed to `create_market` for expiry, not for PDA).
+- **New instruction:** `close_market` — creator may close an **empty** market (no bettors, pools still platform seed only) and reclaim rent.
+- New program keypair generated → **new Program ID** (see header).
+- Build: `anchor build` ✅
+- Devnet deploy: `anchor deploy --provider.cluster devnet` ✅
+  - Deploy signature: `3NjUjmyW1MEVoZJtJnYSjBMRB7tkfdYRd5YvZxGtVNXhjeYppLVDC16ZmipcQr62M23qiYtKBinVqPPmSJoVjdd5`
+- IDL initialized on devnet: `anchor idl init --filepath target/idl/survivefun.json 9ZqPpXBid4xzB49HjB7zE6BnTWryMuuZFTULTSJqqTd8 --provider.cluster devnet`
+  - IDL account: `G8PDvwc6B7b26gq1w1gtQRtVRd2qf3skNxQC2W53jPWT`
+- IDL instructions present: `create_market`, `place_bet`, `resolve_market`, `claim_payout`, `close_market`
+- App env / PDA helpers updated for new program id and 2-seed market PDA.
 
 ---
 
@@ -21,9 +37,9 @@
 
 ### Market PDA seeds
 
-`seeds = [b"market", token_mint.as_ref(), duration_seconds.to_le_bytes().as_ref()], bump`
+`seeds = [b"market", token_mint.as_ref()], bump`
 
-Same token mint + same duration → same PDA → second `create_market` hits **`MarketAlreadyExists`**.
+Same token mint → same PDA → second `create_market` for that mint hits **`MarketAlreadyExists`** (duration does not change the PDA).
 
 ### Errors (`SurviveError`)
 

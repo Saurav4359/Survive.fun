@@ -6,7 +6,7 @@ pub mod state;
 pub use state::bet::BetSide;
 pub use state::market::Outcome;
 
-declare_id!("3shYxrDG1srw1Wxu2yVnrnEUk53m6tS8HDyVKuoYLVd1");
+declare_id!("9ZqPpXBid4xzB49HjB7zE6BnTWryMuuZFTULTSJqqTd8");
 
 #[program]
 pub mod survivefun {
@@ -27,6 +27,10 @@ pub mod survivefun {
     pub fn claim_payout(ctx: Context<ClaimPayout>) -> Result<()> {
         instructions::claim_payout::claim_payout(ctx)
     }
+
+    pub fn close_market(ctx: Context<CloseMarket>) -> Result<()> {
+        instructions::close_market::close_market(ctx)
+    }
 }
 
 #[derive(Accounts)]
@@ -42,11 +46,7 @@ pub struct CreateMarket<'info> {
         init_if_needed,
         payer = creator,
         space = 8 + crate::state::market::Market::INIT_SPACE,
-        seeds = [
-            b"market",
-            token_mint.as_ref(),
-            duration_seconds.to_le_bytes().as_ref(),
-        ],
+        seeds = [b"market", token_mint.as_ref()],
         bump
     )]
     pub market: Account<'info, crate::state::market::Market>,
@@ -83,6 +83,21 @@ pub struct ResolveMarket<'info> {
         constraint = platform_authority.key() == market.platform_authority @ crate::instructions::create_market::SurviveError::Unauthorized
     )]
     pub platform_authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct CloseMarket<'info> {
+    #[account(
+        mut,
+        close = authority,
+        seeds = [b"market", market.token_mint.as_ref()],
+        bump = market.bump,
+        constraint = authority.key() == market.creator @ crate::instructions::create_market::SurviveError::Unauthorized
+    )]
+    pub market: Account<'info, crate::state::market::Market>,
+
+    #[account(mut)]
+    pub authority: Signer<'info>,
 }
 
 #[derive(Accounts)]

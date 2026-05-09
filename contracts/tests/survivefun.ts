@@ -27,21 +27,12 @@ function bn(n: bigint | number): BN {
   return new BN(typeof n === "bigint" ? n.toString() : n.toString());
 }
 
-function durationSeed(durationSeconds: number): Buffer {
-  const b = Buffer.allocUnsafe(8);
-  b.writeBigUInt64LE(BigInt(durationSeconds), 0);
-  return b;
-}
-
 function marketPda(
   programId: PublicKey,
   tokenMint: PublicKey,
-  durationSeconds: number,
+  _durationSeconds: number,
 ): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("market"), tokenMint.toBuffer(), durationSeed(durationSeconds)],
-    programId,
-  );
+  return PublicKey.findProgramAddressSync([Buffer.from("market"), tokenMint.toBuffer()], programId);
 }
 
 function betPda(programId: PublicKey, market: PublicKey, bettor: PublicKey): [PublicKey, number] {

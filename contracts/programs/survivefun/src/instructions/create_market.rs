@@ -10,7 +10,7 @@ pub const PLATFORM_SEED_LAMPORTS_PER_SIDE: u64 = 10_000_000;
 
 #[error_code]
 pub enum SurviveError {
-    #[msg("Market already exists for this token and duration")]
+    #[msg("Market already exists for this token mint")]
     MarketAlreadyExists,
     #[msg("Market is not active")]
     MarketNotActive,
@@ -38,6 +38,8 @@ pub enum SurviveError {
     InsufficientRent,
     #[msg("Market cannot be resolved before expires_at")]
     CannotResolveBeforeExpiry,
+    #[msg("Market cannot be closed while it has bets or non-seed pool funds")]
+    MarketHasOpenPositions,
 }
 
 #[event]

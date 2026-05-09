@@ -3,10 +3,10 @@ resolution = true
 skip-lint = true
 
 [programs.localnet]
-survivefun = "3shYxrDG1srw1Wxu2yVnrnEUk53m6tS8HDyVKuoYLVd1"
+survivefun = "9ZqPpXBid4xzB49HjB7zE6BnTWryMuuZFTULTSJqqTd8"
 
 [programs.devnet]
-survivefun = "3shYxrDG1srw1Wxu2yVnrnEUk53m6tS8HDyVKuoYLVd1"
+survivefun = "9ZqPpXBid4xzB49HjB7zE6BnTWryMuuZFTULTSJqqTd8"
 
 [registry]
 url = "https://api.apr.dev"
