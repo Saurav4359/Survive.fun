@@ -4,6 +4,9 @@ export type MarketStatus = "active" | "resolved" | "expired";
 
 export type Outcome = "survive" | "rug";
 
+/** Collateral for pools and bets (never mix per market). */
+export type MarketCurrency = "sol" | "usdc";
+
 export interface Market {
   id: string;
   tokenMint: string;
@@ -12,8 +15,10 @@ export interface Market {
   creatorWallet: string;
   durationSeconds: number;
   expiresAt: string;
+  /** Parimutuel pools: USDC decimal string or SOL lamports integer string. */
   survivePool: string;
   rugPool: string;
+  currency: MarketCurrency;
   openPrice: string | null;
   openLiquidity: string | null;
   devWallet: string | null;
@@ -35,7 +40,12 @@ export interface Bet {
   marketId: string;
   bettorWallet: string;
   side: BetSide;
-  amountUsdc: string;
+  currency: MarketCurrency;
+  /** USDC stake (decimal); null when `currency === "sol"`. */
+  amountUsdc: string | null;
+  /** SOL stake (lamports integer string); null when `currency === "usdc"`. */
+  amountLamports: string | null;
+  /** Estimated payout in the market currency (USDC decimal or lamports integer string). */
   potentialWin: string | null;
   txSignature: string;
   claimed: boolean;
@@ -62,7 +72,12 @@ export interface RecentPayout {
 /** Aggregated dashboard stats from the API (live DB). */
 export interface PlatformSnapshot {
   activeMarkets: number;
+  /** Lifetime USDC stake volume only (does not include SOL). */
   totalBetVolumeUsdc: string;
+  /** Last 24h SOL stake volume (human SOL, not lamports). */
+  solVolume24h: number;
+  /** Last 24h USDC stake volume (human USDC). */
+  usdcVolume24h: number;
   resolvedRugs: number;
   resolvedSurvives: number;
   largestPayoutUsdc: string | null;
@@ -224,7 +239,11 @@ export interface BetPlaced {
   marketId: string;
   bettorWallet: string;
   side: BetSide;
+  currency: MarketCurrency;
+  /** USDC stake (decimal string); `"0"` when `currency === "sol"`. */
   amountUsdc: string;
+  /** SOL stake (lamports integer string); `null` when `currency === "usdc"`. */
+  amountLamports: string | null;
   survivePool: string;
   rugPool: string;
   timestamp: string;
