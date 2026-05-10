@@ -121,9 +121,27 @@ export default function BetsPage() {
         queryKey: marketResultQueryKey(bet.market.id),
       });
     },
-    onError: (e) => {
+    onError: (e, bet) => {
       const msg = e instanceof Error ? e.message : "Claim failed";
-      toast({ variant: "error", title: "Transaction failed", message: msg });
+      const already =
+        msg.includes("already claimed on-chain") ||
+        msg.toLowerCase().includes("already claimed");
+      toast({
+        variant: already ? "info" : "error",
+        title: already ? "Already claimed" : "Transaction failed",
+        message: msg,
+      });
+      if (already && wallet) {
+        void queryClient.invalidateQueries({
+          queryKey: userBetsQueryKey(wallet),
+        });
+        void queryClient.invalidateQueries({
+          queryKey: myPayoutQueryKey(bet.market.id, wallet),
+        });
+        void queryClient.invalidateQueries({
+          queryKey: marketResultQueryKey(bet.market.id),
+        });
+      }
     },
   });
 
@@ -199,18 +217,18 @@ export default function BetsPage() {
           {/* Summary row */}
           <section
             aria-label="Betting summary"
-            className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4"
+            className="mt-6 grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4"
           >
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0, duration: 0.4 }}
-              className="border border-border border-t-2 border-t-accent bg-card px-4 py-4"
+              className="border border-border border-t border-t-accent bg-card px-3 py-2.5"
             >
-              <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+              <p className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-fg-muted">
                 Total Bet
               </p>
-              <div className="mt-2 font-mono text-xl font-bold tabular-nums text-accent sm:text-2xl">
+              <div className="mt-1 font-mono text-base font-bold tabular-nums text-accent sm:text-lg">
                 {isLoading ? (
                   "—"
                 ) : (
@@ -226,12 +244,12 @@ export default function BetsPage() {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.06, duration: 0.4 }}
-              className="border border-border border-t-2 border-t-accent bg-card px-4 py-4"
+              className="border border-border border-t border-t-accent bg-card px-3 py-2.5"
             >
-              <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+              <p className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-fg-muted">
                 Won
               </p>
-              <div className="mt-2 font-mono text-xl font-bold tabular-nums text-accent sm:text-2xl">
+              <div className="mt-1 font-mono text-base font-bold tabular-nums text-accent sm:text-lg">
                 {isLoading ? (
                   "—"
                 ) : (
@@ -262,12 +280,12 @@ export default function BetsPage() {
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: s.delay, duration: 0.4 }}
-                className="border border-border border-t-2 border-t-accent bg-card px-4 py-4"
+                className="border border-border border-t border-t-accent bg-card px-3 py-2.5"
               >
-                <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+                <p className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-fg-muted">
                   {s.label}
                 </p>
-                <p className="mt-2 font-mono text-xl font-bold tabular-nums text-accent sm:text-2xl">
+                <p className="mt-1 font-mono text-base font-bold tabular-nums text-accent sm:text-lg">
                   {isLoading ? (
                     "—"
                   ) : (
@@ -434,7 +452,7 @@ export default function BetsPage() {
                                   whileTap={{ scale: 0.95 }}
                                   type="button"
                                   disabled={claimMut.isPending}
-                                  onClick={() => void claimMut.mutateAsync(bet)}
+                                  onClick={() => claimMut.mutate(bet)}
                                   className="rounded-md border border-accent bg-accent px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-ink transition-colors hover:bg-transparent hover:text-accent disabled:opacity-50"
                                 >
                                   {claimMut.isPending ? "…" : "Claim"}
@@ -551,7 +569,7 @@ export default function BetsPage() {
                               whileTap={{ scale: 0.95 }}
                               type="button"
                               disabled={claimMut.isPending}
-                              onClick={() => void claimMut.mutateAsync(bet)}
+                              onClick={() => claimMut.mutate(bet)}
                               className="rounded-md border border-accent bg-accent px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-ink transition-colors hover:bg-transparent hover:text-accent disabled:opacity-50"
                             >
                               {claimMut.isPending ? "…" : "Claim"}

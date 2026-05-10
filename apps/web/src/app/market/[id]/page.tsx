@@ -539,7 +539,29 @@ export default function MarketPage() {
     },
     onError: (e) => {
       const msg = e instanceof Error ? e.message : "Claim failed";
-      toast({ variant: "error", title: "Transaction failed", message: msg });
+      const already =
+        msg.includes("already claimed on-chain") ||
+        msg.toLowerCase().includes("already claimed");
+      toast({
+        variant: already ? "info" : "error",
+        title: already ? "Already claimed" : "Transaction failed",
+        message: msg,
+      });
+      if (already && id) {
+        void queryClient.invalidateQueries({ queryKey: marketQueryKey(id) });
+        void queryClient.invalidateQueries({ queryKey: marketBetsQueryKey(id) });
+        if (userWallet) {
+          void queryClient.invalidateQueries({
+            queryKey: userBetsQueryKey(userWallet),
+          });
+          void queryClient.invalidateQueries({
+            queryKey: myPayoutQueryKey(id, userWallet),
+          });
+        }
+        void queryClient.invalidateQueries({
+          queryKey: marketResultQueryKey(id),
+        });
+      }
     },
   });
 
@@ -1153,18 +1175,7 @@ export default function MarketPage() {
           {/* Chart */}
           <div className="border border-border bg-card">
             <div className="border-b border-border px-4 py-3">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="font-display text-xs font-bold uppercase tracking-[0.2em] text-white">
-                    Implied probability (pool-weighted)
-                  </p>
-                  <p className="mt-1 font-mono text-[10px] text-fg-muted">
-                    Same idea as Polymarket “% chance Yes” — here it’s implied {" "}
-                    <span className="text-rug">RUG</span> vs{" "}
-                    <span className="text-survive">survive</span> from stake split.
-                    Updates live as bets land.
-                  </p>
-                </div>
+              <div className="flex flex-wrap items-center justify-end gap-3">
                 <div className="flex items-center gap-4 font-mono text-[10px] font-bold uppercase tracking-[0.15em]">
                   <span className="flex items-center gap-1.5 text-survive">
                     <span
@@ -1185,16 +1196,19 @@ export default function MarketPage() {
                 </div>
               </div>
               {liveRugSharePct != null ? (
-                <p className="mt-3 font-mono text-3xl font-bold tabular-nums leading-none text-rug sm:text-4xl">
+                <p className="mt-3 font-mono text-xl font-bold tabular-nums leading-none text-rug sm:text-2xl">
                   {liveRugSharePct.toFixed(1)}%{" "}
-                  <span className="text-lg font-semibold text-fg-soft sm:text-xl">
+                  <span className="text-sm font-semibold text-fg-soft sm:text-base">
                     chance RUG
                   </span>
                 </p>
               ) : null}
               {liveSurviveSharePct != null ? (
-                <p className="mt-1 font-mono text-lg font-bold tabular-nums text-survive sm:text-xl">
-                  {liveSurviveSharePct.toFixed(1)}% survive
+                <p className="mt-1 font-mono text-xl font-bold tabular-nums leading-none text-survive sm:text-2xl">
+                  {liveSurviveSharePct.toFixed(1)}%{" "}
+                  <span className="text-sm font-semibold text-fg-soft sm:text-base">
+                    survive
+                  </span>
                 </p>
               ) : null}
               <div
@@ -1577,7 +1591,7 @@ export default function MarketPage() {
                         whileTap={{ scale: 0.97 }}
                         type="button"
                         disabled={claimMut.isPending}
-                        onClick={() => void claimMut.mutateAsync()}
+                        onClick={() => claimMut.mutate()}
                         className="w-full rounded-md border border-accent bg-accent px-4 py-2.5 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-ink transition-colors hover:bg-transparent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {claimMut.isPending ? "Claiming…" : "Claim payout"}
