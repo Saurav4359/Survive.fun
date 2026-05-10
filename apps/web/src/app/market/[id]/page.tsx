@@ -520,11 +520,28 @@ export default function MarketPage() {
           ticksVisible: true,
           scaleMargins: { top: 0.08, bottom: 0.08 },
         },
-        /** No user zoom (wheel / pinch / axis-drag scale); pan/drag scroll still allowed. */
-        handleScale: false,
+        handleScroll: {
+          mouseWheel: false,
+          pressedMouseMove: false,
+          horzTouchDrag: false,
+          vertTouchDrag: false,
+        },
+        handleScale: {
+          mouseWheel: false,
+          pinch: false,
+          axisPressedMouseMove: {
+            time: false,
+            price: false,
+          },
+          axisDoubleClickReset: false,
+        },
         timeScale: {
-          borderColor: "#1a1a1a",
+          borderVisible: false,
+          fixLeftEdge: true,
+          fixRightEdge: true,
           lockVisibleTimeRangeOnResize: true,
+          rightOffset: 0,
+          barSpacing: 6,
           timeVisible: true,
           secondsVisible: false,
           tickMarkFormatter: (
@@ -626,6 +643,7 @@ export default function MarketPage() {
           surviveSeries.setData(data.survivePts);
           rugSeries.setData(data.rugPts);
           chart.timeScale().fitContent();
+          chart.timeScale().scrollToPosition(0, false);
         }
       } catch {
         /* empty chart */
@@ -748,6 +766,7 @@ export default function MarketPage() {
         s.setData(data.survivePts);
         r.setData(data.rugPts);
         c.timeScale().fitContent();
+        c.timeScale().scrollToPosition(0, false);
       } catch {
         /* keep last good frame */
       }
@@ -1087,7 +1106,14 @@ export default function MarketPage() {
                   className="font-mono text-[11px] font-bold tabular-nums text-rug"
                 />
               </div>
-              <div ref={chartContainerRef} className="h-full w-full" />
+              <div
+                ref={chartContainerRef}
+                className="h-full w-full"
+                style={{ userSelect: "none" }}
+                onWheel={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onTouchStart={(e) => e.stopPropagation()}
+              />
             </div>
           </div>
 
