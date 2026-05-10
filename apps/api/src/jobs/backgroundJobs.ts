@@ -18,6 +18,7 @@ import { prisma } from "../config/database";
 import { birdeyeFetchOhlcv } from "../lib/birdeye";
 import { cacheSet } from "../lib/redisCache";
 import { emitStatsUpdate } from "../websocket/socketHandler";
+import { purgeClosedMarketsOlderThan } from "./marketRetention";
 import { startResolver } from "./resolver";
 
 const LOG_PREFIX = "[backgroundJobs]";
@@ -28,6 +29,7 @@ const OHLCV_JOB_ID = "ohlcv-every-5m";
 const STATS_JOB_ID = "stats-every-60s";
 const OHLCV_EVERY_MS = 5 * 60 * 1000;
 const STATS_EVERY_MS = 60_000;
+const MARKET_RETENTION_INTERVAL_MS = 86_400_000;
 
 const CHART_INTERVALS = ["5m", "15m", "1H"] as const;
 
@@ -236,6 +238,23 @@ function startStatsFallback(): void {
  */
 export function startBackgroundJobs(): void {
   startResolver();
+
+  const retentionRaw = process.env.MARKET_RETENTION_DELETE_AFTER_DAYS?.trim();
+  const retentionDays = retentionRaw ? Number.parseInt(retentionRaw, 10) : Number.NaN;
+  if (Number.isFinite(retentionDays) && retentionDays >= 1) {
+    const runRetention = () => {
+      void purgeClosedMarketsOlderThan(retentionDays).catch((e: unknown) => {
+        console.log(`${LOG_PREFIX} market retention purge failed`, {
+          error: e instanceof Error ? e.message : String(e),
+        });
+      });
+    };
+    runRetention();
+    setInterval(runRetention, MARKET_RETENTION_INTERVAL_MS);
+    console.log(
+      `${LOG_PREFIX} market retention enabled: delete resolved/expired markets older than ${retentionDays}d (daily; also deletes their bets)`,
+    );
+  }
 
   applyUpstashRestAsRedisUrl();
   const redisUrl = process.env.REDIS_URL?.trim();
