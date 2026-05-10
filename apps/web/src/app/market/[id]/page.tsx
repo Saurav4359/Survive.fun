@@ -4,6 +4,7 @@ import type {
   ApiResponse,
   BetSide,
   Market,
+  MarketPoolHistoryPoint,
   MarketPoolHistoryResponse,
   Outcome,
 } from "@survivefun/types";
@@ -61,13 +62,11 @@ import {
   resolveMarketPdaForTransaction,
 } from "@/utils/transactions";
 
-/** Lightweight Charts area series — Polymarket-style implied probability from pool weights */
+/** Lightweight Charts — dual curved lines (shared 50% open, then diverge). */
 const CHART_SURVIVE_LINE = "#a3e635";
-const CHART_SURVIVE_TOP = "rgba(163, 230, 53, 0.2)";
-const CHART_SURVIVE_BOTTOM = "rgba(163, 230, 53, 0)";
 const CHART_RUG_LINE = "#ef4444";
-const CHART_RUG_TOP = "rgba(239, 68, 68, 0.2)";
-const CHART_RUG_BOTTOM = "rgba(239, 68, 68, 0)";
+
+const POOL_CHART_DENSIFY_SEGMENTS = 8;
 
 function parseNum(s: string | null | undefined): number | null {
   if (s == null) return null;
@@ -129,6 +128,157 @@ function sortDedupePoolPctPoints(points: PoolPctPoint[]): PoolPctPoint[] {
   return out;
 }
 
+/** One row per `t` so survive/rug stay paired (API can repeat timestamps). */
+function poolHistoryToPairedPctPoints(sliced: MarketPoolHistoryPoint[]): {
+  survivePts: PoolPctPoint[];
+  rugPts: PoolPctPoint[];
+} {
+  const byT = new Map<
+    number,
+    { survivePoolRaw: string; rugPoolRaw: string }
+  >();
+  for (const p of sliced) {
+    byT.set(p.t, { survivePoolRaw: p.survivePoolRaw, rugPoolRaw: p.rugPoolRaw });
+  }
+  const keys = [...byT.keys()].sort((a, b) => a - b);
+  const survivePts: PoolPctPoint[] = [];
+  const rugPts: PoolPctPoint[] = [];
+  for (const t of keys) {
+    const row = byT.get(t)!;
+    const { survivePct, rugPct } = poolSharePercentsFromRaw(
+      row.survivePoolRaw,
+      row.rugPoolRaw,
+    );
+    survivePts.push({ time: t as UTCTimestamp, value: survivePct });
+    rugPts.push({ time: t as UTCTimestamp, value: rugPct });
+  }
+  return { survivePts, rugPts };
+}
+
+/**
+ * 50/50 one tick **before** the first snapshot so both lines leave the vertical
+ * midline even when `createdAt` is missing or after the first pool row (clock skew).
+ */
+function prependNeutralOpenAnchor(
+  marketCreatedAtIso: string | undefined,
+  survivePts: PoolPctPoint[],
+  rugPts: PoolPctPoint[],
+): { survivePts: PoolPctPoint[]; rugPts: PoolPctPoint[] } {
+  if (survivePts.length === 0 || rugPts.length === 0) {
+    return { survivePts, rugPts };
+  }
+  const firstT = survivePts[0]!.time as number;
+  let tAnchor = firstT - 1;
+  if (marketCreatedAtIso) {
+    const tOpen = Math.floor(Date.parse(marketCreatedAtIso) / 1000);
+    if (Number.isFinite(tOpen)) tAnchor = Math.min(tAnchor, tOpen);
+  }
+  if (tAnchor >= firstT) tAnchor = firstT - 1;
+  const t = tAnchor as UTCTimestamp;
+  if (survivePts[0]!.time === t && survivePts[0]!.value === 50) {
+    return { survivePts, rugPts };
+  }
+  return {
+    survivePts: [{ time: t, value: 50 }, ...survivePts],
+    rugPts: [{ time: t, value: 50 }, ...rugPts],
+  };
+}
+
+/**
+ * Linear midpoints between consecutive snapshots (same clock for both series).
+ * Rug% is derived as 100 − survive% so the pair stays consistent. More points
+ * let `LineType.Curved` read as a smoother path through real pool movement.
+ */
+function densifyPairedPoolPct(
+  survivePts: PoolPctPoint[],
+  rugPts: PoolPctPoint[],
+  innerBetween: number,
+): { survivePts: PoolPctPoint[]; rugPts: PoolPctPoint[] } {
+  if (
+    innerBetween < 1 ||
+    survivePts.length !== rugPts.length ||
+    survivePts.length < 2
+  ) {
+    return { survivePts, rugPts };
+  }
+  const sOut: PoolPctPoint[] = [];
+  const rOut: PoolPctPoint[] = [];
+  for (let i = 0; i < survivePts.length - 1; i += 1) {
+    const sa = survivePts[i]!;
+    const sb = survivePts[i + 1]!;
+    const ra = rugPts[i]!;
+    const rb = rugPts[i + 1]!;
+    if (sa.time !== ra.time || sb.time !== rb.time) {
+      return { survivePts, rugPts };
+    }
+    sOut.push(sa);
+    rOut.push(ra);
+    const tA = sa.time as number;
+    const tB = sb.time as number;
+    const dt = tB - tA;
+    if (dt > 1) {
+      const maxInterior = Math.min(innerBetween, Math.max(1, dt - 1));
+      let prevT = tA;
+      for (let k = 1; k <= maxInterior; k += 1) {
+        const frac = k / (maxInterior + 1);
+        let t = Math.floor(tA + dt * frac);
+        if (t <= prevT) t = prevT + 1;
+        if (t >= tB) t = tB - 1;
+        if (t <= prevT || t >= tB) continue;
+        prevT = t;
+        const sVal = sa.value + (sb.value - sa.value) * frac;
+        const s = Math.min(100, Math.max(0, sVal));
+        sOut.push({ time: t as UTCTimestamp, value: s });
+        rOut.push({ time: t as UTCTimestamp, value: 100 - s });
+      }
+    }
+  }
+  sOut.push(survivePts[survivePts.length - 1]!);
+  rOut.push(rugPts[rugPts.length - 1]!);
+  return {
+    survivePts: sortDedupePoolPctPoints(sOut),
+    rugPts: sortDedupePoolPctPoints(rOut),
+  };
+}
+
+function applyPoolChartVisibleRange(
+  chart: import("lightweight-charts").IChartApi,
+  survivePts: PoolPctPoint[],
+): void {
+  if (survivePts.length === 0) {
+    chart.timeScale().fitContent();
+    return;
+  }
+  const from = survivePts[0]!.time;
+  const to = survivePts[survivePts.length - 1]!.time;
+  const fromN = typeof from === "number" ? from : Number(from);
+  const toN = typeof to === "number" ? to : Number(to);
+  if (!Number.isFinite(fromN) || !Number.isFinite(toN)) {
+    chart.timeScale().fitContent();
+    return;
+  }
+  const pad = 2;
+  const run = () => {
+    try {
+      if (toN <= fromN) {
+        chart.timeScale().setVisibleRange({
+          from: (fromN - 120) as Time,
+          to: (fromN + 120) as Time,
+        });
+        return;
+      }
+      chart.timeScale().setVisibleRange({
+        from: (fromN - pad) as Time,
+        to: (toN + pad) as Time,
+      });
+    } catch {
+      chart.timeScale().fitContent();
+    }
+  };
+  run();
+  requestAnimationFrame(run);
+}
+
 /** Extend the series to the current second with live pool shares (line reaches “now”). */
 function appendLivePoolChartTail(
   survivePts: PoolPctPoint[],
@@ -162,6 +312,7 @@ async function fetchPoolPctSeries(
   range: PoolChartRange,
   liveSurviveRaw: string,
   liveRugRaw: string,
+  marketCreatedAtIso: string | undefined,
 ): Promise<{ survivePts: PoolPctPoint[]; rugPts: PoolPctPoint[] } | null> {
   const r = await fetch(
     apiV1Url(`/markets/${encodeURIComponent(marketId)}/pool-history`),
@@ -170,23 +321,16 @@ async function fetchPoolPctSeries(
   const j = (await r.json()) as ApiResponse<MarketPoolHistoryResponse>;
   if (!j.success || j.data.points.length === 0) return null;
   const sliced = filterPoolHistoryPoints(j.data.points, range);
-  const survivePts: PoolPctPoint[] = sliced.map((p) => {
-    const { survivePct } = poolSharePercentsFromRaw(
-      p.survivePoolRaw,
-      p.rugPoolRaw,
-    );
-    return { time: p.t as UTCTimestamp, value: survivePct };
-  });
-  const rugPts: PoolPctPoint[] = sliced.map((p) => {
-    const { rugPct } = poolSharePercentsFromRaw(
-      p.survivePoolRaw,
-      p.rugPoolRaw,
-    );
-    return { time: p.t as UTCTimestamp, value: rugPct };
-  });
+  const paired = poolHistoryToPairedPctPoints(sliced);
+  let s = paired.survivePts;
+  let ru = paired.rugPts;
+  const anchored = prependNeutralOpenAnchor(marketCreatedAtIso, s, ru);
+  s = anchored.survivePts;
+  ru = anchored.rugPts;
+  const dense = densifyPairedPoolPct(s, ru, POOL_CHART_DENSIFY_SEGMENTS);
   return appendLivePoolChartTail(
-    sortDedupePoolPctPoints(survivePts),
-    sortDedupePoolPctPoints(rugPts),
+    dense.survivePts,
+    dense.rugPts,
     liveSurviveRaw,
     liveRugRaw,
   );
@@ -300,10 +444,10 @@ export default function MarketPage() {
     null,
   );
   const surviveSeriesRef = useRef<
-    import("lightweight-charts").ISeriesApi<"Area"> | null
+    import("lightweight-charts").ISeriesApi<"Line"> | null
   >(null);
   const rugSeriesRef = useRef<
-    import("lightweight-charts").ISeriesApi<"Area"> | null
+    import("lightweight-charts").ISeriesApi<"Line"> | null
   >(null);
   const poolChartTooltipRef = useRef<HTMLDivElement | null>(null);
   /** Latest range + pool raw strings so async chart init does not apply stale data. */
@@ -311,6 +455,7 @@ export default function MarketPage() {
     range: "all" as PoolChartRange,
     surviveRaw: "",
     rugRaw: "",
+    createdAt: "" as string,
   });
 
   const placeBetMut = useMutation({
@@ -426,6 +571,7 @@ export default function MarketPage() {
       range: poolChartRange,
       surviveRaw: parsePoolLamports(market.survivePool).toString(),
       rugRaw: parsePoolLamports(market.rugPool).toString(),
+      createdAt: market.createdAt,
     };
   }, [market, poolChartRange]);
   const openLiquidityUsd =
@@ -497,6 +643,8 @@ export default function MarketPage() {
         layout: {
           background: { type: ColorType.Solid, color: "#0f1114" },
           textColor: "#8b8b8b",
+          /** Frees left gutter taken by the default TradingView mark; NOTICE still applies site-wide. */
+          attributionLogo: false,
         },
         grid: {
           vertLines: { visible: false },
@@ -537,8 +685,8 @@ export default function MarketPage() {
         },
         timeScale: {
           borderVisible: false,
-          fixLeftEdge: true,
-          fixRightEdge: true,
+          fixLeftEdge: false,
+          fixRightEdge: false,
           lockVisibleTimeRangeOnResize: true,
           rightOffset: 0,
           barSpacing: 6,
@@ -587,9 +735,10 @@ export default function MarketPage() {
         minMove: 0.1,
       };
 
-      const areaBase = {
+      const lineBase = {
         lineWidth: 2,
         lineType: LineType.Curved,
+        lineStyle: LineStyle.Solid,
         lineVisible: true,
         lastValueVisible: false,
         priceLineVisible: false,
@@ -602,19 +751,16 @@ export default function MarketPage() {
         autoscaleInfoProvider: scaleZeroToHundred,
       } as const;
 
-      const surviveSeries = chart.addAreaSeries({
-        ...areaBase,
-        lineColor: CHART_SURVIVE_LINE,
-        topColor: CHART_SURVIVE_TOP,
-        bottomColor: CHART_SURVIVE_BOTTOM,
-        crosshairMarkerBackgroundColor: CHART_SURVIVE_LINE,
-      });
-      const rugSeries = chart.addAreaSeries({
-        ...areaBase,
-        lineColor: CHART_RUG_LINE,
-        topColor: CHART_RUG_TOP,
-        bottomColor: CHART_RUG_BOTTOM,
+      /** Rug first so lime survive reads on top (Excalidraw-style overlap at open). */
+      const rugSeries = chart.addLineSeries({
+        ...lineBase,
+        color: CHART_RUG_LINE,
         crosshairMarkerBackgroundColor: CHART_RUG_LINE,
+      });
+      const surviveSeries = chart.addLineSeries({
+        ...lineBase,
+        color: CHART_SURVIVE_LINE,
+        crosshairMarkerBackgroundColor: CHART_SURVIVE_LINE,
       });
 
       if (cancelled || disposed) {
@@ -633,6 +779,7 @@ export default function MarketPage() {
           inp.range,
           inp.surviveRaw,
           inp.rugRaw,
+          inp.createdAt || undefined,
         );
         if (
           !cancelled &&
@@ -642,8 +789,7 @@ export default function MarketPage() {
         ) {
           surviveSeries.setData(data.survivePts);
           rugSeries.setData(data.rugPts);
-          chart.timeScale().fitContent();
-          chart.timeScale().scrollToPosition(0, false);
+          applyPoolChartVisibleRange(chart, data.survivePts);
         }
       } catch {
         /* empty chart */
@@ -757,6 +903,7 @@ export default function MarketPage() {
           inp.range,
           inp.surviveRaw,
           inp.rugRaw,
+          inp.createdAt || undefined,
         );
         if (cancelled || !data) return;
         const s = surviveSeriesRef.current;
@@ -765,8 +912,7 @@ export default function MarketPage() {
         if (!s || !r || !c) return;
         s.setData(data.survivePts);
         r.setData(data.rugPts);
-        c.timeScale().fitContent();
-        c.timeScale().scrollToPosition(0, false);
+        applyPoolChartVisibleRange(c, data.survivePts);
       } catch {
         /* keep last good frame */
       }
@@ -1108,7 +1254,7 @@ export default function MarketPage() {
               </div>
               <div
                 ref={chartContainerRef}
-                className="h-full w-full"
+                className="h-full w-full rounded-md border border-dashed border-rug/35"
                 style={{ userSelect: "none" }}
                 onWheel={(e) => e.stopPropagation()}
                 onMouseDown={(e) => e.stopPropagation()}
