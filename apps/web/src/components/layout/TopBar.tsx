@@ -1,12 +1,12 @@
 "use client";
 
-import { Menu, Search } from "lucide-react";
+import { Menu } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 
+import { HotMarketsStrip } from "@/components/HotMarketsStrip";
 import { BrandWordmark } from "@/components/layout/BrandWordmark";
 import { WalletConnectButton } from "@/components/WalletConnectButton";
-import { useMarketSearchStore } from "@/stores/marketSearchStore";
 import { BRAND_LOGO_SRC } from "@/utils/constants";
 
 const CONNECT_CLASS =
@@ -17,9 +17,6 @@ type Props = {
 };
 
 export function TopBar({ onMenuClick }: Props) {
-  const query = useMarketSearchStore((s) => s.query);
-  const setQuery = useMarketSearchStore((s) => s.setQuery);
-
   return (
     <header className="sticky top-0 z-30 flex h-14 w-full shrink-0 items-center gap-3 border-b border-border bg-bg px-3 sm:h-16 sm:gap-4 sm:px-5">
       {/* Left: menu + brand (mobile / tablet only) */}
@@ -49,23 +46,9 @@ export function TopBar({ onMenuClick }: Props) {
         </Link>
       </div>
 
-      {/* Search — left (after menu/brand), ~2× prior widths; cap on narrow viewports */}
-      <div className="relative min-w-0 w-[min(100%,19rem)] shrink-0 sm:w-[22rem] md:w-[26rem] lg:w-[28rem]">
-        <Search
-          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-muted"
-          aria-hidden
-        />
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search tokens..."
-          className="w-full rounded-md border border-border bg-bg py-2.5 pl-10 pr-3 font-mono text-sm text-white placeholder:text-fg-muted transition-shadow focus:border-accent focus:outline-none focus:shadow-glow-sm"
-          autoComplete="off"
-        />
+      <div className="flex min-h-0 min-w-0 flex-1 items-center overflow-hidden">
+        <HotMarketsStrip compact />
       </div>
-
-      <div className="min-w-0 flex-1" aria-hidden />
 
       <div className="flex shrink-0 items-center">
         <WalletConnectButton className={CONNECT_CLASS} />

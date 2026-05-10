@@ -6,6 +6,7 @@ import {
   Flame,
   Home,
   Plus,
+  Search,
   Skull,
   Trophy,
   User,
@@ -19,6 +20,7 @@ import type { ComponentType, SVGProps } from "react";
 import { BrandWordmark } from "@/components/layout/BrandWordmark";
 import { cn } from "@/lib/utils";
 import { useWalletBalances } from "@/hooks/useWalletBalances";
+import { useMarketSearchStore } from "@/stores/marketSearchStore";
 import { BRAND_LOGO_SRC } from "@/utils/constants";
 import { formatSolBetLine, formatWallet } from "@/utils/format";
 
@@ -45,6 +47,8 @@ export function SidebarNav({ onNavigate }: Props) {
   const pathname = usePathname();
   const { connected, publicKey } = useWallet();
   const balances = useWalletBalances();
+  const searchQuery = useMarketSearchStore((s) => s.query);
+  const setSearchQuery = useMarketSearchStore((s) => s.setQuery);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -126,6 +130,27 @@ export function SidebarNav({ onNavigate }: Props) {
             Create Market
           </Link>
         </motion.div>
+
+        <div className="rounded-md border border-border bg-surface px-2.5 py-2">
+          <label htmlFor="sidebar-market-search" className="sr-only">
+            Search tokens
+          </label>
+          <div className="relative">
+            <Search
+              className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-muted"
+              aria-hidden
+            />
+            <input
+              id="sidebar-market-search"
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search tokens..."
+              className="w-full rounded-md border border-border bg-bg py-2 pl-8 pr-2 font-mono text-[11px] text-white placeholder:text-fg-muted transition-shadow focus:border-accent focus:outline-none focus:shadow-glow-sm"
+              autoComplete="off"
+            />
+          </div>
+        </div>
 
         <div className="rounded-md border border-border bg-surface px-3 py-3">
           <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-fg-muted">
