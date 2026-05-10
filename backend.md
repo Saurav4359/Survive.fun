@@ -94,11 +94,52 @@ Existing rows pick up `usdc` via migration default. **`survive_pool` / `rug_pool
 | GET | `/v1/users/:wallet/bets` | ✅ | Bets + embedded market (`Bet` DTO includes `currency`, `amountUsdc` \| `amountLamports`) |
 | GET | `/v1/stats` | ✅ | Adds **`solVolume24h`** (SOL), **`usdcVolume24h`** (USDC); **`totalBetVolumeUsdc`** is USDC-only lifetime sum (SOL excluded). |
 | GET | `/v1/leaderboard` | ✅ | `?tab=winners|rug-callers|biggest-payouts&limit=` — **USDC-only** for v1 (avoids mixing units). |
-| GET | `/v1/tokens/:mint` | ✅ | DexScreener pair + optional Birdeye enrich; Redis cache 30s |
-| GET | `/v1/markets/:id/chart` | ✅ | `?interval=` OHLCV via Birdeye; Redis warm cache from background job |
+| GET | `/v1/tokens/:mint` | ✅ | DexScreener pair + optional Birdeye enrich; Redis cache 30s (see **Tokens / Birdeye cache** below). |
+| GET | `/v1/markets/:id/chart` | ✅ | **Token price** OHLCV for `tokenMint`: `?interval=` via Birdeye; Redis key `ohlcv:<mint>:<interval>` warmed by **`survive-ohlcv-aggregation`** job. **Not** implied survive/rug pool odds. |
+| GET | `/v1/markets/:id/pool-history` | ✅ | **Pool implied odds** time series from DB (see **Pool history** below). No Birdeye. |
 | POST | `/webhook/helius` | ✅ | Raw JSON; `Authorization: Bearer <HELIUS_WEBHOOK_AUTH_SECRET>` |
 | POST | `/v1/webhook/helius` | ✅ | Same handler (alternate mount) |
 | POST | `/api/v1/webhook/helius` | ✅ | Same handler |
+
+---
+
+## Pool history — `GET /v1/markets/:id/pool-history`
+
+**Purpose:** Replay **survive vs rug pool** (same collateral units as the market) over time so the web app can draw **implied probability** (e.g. `rugPool / (rugPool + survivePool) × 100`) without using token OHLCV.
+
+**Implementation:** `apps/api/src/routes/markets.ts` — `router.get("/:id/pool-history", ...)`.
+
+**Response:** `MarketPoolHistoryResponse` (`@survivefun/types`): `currency` (`sol` \| `usdc`) and `points: MarketPoolHistoryPoint[]` where each point has:
+
+- `t` — Unix seconds (UTC)
+- `survivePoolRaw`, `rugPoolRaw` — **string integers** in native pool units (lamports for SOL markets, USDC minor units for USDC markets), **not** UI floats
+
+**Algorithm (summary):**
+
+1. Load market + all bets ordered by `createdAt` ascending.
+2. Sum bet amounts by side; derive **implied opening pool** as `currentPool − sum(bets)` (floored at 0) so the first point reflects liquidity before recorded bets.
+3. Emit a point at **market `createdAt`** with opening pools, then one point per bet at `bet.createdAt` with running cumulative pools.
+4. Timestamps are strictly increasing (`pushPoint` bumps `t` if needed).
+5. If only **one** point exists (no bets yet), append a second point at `max(now, t+1)` with the same pools so clients can draw a flat “tail to now”.
+
+**Caching:** None — always derived from Postgres; safe to add short Redis TTL later if needed.
+
+**Chart split:** `/markets/:id/chart` = **token** price bars; `/markets/:id/pool-history` = **market** stake split. Do not conflate them in docs or UI.
+
+---
+
+## Tokens / Birdeye cache — `GET /v1/tokens/:mint`
+
+**File:** `apps/api/src/routes/tokens.ts`
+
+- Redis key: `dex:token:<birdeye:y|n>:<mint>` where the segment is **`y`** if `BIRDEYE_API_KEY` is set, else **`n`**. Adding a key after deploy avoids serving **stale** `TokenPair` JSON that was cached **without** Birdeye fields when the key was absent.
+- **`birdeyeTokenOverview`** (`apps/api/src/lib/birdeye.ts`): if the HTTP body has `success: false`, treat as **no overview** (return `null`) so callers do not merge error payloads into `TokenPair`.
+
+---
+
+## Maintainer rule (backend agents)
+
+**Whenever you change `apps/api/` behavior** (routes, jobs, Prisma, env, webhooks, shared types used only by the API, etc.), **update this `backend.md` in the same change**: new/altered endpoints, cache keys, response shapes, env vars, and operational notes. If the change is frontend-only, do not expand this file unless the HTTP contract changed and needs documenting for web clients.
 
 ---
 
@@ -182,7 +223,7 @@ From repo root with API + DB running:
 
 ### Endpoints completed ✅
 
-All listed REST and webhook routes above are implemented in `apps/api/src`.
+All listed REST and webhook routes above are implemented in `apps/api/src`, including **`GET /v1/markets/:id/pool-history`** (pool replay) and the distinction from **`GET /v1/markets/:id/chart`** (token OHLCV).
 
 ### Endpoints pending
 
@@ -203,6 +244,10 @@ Migration: `apps/api/prisma/migrations/20260208120000_add_market_bet_currency/mi
 ---
 
 ## Backend engineer progress (current session)
+
+### Doc maintenance
+
+- **`backend.md`** must stay in sync with **`apps/api/`** changes (this file). Pool-history, chart vs pool semantics, and token Redis/Birdeye behavior are documented in the sections above.
 
 ### Task status
 
