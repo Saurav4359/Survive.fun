@@ -54,3 +54,6 @@ export const MARKET_DURATIONS = [3600, 21600, 86400] as const;
 /** DexScreener latest pairs for one or more token addresses (comma-separated). */
 export const DEXSCREENER_TOKENS_URL =
   "https://api.dexscreener.com/latest/dex/tokens";
+
+/** Primary mark in `apps/web/public` (favicon + nav use this path). */
+export const BRAND_LOGO_SRC = "/Survive-capsule-final-logo.png";
