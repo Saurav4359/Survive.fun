@@ -78,6 +78,15 @@ const config: Config = {
         "glow-sm": "0 0 16px var(--glow)",
         "glow-lg": "0 0 48px var(--glow)",
       },
+      keyframes: {
+        "marquee-hot-markets": {
+          from: { transform: "translateX(0)" },
+          to: { transform: "translateX(-50%)" },
+        },
+      },
+      animation: {
+        "marquee-hot-markets": "marquee-hot-markets 45s linear infinite",
+      },
     },
   },
   plugins: [],

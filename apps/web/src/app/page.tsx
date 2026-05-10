@@ -3,7 +3,7 @@
 import type { ApiResponse, Market, MarketListPage } from "@survivefun/types";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { ArrowRight, Flame, Inbox, Skull } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -56,6 +56,39 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: "new", label: "⚡ New" },
   { key: "watch", label: "⭐ Watch" },
 ];
+
+function TrendingMarketPill({
+  market: m,
+  rank,
+}: {
+  market: Market;
+  rank: number;
+}) {
+  return (
+    <a
+      href={`/market/${m.id}`}
+      className="flex min-w-[200px] shrink-0 items-center gap-2.5 rounded-md border border-border bg-card px-3 py-1.5 transition-colors hover:border-accent"
+    >
+      <span className="w-5 font-mono text-[10px] font-bold tabular-nums text-fg-muted">
+        {rank + 1}
+      </span>
+      <div
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-border bg-bg font-mono text-[11px] font-bold text-accent"
+        aria-hidden
+      >
+        {(m.tokenTicker ?? "?").slice(0, 1).toUpperCase()}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-mono text-xs font-bold text-white">
+          ${m.tokenTicker ?? "—"}
+        </p>
+        <p className="truncate font-mono text-[10px] text-fg-muted">
+          Pool {formatSolBetLine(totalPoolLamports(m) / 1e9)}
+        </p>
+      </div>
+    </a>
+  );
+}
 
 function applyFilter(
   markets: Market[],
@@ -156,6 +189,7 @@ export default function HomePage() {
   );
   const [createError, setCreateError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>("hot");
+  const reduceMotion = useReducedMotion();
 
   const trimmedMint = tokenMint.trim();
   const duplicateMarketQuery = useQuery({
@@ -307,6 +341,44 @@ export default function HomePage() {
 
   return (
     <div className="min-h-full">
+      {/* Hot markets — top strip, infinite marquee */}
+      {trending.length > 0 ? (
+        <section
+          aria-label="Trending markets"
+          className="border-b border-border bg-bg"
+        >
+          <div className="mx-auto flex max-w-[1440px] items-stretch">
+            <div className="flex shrink-0 items-center gap-1.5 border-r border-border px-4 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-accent sm:px-6 lg:px-10">
+              <Flame className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              Hot Markets
+            </div>
+            <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden py-2 pr-4 sm:pr-6 lg:pr-10">
+              {reduceMotion ? (
+                <div className="hide-scrollbar flex gap-2 overflow-x-auto pb-0.5">
+                  {trending.map((m, i) => (
+                    <TrendingMarketPill key={m.id} market={m} rank={i} />
+                  ))}
+                </div>
+              ) : (
+                <div className="flex w-max shrink-0 flex-nowrap motion-safe:animate-marquee-hot-markets will-change-transform hover:[animation-play-state:paused]">
+                  {[0, 1].map((dup) => (
+                    <div key={dup} className="flex shrink-0 gap-2">
+                      {trending.map((m, i) => (
+                        <TrendingMarketPill
+                          key={`${dup}-${m.id}`}
+                          market={m}
+                          rank={i}
+                        />
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       {/* HERO with three.js particle field */}
       <section className="relative overflow-hidden border-b border-border">
         <div className="pointer-events-none absolute inset-0 -z-0">
@@ -334,48 +406,6 @@ export default function HomePage() {
           </motion.div>
         </div>
       </section>
-
-      {/* TRENDING BAR (horizontal scroll) */}
-      {trending.length > 0 ? (
-        <section
-          aria-label="Trending markets"
-          className="border-b border-border bg-bg"
-        >
-          <div className="mx-auto flex max-w-[1440px] items-center gap-3 px-4 py-3 sm:px-6 lg:px-10">
-            <span className="flex shrink-0 items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-accent">
-              <Flame className="h-3.5 w-3.5" />
-              Hot Markets
-            </span>
-            <div className="hide-scrollbar flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1">
-              {trending.map((m, i) => (
-                <a
-                  key={m.id}
-                  href={`/market/${m.id}`}
-                  className="flex min-w-[200px] shrink-0 items-center gap-2.5 rounded-md border border-border bg-card px-3 py-1.5 transition-colors hover:border-accent"
-                >
-                  <span className="w-5 font-mono text-[10px] font-bold tabular-nums text-fg-muted">
-                    {i + 1}
-                  </span>
-                  <div
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-border bg-bg font-mono text-[11px] font-bold text-accent"
-                    aria-hidden
-                  >
-                    {(m.tokenTicker ?? "?").slice(0, 1).toUpperCase()}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-mono text-xs font-bold text-white">
-                      ${m.tokenTicker ?? "—"}
-                    </p>
-                    <p className="truncate font-mono text-[10px] text-fg-muted">
-                      Pool {formatSolBetLine(totalPoolLamports(m) / 1e9)}
-                    </p>
-                  </div>
-                </a>
-              ))}
-            </div>
-          </div>
-        </section>
-      ) : null}
 
       <div className="mx-auto max-w-[1440px] px-4 py-8 sm:px-6 lg:px-10">
         {/* CREATE MARKET */}
