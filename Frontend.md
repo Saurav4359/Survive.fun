@@ -549,6 +549,7 @@ pnpm install
 # web only
 pnpm --filter web dev          # next dev on :3000
 pnpm --filter web build        # production build
+pnpm --filter web analyze      # ANALYZE=true next build (bundle analyzer)
 pnpm --filter web start        # serve build
 
 # quality
@@ -579,8 +580,8 @@ rg -n "border-glow|shadow-inset-glow|text-text-muted|bg-bg-card|bg-bg-surface" a
 Rules:
 
 1. **`#000000` background everywhere.** No off-blacks.
-2. **Lime `#cdf078` is the only accent.** Rug `#ef4444` and warn `#facc15`
-   exist solely for state — never decoration.
+2. **Lime `#8aff8e` is the only accent** (`--accent` / `--survive`). Rug
+   `#ff3b30` and warn `#facc15` exist solely for state — never decoration.
 3. **Zero gradients.** Solid fills only. Glow uses single-color
    `box-shadow`.
 4. **Zero purple / fuchsia / violet** — except **SOL glyph/badge** (`#9945FF`)
@@ -601,7 +602,7 @@ Rules:
 apps/web/
 ├── components.json                         # shadcn registry config
 ├── env.sample
-├── next.config.mjs                         # transpilePackages: workspace types + wallet adapters
+├── next.config.mjs                         # transpilePackages + `@next/bundle-analyzer` when `ANALYZE=true`
 ├── package.json
 ├── postcss.config.mjs
 ├── tailwind.config.ts                      # palette + fontFamily + boxShadow tokens
@@ -642,6 +643,7 @@ apps/web/
     │   │   └── LeaderboardHeader3D.tsx
     │   └── ui/
     │       ├── button.tsx                  # shadcn
+    │       ├── card.tsx                  # Card primitives
     │       └── skeletons.tsx
     ├── idl/
     │   └── survivefun.json                   # Anchor IDL (sync from contracts/target/idl)
@@ -674,11 +676,13 @@ apps/web/
 
 ## 16. Animation library
 
-All UI motion is **framer-motion** (tabs, sliding indicators, list staggers,
-page transitions, modal/drawer/scrim, toasts, market-resolve flash,
+Primary UI motion is **framer-motion** (tabs, sliding indicators, list
+staggers, page transitions, modal/drawer/scrim, toasts, market-resolve flash,
 `whileHover` / `whileTap` button feedback). **three.js** drives the hero
-particle field and the leaderboard 3D headline. GSAP is no longer used —
-the legacy `lib/gsap/*` files are orphaned and can be removed.
+particle field and the leaderboard 3D headline. **CSS** drives the **Hot
+Markets marquee** (Tailwind `keyframes` + `animate-*`). **GSAP** is still used in
+a small, **lazy-loaded** way inside **`LiveFeed`** (`ResolutionFeedCard`) for a
+brief resolve “shake” — it is not a global animation stack.
 
 ---
 
