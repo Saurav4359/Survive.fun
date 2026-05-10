@@ -395,6 +395,16 @@ export default function HomePage() {
               </div>
             ) : null}
 
+            {!publicKey &&
+            /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(trimmedMint) &&
+            !existingMarket ? (
+              <p className="font-mono text-[11px] text-fg-soft">
+                Connect your wallet (top right) to enable{" "}
+                <span className="text-accent">Create Market</span> — creation is
+                on-chain.
+              </p>
+            ) : null}
+
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div
                 className="flex flex-wrap gap-1.5"
