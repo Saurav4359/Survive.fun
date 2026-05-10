@@ -205,6 +205,20 @@ export interface MarketChartResponse {
   source: "birdeye" | "none";
 }
 
+/** One snapshot of pool balances over time (from DB bets + implied opening pool). */
+export interface MarketPoolHistoryPoint {
+  /** Unix seconds (UTC). */
+  t: number;
+  survivePoolRaw: string;
+  rugPoolRaw: string;
+}
+
+/** `GET /v1/markets/:id/pool-history` — SURVIVE vs RUG pool size from recorded bets (Polymarket-style). */
+export interface MarketPoolHistoryResponse {
+  currency: MarketCurrency;
+  points: MarketPoolHistoryPoint[];
+}
+
 /** Paginated active/all markets list. */
 export interface MarketListPage {
   items: Market[];

@@ -2,6 +2,8 @@ import type {
   ApiResponse,
   Market,
   MarketChartResponse,
+  MarketPoolHistoryPoint,
+  MarketPoolHistoryResponse,
   MarketListPage,
   OhlcvBar,
 } from "@survivefun/types";
@@ -315,6 +317,95 @@ router.get("/:id/chart", async (req, res, next) => {
       source,
     };
     const body: ApiResponse<MarketChartResponse> = { success: true, data };
+    res.json(body);
+  } catch (e) {
+    next(e);
+  }
+});
+
+function poolRawFromDecimal(d: Prisma.Decimal): bigint {
+  const s = d.toFixed(0);
+  const head = s.split(".")[0] ?? "0";
+  try {
+    return BigInt(head);
+  } catch {
+    return 0n;
+  }
+}
+
+router.get("/:id/pool-history", async (req, res, next) => {
+  try {
+    const { id } = parseQuery(idParamSchema, req.params);
+    const row = await prisma.market.findUnique({
+      where: { id },
+      include: {
+        bets: { orderBy: { createdAt: "asc" } },
+      },
+    });
+    if (!row) {
+      throw new AppError("NOT_FOUND", "Market not found", 404);
+    }
+
+    const curSurvive = poolRawFromDecimal(row.survivePool);
+    const curRug = poolRawFromDecimal(row.rugPool);
+
+    let sumSurvive = 0n;
+    let sumRug = 0n;
+    for (const b of row.bets) {
+      const amt = poolRawFromDecimal(b.amountUsdc);
+      if (b.side === "survive") sumSurvive += amt;
+      else sumRug += amt;
+    }
+
+    let initSurvive = curSurvive - sumSurvive;
+    let initRug = curRug - sumRug;
+    if (initSurvive < 0n) initSurvive = 0n;
+    if (initRug < 0n) initRug = 0n;
+
+    const points: MarketPoolHistoryPoint[] = [];
+    const createdSec = Math.floor(row.createdAt.getTime() / 1000);
+    let runS = initSurvive;
+    let runR = initRug;
+    let lastT = createdSec - 1;
+
+    const pushPoint = (tRaw: number, s: bigint, r: bigint) => {
+      let t = tRaw;
+      if (t <= lastT) t = lastT + 1;
+      lastT = t;
+      points.push({
+        t,
+        survivePoolRaw: s.toString(),
+        rugPoolRaw: r.toString(),
+      });
+    };
+
+    pushPoint(createdSec, runS, runR);
+
+    for (const b of row.bets) {
+      const amt = poolRawFromDecimal(b.amountUsdc);
+      if (b.side === "survive") runS += amt;
+      else runR += amt;
+      const t = Math.floor(b.createdAt.getTime() / 1000);
+      pushPoint(t, runS, runR);
+    }
+
+    if (points.length === 1) {
+      const only = points[0]!;
+      const nowSec = Math.floor(Date.now() / 1000);
+      const tEnd = Math.max(nowSec, only.t + 1);
+      points.push({
+        t: tEnd,
+        survivePoolRaw: only.survivePoolRaw,
+        rugPoolRaw: only.rugPoolRaw,
+      });
+    }
+
+    const cur = row.currency === "sol" ? "sol" : "usdc";
+    const data: MarketPoolHistoryResponse = {
+      currency: cur,
+      points,
+    };
+    const body: ApiResponse<MarketPoolHistoryResponse> = { success: true, data };
     res.json(body);
   } catch (e) {
     next(e);
