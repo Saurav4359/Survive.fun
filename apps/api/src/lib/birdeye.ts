@@ -37,7 +37,10 @@ export async function birdeyeTokenOverview(
       timeout: 15_000,
       validateStatus: (s) => s === 200,
     });
-    return isRecord(res.data) ? res.data : null;
+    const body = res.data;
+    if (!isRecord(body)) return null;
+    if (body.success === false) return null;
+    return body;
   } catch {
     return null;
   }

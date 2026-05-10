@@ -20,6 +20,12 @@ const router = Router();
 const CACHE_PREFIX = "dex:token:";
 const CACHE_TTL_SEC = 30;
 
+/** Segment cache by Birdeye availability so adding `BIRDEYE_API_KEY` does not reuse pre-key Redis entries. */
+function tokenCacheKey(mint: string): string {
+  const birdeye = process.env.BIRDEYE_API_KEY?.trim() ? "y" : "n";
+  return `${CACHE_PREFIX}${birdeye}:${mint}`;
+}
+
 const mintParamSchema = z.object({
   mint: z
     .string()
@@ -31,7 +37,7 @@ const mintParamSchema = z.object({
 router.get("/:mint", async (req, res, next) => {
   try {
     const { mint } = parseQuery(mintParamSchema, req.params);
-    const cacheKey = `${CACHE_PREFIX}${mint}`;
+    const cacheKey = tokenCacheKey(mint);
 
     const cached = await cacheGet(cacheKey);
     if (cached) {
