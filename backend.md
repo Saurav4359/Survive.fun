@@ -85,14 +85,14 @@ Existing rows pick up `usdc` via migration default. **`survive_pool` / `rug_pool
 | Method | Path | Status | Notes |
 |--------|------|--------|--------|
 | GET | `/health` | ✅ | Liveness |
-| GET | `/v1/markets/active` | ✅ | Paginated active markets (`page`, `limit`); each item includes `currency` |
-| GET | `/v1/markets` | ✅ | List with `?status=active|resolved|expired|all` |
+| GET | `/v1/markets/active` | ✅ | **“Live” active grid (matches UI):** `status = 'active'` **and** `expires_at > now()` — `apps/api/src/routes/markets.ts` `router.get("/active", ...)`. |
+| GET | `/v1/markets` | ✅ | `?status=active|resolved|expired|all` (default **`active`**). For **`status=active`**, same predicate as `/active`: **`status = 'active'` AND `expires_at > now()`** — `router.get("/", ...)`. |
 | GET | `/v1/markets/:id` | ✅ | UUID; includes `currency` |
 | POST | `/v1/markets` | ✅ | Body: `tokenMint`, `duration`, `walletAddress`, `currency` (`sol`\|`usdc`, default `usdc`), optional `createMarketTxSignature`. On-chain `create_market` must match `currency` (see IDL `MarketCurrency`). |
 | GET | `/v1/markets/:id/bets` | ✅ | All bets for market |
 | POST | `/v1/markets/:id/bets` | ✅ | Body: `side`, **`currency`** (`sol`\|`usdc`), `amount` (USDC 1–50 **or** SOL **integer lamports** 1_000_000–50_000_000), `txSignature`, `walletAddress`. **`CURRENCY_MISMATCH`** if bet currency ≠ market. |
 | GET | `/v1/users/:wallet/bets` | ✅ | Bets + embedded market (`Bet` DTO includes `currency`, `amountUsdc` \| `amountLamports`) |
-| GET | `/v1/stats` | ✅ | Adds **`solVolume24h`** (SOL), **`usdcVolume24h`** (USDC); **`totalBetVolumeUsdc`** is USDC-only lifetime sum (SOL excluded). |
+| GET | `/v1/stats` | ✅ | Adds **`solVolume24h`** (SOL), **`usdcVolume24h`** (USDC); **`totalBetVolumeUsdc`** is USDC-only lifetime sum (SOL excluded). **`activeMarkets`** = `count({ status: 'active' })` **only** — does **not** apply `expires_at > now()` (see **Active market list** below). |
 | GET | `/v1/leaderboard` | ✅ | `?tab=winners|rug-callers|biggest-payouts&limit=` — **USDC-only** for v1 (avoids mixing units). |
 | GET | `/v1/tokens/:mint` | ✅ | DexScreener pair + optional Birdeye enrich; Redis cache 30s (see **Tokens / Birdeye cache** below). |
 | GET | `/v1/markets/:id/chart` | ✅ | **Token price** OHLCV for `tokenMint`: `?interval=` via Birdeye; Redis key `ohlcv:<mint>:<interval>` warmed by **`survive-ohlcv-aggregation`** job. **Not** implied survive/rug pool odds. |
@@ -100,6 +100,37 @@ Existing rows pick up `usdc` via migration default. **`survive_pool` / `rug_pool
 | POST | `/webhook/helius` | ✅ | Raw JSON; `Authorization: Bearer <HELIUS_WEBHOOK_AUTH_SECRET>` |
 | POST | `/v1/webhook/helius` | ✅ | Same handler (alternate mount) |
 | POST | `/api/v1/webhook/helius` | ✅ | Same handler |
+
+---
+
+## Active market list (`expires_at`) & resolution lifecycle
+
+### Contract (same as main-page feed)
+
+For **`GET /v1/markets?status=active`** (default) and **`GET /v1/markets/active`**, the Prisma `where` clause is:
+
+- **`status = 'active'`**
+- **`expires_at > now()`** (`expiresAt: { gt: now }` with `now = new Date()` at query time)
+
+**Code:** `apps/api/src/routes/markets.ts` — `router.get("/", ...)` (~L92–L101) and `router.get("/active", ...)` (~L134–L141).
+
+So a row can remain **`status: 'active'`** in the DB after its trading window ends; it **drops off these lists** as soon as **`expires_at` ≤ now**, until something changes `status` (see lifecycle).
+
+### Where the definition differs (no `expires_at` filter today)
+
+| Location | Query | Notes |
+|----------|--------|--------|
+| `GET /v1/stats` | `prisma.market.count({ where: { status: 'active' } })` | **`activeMarkets`** counts **all** DB-active rows, **including** past-`expires_at` until resolver sets `resolved`. `apps/api/src/routes/stats.ts`. |
+| `runStatsUpdater` / `runOhlcvAggregation` | `findMany` / `count` with `{ status: 'active' }` only | `apps/api/src/jobs/backgroundJobs.ts` — OHLCV warm + persisted stats path. |
+| Resolver tick | `findMany({ where: { status: 'active' } })` | **`apps/api/src/jobs/resolver.ts`** — must still **see** post-deadline markets to run **`detectRug`** / **`processMarketResolution`**; intentionally **not** filtered by `expires_at`. |
+
+If product wants **`activeMarkets`** (or jobs) to match the UI definition, add the same **`expiresAt: { gt: new Date() }`** there; otherwise document the mismatch (this table).
+
+### Lifecycle: `expired` vs `resolved`
+
+- **`detectRug`** (`apps/api/src/services/rugDetector.ts`): after heuristics, **`expired`** means wall-clock **`now > market.expiresAt`**. If no rug → **`isSurvive`**; if rug signals → **`isRug`** with a `condition`.
+- **`processMarketResolution`** (`apps/api/src/services/payoutService.ts`): only runs for **`market.status === 'active'`**; calls **`resolve_market`** on-chain, then sets DB **`status: 'resolved'`** + **`outcome`** (`survive` \| `rug`). **No code path here writes `status: 'expired'`.** The string **`expired`** exists on the **list API** (`?status=expired`) and in shared types for **manual / future** use, not as the automated post-window state today.
+- **Summary:** Time-ended markets **vanish from active list endpoints** via **`expires_at > now`**, while DB may still show **`active`** until the resolver successfully moves them to **`resolved`**.
 
 ---
 
@@ -160,10 +191,10 @@ Client events: `subscribe_market`, `subscribe_stats`.
 
 ## Rug detection & resolution
 
-- **Cadence:** `detectRug()` runs for **every active market every 30s** (`apps/api/src/jobs/resolver.ts`), using BullMQ when `REDIS_URL` is set, else `setInterval`.
-- **Checks inside `detectRug`:** dev sell ratio (Helius + RPC), price drop vs open (DexScreener), liquidity removed vs open (DexScreener), graduation stall (Birdeye).
+- **Cadence:** `detectRug()` runs for **every DB-`active` market every 30s** (`apps/api/src/jobs/resolver.ts` — no `expires_at` filter so post-deadline markets are still processed), using BullMQ when `REDIS_URL` is set, else `setInterval`.
+- **Checks inside `detectRug`:** dev sell ratio (Helius + RPC), price drop vs open (DexScreener), liquidity removed vs open (DexScreener), graduation stall (Birdeye); **time:** `now > expiresAt` + no rug → **survive** path.
 - **Exported helpers** (same heuristics): `checkDevSell`, `checkPriceDrop`, `checkLiquidityRemoved` in `apps/api/src/services/rugDetector.ts`.
-- **On rug / expiry:** DB update + `resolveOnChain()` when `PLATFORM_WALLET_SECRET_KEY` is set + `emitMarketResolved`.
+- **On rug or survive:** `processMarketResolution` → on-chain **`resolve_market`** (requires `PLATFORM_WALLET_SECRET_KEY` + RPC), then DB **`resolved`** + **`emitMarketResolved`**. See **Active market list** for how this relates to **`expires_at`** on list endpoints.
 
 ---
 

@@ -279,7 +279,10 @@ Hero background on the homepage (`/`).
   underline slides between tabs. Logic in `applyFilter()`.
 - **Markets grid** — `MarketCard` × N with staggered fade+slide entry
   (`staggerChildren: 0.06`). Search query from zustand filters by name /
-  ticker / mint.
+  ticker / mint. **Time window:** only markets with `status === "active"` **and**
+  `expiresAt` still in the future are shown (`utils/marketListing.ts` +
+  `useFilteredOpenActiveMarkets` on a 1s tick so cards disappear when the window
+  ends, without waiting for the next refetch).
 - **Live Feed** — `<aside className="lg:col-span-3">` next to the grid
   (`lg:grid-cols-12`); stacks **below** the grid on smaller breakpoints. Shows
   global `bet_placed` / `market_resolved` activity (see `LiveFeed` in §7).
@@ -297,11 +300,18 @@ Two-column layout (60/40 on `lg`):
 - **Header**: token avatar (first letter on a black square, lime border),
   name, ticker, large mono price, 24h change colored lime/rug, risk pill,
   `[⭐ Watch]` button toggling `useWatchlist`.
-- **Price chart** — `lightweight-charts` area/line (survive line `#a3e635` with
-  soft fill; rug series when present), pure black background, `#1a1a1a` grid +
-  crosshair, mono axis labels. OHLCV from **`GET /v1/markets/:id/chart`**
-  (Birdeye when configured on the API). Timeframe pills `5m / 15m / 1h` select
-  the interval.
+- **Implied probability chart** — `lightweight-charts` **dual `LineSeries`**
+  (lime survive + red rug, **`LineType.Curved`**, no area fill) from
+  **`GET /v1/markets/:id/pool-history`**, range tabs `ALL / 1H / 15M / 5M`, crosshair
+  tooltip, **`handleScroll` / `handleScale`** disabled + wheel/mousedown/touch
+  `stopPropagation` on the plot container (also a **subtle dashed red border** like
+  the wireframe mock). Series are **anchored at `market.createdAt`** with a shared
+  **50/50** point (both lines leave the **vertical center** together) when the first
+  snapshot is after creation; **linear midpoints** (rug = 100 − survive, many
+  segments) densify between real pool snapshots so curves read organic. After
+  `setData`, **`timeScale().setVisibleLogicalRange({ from: 0, to: n−1 })`** (+
+  rAF) pins the first sample to the **left edge** of the pane (**`fixLeftEdge` /
+  `fixRightEdge` false**, **`rightOffset: 0`**).
 - **Signals row** — Liquidity, Token age, Bettors (from market record). Each
   signal is a `motion.div` with staggered `delay = index * 0.07`. A footnote
   can mention holder metrics when the backend has Birdeye enabled.
@@ -341,8 +351,10 @@ Two-column layout (60/40 on `lg`):
 ### Live Rugs / Live / Profile / Chat
 
 Refactored to the strict theme — header animates in with framer, content
-either renders `MarketCard`s (live / live-rugs filtered subsets) or simple
-placeholder copy in pure-black panels.
+either renders `MarketCard`s (**`/live`** and **`/live-rugs`** use the same
+`marketsQueryKey` data as home, then **`useFilteredOpenActiveMarkets`** so
+expired-window markets drop off like the homepage) or simple placeholder copy
+in pure-black panels.
 
 ### Error pages
 
@@ -408,7 +420,8 @@ error message, "Try again" button (framer `whileTap: 0.97`).
 
 | Hook                       | Returns                                                                | Source                                     |
 | -------------------------- | ---------------------------------------------------------------------- | ------------------------------------------ |
-| `useMarkets`               | Active markets list                                                    | `GET /v1/markets/active` via TanStack      |
+| `useMarkets`               | Active markets list (response filtered client-side to `status === "active"` **and** `expiresAt` in the future) | `GET /v1/markets/active` via TanStack      |
+| `useFilteredOpenActiveMarkets(raw)` | Same list, re-evaluated every 1s; updates React state **only** when membership/order changes (home, `/live`, `/live-rugs`). | pure client (`utils/marketListing.ts`) |
 | `useMarket(id)`            | Single market detail                                                   | `GET /v1/markets/:id`                      |
 | `useToken(mint)`           | Normalized token + primary pair (price, liquidity, etc.)                 | `GET /v1/tokens/:mint`                     |
 | `useLeaderboard(tab)`      | Ranked wallets for winners / rug-callers / biggest-payouts              | `GET /v1/leaderboard?tab=…`               |
@@ -421,7 +434,7 @@ error message, "Try again" button (framer `whileTap: 0.97`).
 | `useWatchlist`             | localStorage-backed star/unstar list                                   | Local                                      |
 | `useWebSocket`             | Per-market scoped snapshot — `{ isConnected, latestBet, poolUpdate, marketResolved, subscribeToMarket }`. Only events for the subscribed market populate the snapshot. | shared singleton |
 | `useWebSocketEvents`       | Global callbacks `{ onBetPlaced?, onPoolUpdate?, onMarketResolved? }` that fire for **every** validated event, ref-stable handlers. | shared singleton |
-| `useMarketsLiveSync`       | Patches `marketsQueryKey` and any hot `marketQueryKey(id)` cache slices in place from socket events so all pages stay live without polling. Mounted once at the provider root. | wraps `useWebSocketEvents` |
+| `useMarketsLiveSync`       | Patches `marketsQueryKey` and any hot `marketQueryKey(id)` cache slices in place from socket events so all pages stay live without polling. After each patch, **`marketsQueryKey`** is trimmed with **`isActiveMarketStillOpen`** so expired-window rows fall out. Mounted once at the provider root. | wraps `useWebSocketEvents` |
 
 Every TanStack query exports a `…QueryKey` constant so mutations can
 `queryClient.invalidateQueries()` against the right cache slice.
@@ -649,6 +662,7 @@ apps/web/
     │   └── survivefun.json                   # Anchor IDL (sync from contracts/target/idl)
     ├── hooks/
     │   ├── useSolUsdPrice.ts                 # CoinGecko SOL/USD for bet panel
+    │   ├── useFilteredOpenActiveMarkets.ts   # drop markets past expiresAt (1s tick, minimal re-renders)
     │   ├── useLeaderboard.ts
     │   ├── useMarket.ts
     │   ├── useMarketBetsList.ts
@@ -669,6 +683,7 @@ apps/web/
         ├── constants.ts                    # PROGRAM_ID, RPC, API URL, SOL stake bounds, durations
         ├── format.ts                       # SOL / USD (fiat) / wallet / time / pool formatters
         ├── marketRisk.ts                   # HIGH/MEDIUM/LOW scoring
+        ├── marketListing.ts                # isActiveMarketStillOpen (active + expiresAt)
         └── transactions.ts                 # Anchor instruction builders + error mapping
 ```
 
@@ -687,6 +702,22 @@ brief resolve “shake” — it is not a global animation stack.
 ---
 
 ## 17. Frontend Agent — Session Log
+
+### 2026-05-10 (active markets list vs `expiresAt`)
+
+**Completed**
+
+- ✅ **`utils/marketListing.ts`** — `isActiveMarketStillOpen(market)` (`status === "active"` and `Date.now() < Date.parse(expiresAt)`).
+- ✅ **`hooks/useFilteredOpenActiveMarkets.ts`** — wraps TanStack `marketsQueryKey` data for **`/`**, **`/live`**, **`/live-rugs`**; 1s interval, state update only when filtered ids change.
+- ✅ **`hooks/useMarkets.ts`** — `fetchActiveMarkets` filters the JSON payload with the same rule (belt-and-suspenders with API).
+- ✅ **`app/page.tsx`** — home markets query `queryFn` applies the same filter; grid consumes `useFilteredOpenActiveMarkets`.
+- ✅ **`hooks/useMarketsLiveSync.ts`** — after `pool_update` / `bet_placed` / `market_resolved` cache patches, list cache is re-filtered so expired or resolved rows disappear immediately.
+
+**Backend (not tracked in this file)**
+
+- The API **`GET /v1/markets?status=active`** and **`GET /v1/markets/active`** also constrain **`expires_at > now`** so the server does not return betting-closed markets as “active”. Have the **backend agent** record that contract in **`backend.md`** (query semantics + any cron/job that flips `status` after resolve).
+
+**Build:** `pnpm --filter web build` → success.
 
 ### 2026-05-09 (wallet-adapter reference migration)
 
@@ -833,7 +864,9 @@ may still hold **SOL lamports** — UI divides by 1e9.
 
 **Needs backend ready first (no frontend change required)**
 
-- 🔌 `/v1/markets/active`, `/v1/markets/:id`, `/v1/markets/:id/bets`,
+- 🔌 `/v1/markets/active`, `/v1/markets?status=active` (server omits rows with
+  **`expires_at` ≤ now**; see **`backend.md`** for backend agent notes),
+  `/v1/markets/:id`, `/v1/markets/:id/bets`, `/v1/markets/:id/pool-history`,
   `/v1/markets/:id/chart`, `/v1/users/:wallet/bets`, `/v1/stats`,
   `/v1/leaderboard`, `/v1/tokens/:mint`, `POST /v1/markets`,
   `POST /v1/markets/:id/bets` — all referenced by the frontend right now.
