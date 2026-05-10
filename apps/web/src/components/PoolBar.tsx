@@ -47,7 +47,7 @@ export function PoolBar({
   }, [survivePct]);
 
   return (
-    <div className="space-y-1.5">
+    <div className="flex flex-col gap-1.5">
       {showLabels ? (
         <div className="flex items-center justify-between font-mono text-[11px] font-semibold tracking-wide">
           <span className="text-survive">{surviveLabel}</span>

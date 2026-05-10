@@ -5,6 +5,15 @@ import { motion } from "framer-motion";
 import { Clock, TrendingUp } from "lucide-react";
 import Link from "next/link";
 
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { formatPoolTotals, formatUsd, parsePoolLamports } from "@/utils/format";
 
 import { PoolBar } from "./PoolBar";
@@ -23,12 +32,24 @@ function inferRisk(market: Market): RiskLevel {
 }
 
 const RISK_STYLES: Record<RiskLevel, string> = {
-  HIGH: "border-rug/60 text-rug",
-  MEDIUM: "border-warn/60 text-warn",
-  LOW: "border-accent/60 text-accent",
+  HIGH: "border-rug text-rug shadow-[0_0_14px_-6px_var(--rug)]",
+  MEDIUM: "border-warn/80 text-warn",
+  LOW: "border-accent/70 text-accent",
 };
 
 const SOL_BADGE = "#9945FF";
+
+const springHover = { type: "spring" as const, stiffness: 460, damping: 22 };
+
+/** List grids use `staggerChildren`; these variants animate each card in. */
+const cardListVariants = {
+  hidden: { opacity: 0, y: 22 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { type: "spring" as const, stiffness: 340, damping: 28 },
+  },
+};
 
 export function MarketCard({ market }: { market: Market }) {
   const name = market.tokenName?.trim() || "Unknown token";
@@ -41,93 +62,120 @@ export function MarketCard({ market }: { market: Market }) {
   const hasPrice = Number.isFinite(priceNum);
   const expiresAt = new Date(market.expiresAt);
   const risk = inferRisk(market);
+
   return (
     <motion.div
-      whileHover={{ scale: 1.01 }}
-      transition={{ duration: 0.18, ease: "easeOut" }}
-      className="group relative"
+      className="group/card-hover h-full"
+      variants={cardListVariants}
+      whileHover={{
+        y: -6,
+        transition: springHover,
+      }}
+      whileTap={{ scale: 0.992 }}
     >
       <Link
         href={`/market/${market.id}`}
-        className="relative flex flex-col gap-4 border border-border bg-card p-4 transition-[border-color,box-shadow] duration-200 hover:border-accent hover:shadow-glow-sm focus-visible:border-accent focus-visible:shadow-glow-sm focus-visible:outline-none"
+        className="block h-full focus-visible:outline-none"
       >
-        <header className="flex items-start gap-3">
-          <TokenThumb mint={market.tokenMint} ticker={ticker} size={40} />
-          <div className="min-w-0 flex-1">
-            <h3 className="truncate font-display text-base font-bold tracking-tight text-white">
-              {name}
-            </h3>
-            <p className="font-mono text-xs font-medium text-fg-muted">
-              ${ticker}
-            </p>
-          </div>
-          <div className="flex shrink-0 flex-col items-end gap-1">
-            <span
-              className="inline-flex items-center gap-1 rounded-sm border border-border bg-bg px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.15em]"
-              style={{ color: SOL_BADGE }}
-            >
-              <span aria-hidden>◎</span> SOL
-            </span>
-            <span
-              className={`rounded-sm border px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider bg-bg ${RISK_STYLES[risk]}`}
-            >
-              {risk}
-            </span>
-          </div>
-        </header>
-
-        <div className="flex items-end justify-between gap-3 border border-border bg-bg px-3 py-2">
-          <div>
-            <p className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-fg-muted">
-              Price
-            </p>
-            <p className="mt-0.5 font-mono text-base font-semibold tabular-nums text-white">
-              {hasPrice ? formatUsd(priceNum) : "—"}
-            </p>
-          </div>
-          <div className="flex items-center gap-1.5 text-right">
-            <TrendingUp className="h-3.5 w-3.5 text-fg-muted" aria-hidden />
-            <div>
-              <p className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-fg-muted">
-                24h
-              </p>
-              <p className="mt-0.5 font-mono text-xs font-semibold tabular-nums text-fg-soft">
-                —
-              </p>
+        <Card
+          size="sm"
+          className={cn(
+            /* Single hairline border — no stacked ring (reads thicker). */
+            "h-full justify-between gap-5 rounded-lg border border-border bg-card py-0 shadow-none ring-0",
+            "transition-[border-color,box-shadow] duration-200 ease-out",
+            /* Hover: thin 1px accent stroke only; glow stays very soft */
+            "hover:border-accent hover:shadow-[0_0_20px_-12px_var(--glow)]",
+            "group-hover/card-hover:border-accent",
+            "focus-visible:border-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/30",
+          )}
+        >
+          <CardHeader className="flex flex-row items-start gap-4 px-5 pb-0 pt-6">
+            <TokenThumb mint={market.tokenMint} ticker={ticker} size={44} />
+            <div className="min-w-0 flex-1">
+              <CardTitle className="truncate border-0 p-0 font-display text-base font-bold tracking-tight text-white">
+                {name}
+              </CardTitle>
+              <CardDescription className="mt-1 font-mono text-xs font-medium text-fg-muted">
+                ${ticker}
+              </CardDescription>
             </div>
-          </div>
-        </div>
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              <span
+                className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2.5 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.15em]"
+                style={{ color: SOL_BADGE }}
+              >
+                <span aria-hidden>◎</span> SOL
+              </span>
+              <span
+                className={cn(
+                  "rounded-md border px-2.5 py-1 font-mono text-[9px] font-bold uppercase tracking-wider",
+                  RISK_STYLES[risk],
+                )}
+              >
+                {risk}
+              </span>
+            </div>
+          </CardHeader>
 
-        <PoolBar survivePool={survive} rugPool={rug} />
+          <CardContent className="flex flex-col gap-5 px-5 pb-1 pt-5">
+            <div className="flex items-end justify-between gap-4 rounded-lg border border-border bg-bg px-4 py-3">
+              <div>
+                <p className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-fg-muted">
+                  Price
+                </p>
+                <p className="mt-1 font-mono text-base font-semibold tabular-nums text-white">
+                  {hasPrice ? formatUsd(priceNum) : "—"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 text-right">
+                <TrendingUp className="size-3.5 text-fg-muted" aria-hidden />
+                <div>
+                  <p className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-fg-muted">
+                    24h
+                  </p>
+                  <p className="mt-1 font-mono text-xs font-semibold tabular-nums text-fg-soft">
+                    —
+                  </p>
+                </div>
+              </div>
+            </div>
 
-        <div className="grid grid-cols-2 gap-2 font-mono text-[11px]">
-          <div className="border border-border bg-bg px-2.5 py-1.5">
-            <p className="text-[9px] font-bold uppercase tracking-wider text-survive">
-              Survive pool
-            </p>
-            <p className="mt-0.5 font-mono tabular-nums text-white">
-              {poolCells.survive}
-            </p>
-          </div>
-          <div className="border border-border bg-bg px-2.5 py-1.5">
-            <p className="text-[9px] font-bold uppercase tracking-wider text-rug">
-              Rug pool
-            </p>
-            <p className="mt-0.5 font-mono tabular-nums text-white">
-              {poolCells.rug}
-            </p>
-          </div>
-        </div>
+            <PoolBar survivePool={survive} rugPool={rug} />
 
-        <div className="flex items-center justify-between border-t border-border pt-3">
-          <div className="flex items-center gap-1.5 font-mono text-xs">
-            <Clock className="h-3.5 w-3.5 text-accent" aria-hidden />
-            <Timer expiresAt={expiresAt} />
-          </div>
-          <span className="rounded-sm border border-accent px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-accent transition-colors group-hover:bg-accent group-hover:text-ink">
-            Bet
-          </span>
-        </div>
+            <div className="grid grid-cols-2 gap-3 font-mono text-[11px]">
+              <div className="rounded-lg border border-border bg-bg px-3 py-3">
+                <p className="text-[9px] font-bold uppercase tracking-wider text-survive">
+                  Survive pool
+                </p>
+                <p className="mt-1.5 font-mono tabular-nums text-white">
+                  {poolCells.survive}
+                </p>
+              </div>
+              <div className="rounded-lg border border-rug/35 bg-bg px-3 py-3">
+                <p className="text-[9px] font-bold uppercase tracking-wider text-rug">
+                  Rug pool
+                </p>
+                <p className="mt-1.5 font-mono tabular-nums text-white">
+                  {poolCells.rug}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+
+          <CardFooter className="mt-auto flex items-center justify-between gap-3 rounded-b-lg border-t border-border bg-transparent px-5 py-4">
+            <div className="flex items-center gap-2 font-mono text-xs">
+              <Clock className="size-3.5 text-accent" aria-hidden />
+              <Timer expiresAt={expiresAt} />
+            </div>
+            <motion.span
+              className="rounded-md border border-accent px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-accent transition-colors duration-200 group-hover/card-hover:bg-accent group-hover/card-hover:text-ink"
+              whileHover={{ scale: 1.03 }}
+              transition={{ type: "spring", stiffness: 500, damping: 24 }}
+            >
+              Bet
+            </motion.span>
+          </CardFooter>
+        </Card>
       </Link>
     </motion.div>
   );
