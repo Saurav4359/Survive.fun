@@ -358,11 +358,11 @@ error message, "Try again" button (framer `whileTap: 0.97`).
 
 | File                     | Responsibility                                                                             |
 | ------------------------ | ------------------------------------------------------------------------------------------ |
-| `MarketCard.tsx`         | Token avatar, **◎ SOL** collateral badge, risk badge, USD token **price** via `formatUsd`, `<PoolBar>` (lamports), SURVIVE/RUG pool lines via `formatPoolTotals`, timer, "Bet" CTA. `whileHover: scale 1.01`, `hover:shadow-glow-sm`. |
+| `MarketCard.tsx`         | Token thumb + name/ticker, **◎ SOL** + risk badges, USD **price** via `formatUsd`, `<PoolBar>` (lamports — **no** duplicate Survive/Rug pool stat tiles; bar is the pool summary), timer (`Timer` accepts `className` merged with urgency styles), "Bet" CTA. Hover lift on the outer motion wrapper. |
 | `PoolBar.tsx`            | Animated SURVIVE/RUG ratio bar. `motion.div` width animates from 0 → target with cubic-bezier. Labels are mono, side-coded lime/rug. |
-| `Timer.tsx`              | Live HH:MM:SS countdown using `setInterval`. Lime when active → rug + `.pulse-rug` under 5m → `text-fg-muted` when ended. `suppressHydrationWarning` for SSR. |
+| `Timer.tsx`              | Live HH:MM:SS countdown using `setInterval`. Lime when active → rug + `.pulse-rug` under 5m → muted when ended. Optional `className` is **`cn()`-merged** with base styles so callers can bump size without losing urgent colors. `suppressHydrationWarning` for SSR. |
 | `BetPanel.tsx`           | **SOL-only** collateral: header “Place a bet ◎ SOL”, balance from `useWalletBalances`, amount **0.01–10 SOL** with quick picks `QUICK_SOL_AMOUNTS`, inline validation (min/max/wallet), payout preview (`potentialPayoutLamports` + `formatSolBetLine`). On-chain bet uses Anchor `place_bet` (native transfer inside program). Props: `{ market, onBet(side, amountSolUi), position?: { side, stakeSol } }`. |
-| `LiveFeed.tsx`           | `socket.io-client` listener for `bet_placed`. New rows slide in from top via `AnimatePresence`, side-coded lime/rug left border, fade-out after 30s. Optionally scoped to a `marketId`. |
+| `LiveFeed.tsx`           | **`useWebSocketEvents`** (shared socket) for `bet_placed` + `market_resolved`. Rows prepend, list scrolls to top; **opacity** fades rows after ~30s. **Resolution** rows optionally run a short **GSAP** wiggle on mount. **`useReducedMotion()`**: horizontal scroll fallback instead of marquee on the **homepage strip only** (see §6); feed itself still uses motion for row enter/exit unless OS reduce-motion applies. |
 | `RiskScore.tsx`          | Risk panel with HIGH/MEDIUM/LOW badge + Dev held / Liquidity / Token age stats. Logic in `utils/marketRisk.ts`. |
 | `WalletConnectButton.tsx`| **`next/dynamic` client-only** wrapper around `WalletConnectButtonInner.tsx`: Connect Wallet → modal; Connecting…; connected → truncated address + ◎ SOL (4 dp) + dropdown (copy / switch / disconnect). |
 | `WalletToastBridge.tsx` | Subscribes to `survive:wallet-toast` for `WalletProvider` `onError` messages. |
@@ -382,7 +382,7 @@ error message, "Try again" button (framer `whileTap: 0.97`).
 | -------------------------- | ----------------------------------------------------------------------------- |
 | `layout/AppShell.tsx`      | Fixed sidebar + topbar + main column + mobile drawer.                         |
 | `layout/SidebarNav.tsx`    | Sidebar contents — logo, nav, create-market button, holdings.                 |
-| `layout/TopBar.tsx`        | Search + connect/balance dropdown.                                            |
+| `layout/TopBar.tsx`        | Search (left of spacer, zustand) + wallet on the right; see §4.                |
 | `layout/TrendingMarketsStrip.tsx` | Reusable horizontal token strip (variant of the homepage strip).       |
 
 ### Three.js
@@ -398,7 +398,8 @@ error message, "Try again" button (framer `whileTap: 0.97`).
 | ------------------------------- | ------------------------------------------------------------------------- |
 | `components.json`               | shadcn registry config (style: new-york, base: zinc, css vars).           |
 | `ui/button.tsx`                 | shadcn Button — variants `default | destructive | outline | secondary | ghost | link`. |
-| `ui/skeletons.tsx`              | Flat `bg-surface` skeletons with `animate-pulse` for loading states.       |
+| `ui/card.tsx`                   | Shared `Card` / `CardHeader` / `CardContent` / `CardFooter` primitives (tighter padding variants for dense grids). |
+| `ui/skeletons.tsx`              | Flat `bg-surface` skeletons with `animate-pulse` for loading states (includes `MarketCardSkeleton` aligned to card layout). |
 | `lib/utils.ts`                  | `cn()` = `twMerge(clsx(...))`.                                            |
 
 ---
