@@ -1,35 +1,32 @@
 "use client";
 
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
+import type { ComponentType } from "react";
 
 type Props = {
   className?: string;
 };
 
-/**
- * Wallet adapter buttons depend on `window` / extensions and render different DOM
- * on the server vs client — defer until mounted to avoid hydration errors.
- */
-export function WalletConnectButton({ className }: Props) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) {
-    return (
+const WalletConnectButtonInner = dynamic(
+  () =>
+    import("./WalletConnectButtonInner").then((m) => ({
+      default: m.WalletConnectButtonInner,
+    })),
+  {
+    ssr: false,
+    loading: () => (
       <button
         type="button"
         disabled
-        className={className}
-        aria-label="Loading wallet button"
+        className="rounded-md border border-border px-4 py-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-fg-muted"
+        aria-label="Loading wallet controls"
       >
-        Connect wallet
+        Connect Wallet
       </button>
-    );
-  }
+    ),
+  },
+) as ComponentType<Props>;
 
-  return <WalletMultiButton className={className} />;
+export function WalletConnectButton(props: Props) {
+  return <WalletConnectButtonInner {...props} />;
 }
