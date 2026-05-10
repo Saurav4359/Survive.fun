@@ -5,14 +5,14 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { ArrowRight, Flame, Inbox, Skull } from "lucide-react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { CountUp } from "@/components/CountUp";
 import { EmptyState } from "@/components/EmptyState";
 import { LiveFeed } from "@/components/LiveFeed";
 import { MarketCard } from "@/components/MarketCard";
-import { ParticleField } from "@/components/three/ParticleField";
 import { useToast } from "@/components/ToastProvider";
 import { marketsQueryKey } from "@/hooks/useMarkets";
 import { fetchStats, statsQueryKey } from "@/hooks/useStats";
@@ -21,6 +21,22 @@ import { useMarketSearchStore } from "@/stores/marketSearchStore";
 import { apiV1Url, MARKET_DURATIONS } from "@/utils/constants";
 import { formatSolBetLine, parsePoolLamports } from "@/utils/format";
 import { totalPoolLamports } from "@/utils/marketRisk";
+
+/**
+ * WebGL has no Node canvas — this component must hydrate on the client only.
+ * That is unrelated to “dev vs prod”: `next build` + `next start` still ship an optimized bundle.
+ * Code-splitting keeps three.js out of the initial JS parse; prefetch below warms the chunk on idle.
+ */
+const ParticleField = dynamic(
+  () =>
+    import("@/components/three/ParticleField").then((m) => m.ParticleField),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="absolute inset-0 bg-bg" aria-hidden />
+    ),
+  },
+);
 
 const DURATION_TABS: {
   label: string;
@@ -77,6 +93,17 @@ function applyFilter(
 }
 
 export default function HomePage() {
+  useEffect(() => {
+    const prefetch = () =>
+      void import("@/components/three/ParticleField");
+    const ric = window.requestIdleCallback?.(prefetch, { timeout: 1200 });
+    if (ric != null) {
+      return () => window.cancelIdleCallback?.(ric);
+    }
+    const t = window.setTimeout(prefetch, 400);
+    return () => window.clearTimeout(t);
+  }, []);
+
   const wallet = useWallet();
   const { publicKey } = wallet;
   const queryClient = useQueryClient();
@@ -490,7 +517,7 @@ export default function HomePage() {
         {/* STATS BAR */}
         <section
           aria-label="Platform statistics"
-          className="mt-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4"
+          className="mt-6 grid grid-cols-2 gap-4 sm:gap-5 lg:grid-cols-4 lg:gap-6"
         >
           {statsLoading ? (
             Array.from({ length: 4 }).map((_, i) => (
@@ -591,7 +618,7 @@ export default function HomePage() {
                 </p>
               ) : null}
               {marketsLoading ? (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-7 xl:grid-cols-3 xl:gap-8">
                   {Array.from({ length: 6 }).map((_, i) => (
                     <div
                       key={i}
@@ -624,19 +651,10 @@ export default function HomePage() {
                     hidden: {},
                     show: { transition: { staggerChildren: 0.06 } },
                   }}
-                  className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
+                  className="grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-7 xl:grid-cols-3 xl:gap-8"
                 >
                   {filtered.map((market) => (
-                    <motion.div
-                      key={market.id}
-                      variants={{
-                        hidden: { opacity: 0, y: 18 },
-                        show: { opacity: 1, y: 0 },
-                      }}
-                      transition={{ duration: 0.35 }}
-                    >
-                      <MarketCard market={market} />
-                    </motion.div>
+                    <MarketCard key={market.id} market={market} />
                   ))}
                 </motion.div>
               )}
