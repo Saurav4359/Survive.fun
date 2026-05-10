@@ -21,32 +21,36 @@ export function TopBar({ onMenuClick }: Props) {
   const setQuery = useMarketSearchStore((s) => s.setQuery);
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-bg px-3 sm:h-16 sm:gap-4 sm:px-5">
-      <button
-        type="button"
-        onClick={onMenuClick}
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-bg text-white lg:hidden"
-        aria-label="Open menu"
-      >
-        <Menu className="h-5 w-5" />
-      </button>
+    <header className="sticky top-0 z-30 flex h-14 w-full shrink-0 items-center gap-3 border-b border-border bg-bg px-3 sm:h-16 sm:gap-4 sm:px-5">
+      {/* Left: menu + brand (mobile / tablet only) */}
+      <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-2.5">
+        <button
+          type="button"
+          onClick={onMenuClick}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-bg text-white lg:hidden"
+          aria-label="Open menu"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
 
-      <Link
-        href="/"
-        className="flex shrink-0 items-center gap-2 lg:hidden"
-        aria-label="Survive.fun home"
-      >
-        <Image
-          src={BRAND_LOGO_SRC}
-          alt=""
-          width={32}
-          height={32}
-          className="brand-logo-match-accent h-8 w-8 shrink-0 object-contain"
-        />
-        <BrandWordmark className="text-sm leading-none sm:text-base" />
-      </Link>
+        <Link
+          href="/"
+          className="flex shrink-0 items-center gap-2 lg:hidden"
+          aria-label="Survive.fun home"
+        >
+          <Image
+            src={BRAND_LOGO_SRC}
+            alt=""
+            width={32}
+            height={32}
+            className="brand-logo-match-accent h-8 w-8 shrink-0 object-contain"
+          />
+          <BrandWordmark className="text-sm leading-none sm:text-base" />
+        </Link>
+      </div>
 
-      <div className="relative min-w-0 flex-1 max-w-2xl">
+      {/* Search — left (after menu/brand), ~2× prior widths; cap on narrow viewports */}
+      <div className="relative min-w-0 w-[min(100%,19rem)] shrink-0 sm:w-[22rem] md:w-[26rem] lg:w-[28rem]">
         <Search
           className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-muted"
           aria-hidden
@@ -61,7 +65,9 @@ export function TopBar({ onMenuClick }: Props) {
         />
       </div>
 
-      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+      <div className="min-w-0 flex-1" aria-hidden />
+
+      <div className="flex shrink-0 items-center">
         <WalletConnectButton className={CONNECT_CLASS} />
       </div>
     </header>
