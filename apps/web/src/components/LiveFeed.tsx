@@ -10,10 +10,15 @@ import type {
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { AnimatePresence, motion } from "framer-motion";
 import { Zap } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { useWebSocketEvents } from "@/hooks/useWebSocket";
-import { gsap, useGSAP } from "@/lib/gsap/register";
 import { apiV1Url } from "@/utils/constants";
 import { formatBetStake, formatSolBetLine, formatWallet } from "@/utils/format";
 
@@ -117,26 +122,36 @@ function ResolutionFeedCard({
   row: Extract<FeedRow, { kind: "resolved" }>;
   opacity: number;
 }) {
-  const rootRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
 
-  useGSAP(
-    () => {
-      const el = rootRef.current;
-      if (!el) return;
-      gsap.fromTo(
-        el,
-        { rotation: -2, transformOrigin: "50% 50%" },
-        {
-          rotation: 2,
-          duration: 0.22,
-          yoyo: true,
-          repeat: 2,
-          ease: "sine.inOut",
-        },
-      );
-    },
-    { scope: rootRef, dependencies: [row.id] },
-  );
+  /** GSAP is lazy-loaded so it isn’t parsed with the feed module — production-friendly splitting. */
+  useLayoutEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+
+    let cancelled = false;
+    let ctx: { revert: () => void } | undefined;
+
+    const pending = import("gsap").then(({ gsap }) => {
+      if (cancelled) return;
+      ctx = gsap.context(() => {
+        gsap
+          .timeline({ defaults: { ease: "power2.inOut" } })
+          .to(el, { rotation: -2, duration: 0.09 })
+          .to(el, { rotation: 2, duration: 0.09 })
+          .to(el, { rotation: -2, duration: 0.09 })
+          .to(el, { rotation: 2, duration: 0.09 })
+          .to(el, { rotation: 0, duration: 0.1, ease: "power2.out" });
+      }, el);
+    });
+
+    return () => {
+      cancelled = true;
+      void pending.then(() => {
+        ctx?.revert();
+      });
+    };
+  }, [row.id]);
 
   const border =
     row.outcome === "rug"
@@ -152,7 +167,11 @@ function ResolutionFeedCard({
       style={{ opacity }}
       className={`${border} px-3 py-2.5`}
     >
-      <div ref={rootRef} className="flex items-start justify-between gap-3">
+      <div
+        ref={bodyRef}
+        className="flex items-start justify-between gap-3"
+        style={{ transformOrigin: "50% 50%" }}
+      >
         <div className="min-w-0 flex-1">
           <p className="font-mono text-[11px] font-semibold leading-snug text-white">
             {row.headline}
@@ -279,7 +298,7 @@ export function LiveFeed({
       </div>
       <div
         ref={listRef}
-        className="max-h-[420px] space-y-2 overflow-y-auto px-3 py-3 sm:max-h-[520px] hide-scrollbar"
+        className="flex max-h-[420px] flex-col gap-2 overflow-y-auto px-3 py-3 sm:max-h-[520px] hide-scrollbar"
       >
         {rows.length === 0 ? (
           <p className="px-2 py-10 text-center font-mono text-xs text-fg-muted">
