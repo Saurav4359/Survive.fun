@@ -1,9 +1,13 @@
 "use client";
 
 import { Menu, Search } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
 
+import { BrandWordmark } from "@/components/layout/BrandWordmark";
 import { WalletConnectButton } from "@/components/WalletConnectButton";
 import { useMarketSearchStore } from "@/stores/marketSearchStore";
+import { BRAND_LOGO_SRC } from "@/utils/constants";
 
 const CONNECT_CLASS =
   "!rounded-md !border !border-accent !bg-transparent !px-4 !py-2 !font-mono !text-[11px] !font-bold !uppercase !tracking-[0.15em] !text-accent hover:!bg-accent hover:!text-ink transition-colors";
@@ -26,6 +30,21 @@ export function TopBar({ onMenuClick }: Props) {
       >
         <Menu className="h-5 w-5" />
       </button>
+
+      <Link
+        href="/"
+        className="flex shrink-0 items-center gap-2 lg:hidden"
+        aria-label="Survive.fun home"
+      >
+        <Image
+          src={BRAND_LOGO_SRC}
+          alt=""
+          width={32}
+          height={32}
+          className="brand-logo-match-accent h-8 w-8 shrink-0 object-contain"
+        />
+        <BrandWordmark className="text-sm leading-none sm:text-base" />
+      </Link>
 
       <div className="relative min-w-0 flex-1 max-w-2xl">
         <Search

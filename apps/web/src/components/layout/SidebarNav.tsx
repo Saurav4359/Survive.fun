@@ -11,12 +11,15 @@ import {
   User,
   Zap,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ComponentType, SVGProps } from "react";
 
+import { BrandWordmark } from "@/components/layout/BrandWordmark";
 import { cn } from "@/lib/utils";
 import { useWalletBalances } from "@/hooks/useWalletBalances";
+import { BRAND_LOGO_SRC } from "@/utils/constants";
 import { formatSolBetLine, formatWallet } from "@/utils/format";
 
 type NavItem = {
@@ -49,12 +52,19 @@ export function SidebarNav({ onNavigate }: Props) {
       <Link
         href="/"
         onClick={onNavigate}
-        className="mb-7 flex shrink-0 items-center gap-2 px-1"
+        className="mb-7 flex shrink-0 items-center gap-2.5 px-1"
       >
-        <Skull className="h-6 w-6 text-accent" strokeWidth={2} aria-hidden />
+        <Image
+          src={BRAND_LOGO_SRC}
+          alt=""
+          width={36}
+          height={36}
+          className="brand-logo-match-accent h-9 w-9 shrink-0 object-contain"
+          priority
+        />
         <div className="leading-tight">
-          <p className="font-display text-base font-bold tracking-tight text-white">
-            survive<span className="text-accent">.fun</span>
+          <p className="text-base leading-tight">
+            <BrandWordmark />
           </p>
           <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-fg-soft">
             Survival markets
