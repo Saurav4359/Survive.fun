@@ -1,6 +1,7 @@
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 
 import { RPC_URL } from "@/utils/constants";
 
@@ -23,7 +24,7 @@ export function useWalletBalances() {
   const { publicKey } = useWallet();
   const address = publicKey?.toBase58() ?? null;
 
-  return useQuery({
+  const query = useQuery({
     queryKey: walletBalancesQueryKey(address),
     enabled: Boolean(publicKey),
     staleTime: 15_000,
@@ -40,4 +41,16 @@ export function useWalletBalances() {
       };
     },
   });
+
+  const { refetch } = query;
+
+  useEffect(() => {
+    if (!publicKey) return;
+    const interval = setInterval(() => {
+      void refetch();
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [publicKey, refetch]);
+
+  return query;
 }
