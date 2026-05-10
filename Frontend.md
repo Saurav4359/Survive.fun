@@ -3,10 +3,11 @@
 Single source of truth for the `apps/web` frontend: what it does, how it's
 built, and exactly which file is responsible for each behavior.
 
-> **Design DNA** — pure black `#000000` + lime `#cdf078` only. Zero
-> gradients, zero purple *decoration*, zero white backgrounds. **Exception:**
-> SOL glyph/badge `#9945FF` only (brand accent on ◎). Space Grotesk for display,
-> JetBrains Mono for every number. Sharp, precise, intentional.
+> **Design DNA** — pure black `#000000` + lime accent `#8aff8e` (CSS `--accent` /
+> `--survive`) only. Zero gradients, zero purple *decoration*, zero white
+> backgrounds. **Exception:** SOL glyph/badge `#9945FF` only (brand accent on ◎).
+> Space Grotesk for display, JetBrains Mono for every number. Sharp, precise,
+> intentional.
 
 ---
 
@@ -62,6 +63,9 @@ built, and exactly which file is responsible for each behavior.
 - `pnpm` workspaces + `turbo` orchestration.
 - ESLint via `eslint-config-next` (zero warnings on green).
 - `tsc --noEmit` typecheck (zero errors on green).
+- **Bundle analyzer** — `apps/web/next.config.mjs` wraps config with
+  `@next/bundle-analyzer` when `ANALYZE=true`; `pnpm --filter web analyze` runs
+  `ANALYZE=true next build` (analyzer UI skipped when `CI=true`).
 
 ---
 
@@ -78,10 +82,10 @@ exposed to Tailwind in `apps/web/tailwind.config.ts`.
 | `--bg-surface`   | `#0a0a0a`                      | `bg-surface`                | Inset wells, chart fallback bg    |
 | `--bg-card`      | `#111111`                      | `bg-card`                   | Cards, panels, popovers           |
 | `--border`       | `#1a1a1a`                      | `border-border`             | Default 1px borders               |
-| `--border-accent`| `rgba(205,240,120,0.125)` (`#cdf07820`) | `border-border-accent` | Subtle lime hint divider          |
-| `--accent`       | `#cdf078`                      | `text-accent` / `bg-accent` | Lime — sole accent color          |
-| `--survive`      | `#cdf078`                      | `text-survive`              | SURVIVE side                      |
-| `--rug`          | `#ef4444`                      | `text-rug`                  | RUG side                          |
+| `--border-accent`| `rgba(138,255,142,0.125)`      | `border-border-accent` | Subtle lime hint divider          |
+| `--accent`       | `#8aff8e`                      | `text-accent` / `bg-accent` | Lime — sole accent color          |
+| `--survive`      | `#8aff8e`                      | `text-survive`              | SURVIVE side                      |
+| `--rug`          | `#ff3b30`                      | `text-rug`                  | RUG side                          |
 | `--warning`      | `#facc15`                      | `text-warn`                 | Medium-risk badge                 |
 | `--text`         | `#ffffff`                      | `text-white`                | Primary text                      |
 | `--text-soft`    | `#a3a3a3`                      | `text-fg-soft`              | Secondary text                    |
@@ -91,6 +95,7 @@ exposed to Tailwind in `apps/web/tailwind.config.ts`.
 
 Three custom shadow tokens ship lime glows without any gradient fill:
 `shadow-glow-sm` (16px), `shadow-glow` (28px + 1px ring), `shadow-glow-lg` (48px).
+They use `--glow` (`rgba(138,255,142,0.22)`).
 
 ### Typography
 
@@ -114,7 +119,12 @@ intentionally use the default `4px` or no radius for the trading-terminal feel.
 - `.glow-lime` / `.glow-lime-soft` — solid box-shadow rings (no gradients).
 - `.pulse-rug` — 1s opacity pulse used on timers under 5 minutes.
 
-Plus `.hide-scrollbar` for the trending strip and feed lists.
+Plus `.hide-scrollbar` for horizontal strips and feed lists.
+
+**Marquee (Hot Markets strip)** — CSS animation lives in **`tailwind.config.ts`**
+as `keyframes.marquee-hot-markets` + `animation.marquee-hot-markets` (class
+`motion-safe:animate-marquee-hot-markets` on the duplicated track). The old
+`globals.css` marquee rules were removed to avoid utility-layer ordering issues.
 
 ---
 
@@ -127,6 +137,8 @@ Plus `.hide-scrollbar` for the trending strip and feed lists.
 - Forces `dark` class so shadcn semantic tokens resolve to our palette.
 - Wraps everything in `<Providers>` then `<AppShell>`.
 - Sets metadata: `survive.fun — rug or survive`.
+- **Icons / OG** — `BRAND_LOGO_SRC` from `src/utils/constants.ts` (capsule PNG
+  in `public/`) is used for `metadata.icons`, Open Graph, and Twitter images.
 
 ### Providers — `src/app/providers.tsx`
 
@@ -186,13 +198,16 @@ button.
 
 ### `src/components/layout/TopBar.tsx`
 
-- Sticky `top-0`, 56–64px tall.
-- Search input writes to a zustand store (`marketSearchStore`) so the home
-  page filters markets reactively as you type. Input gets
-  `focus:border-accent focus:shadow-glow-sm` (the lime glow on focus).
-- Right side: `<WalletConnectButton>` only — outlined lime when disconnected;
-  when connected, truncated address + **◎ SOL** (4 dp) with dropdown (copy /
-  switch wallet / disconnect).
+- Sticky `top-0`, 56–64px tall (`h-14` / `sm:h-16`).
+- **Row layout:** `[ menu + mobile wordmark ]` → **search** (fixed widths, ~2×
+  the older narrow field: `min(100%,19rem)` on xs, `22rem` / `26rem` / `28rem`
+  up the breakpoints) → **`flex-1` spacer** → **`<WalletConnectButton>`**
+  pinned on the **right**. Search uses `rounded-md` to match cards / wallet
+  chrome.
+- Search input writes to **`marketSearchStore`** (zustand) so the home page
+  filters markets as you type. `focus:border-accent focus:shadow-glow-sm`.
+- **Wallet** — outlined lime when disconnected; connected → truncated address +
+  **◎ SOL** (4 dp) + dropdown (copy / switch / disconnect).
 
 ### Mobile
 
@@ -205,26 +220,26 @@ button.
 
 ### `src/components/three/ParticleField.tsx`
 
-Hero background on the homepage.
+Hero background on the homepage (`/`).
 
-- Lazy-loaded via `await import("three")` inside `useEffect` so `three` ships
-  only to the client.
-- 200 particles distributed on a spherical shell (`r = 2 + rand*4`), pure
-  lime (`0xcdf078`), `size: 0.04`, `transparent + depthWrite: false`.
-- Continuous slow rotation (`y: t * 0.04`) plus mouse parallax (`x/y` lerped
-  toward normalized cursor coords with `0.04` ease).
-- `ResizeObserver` keeps the renderer in sync with the container.
-- Cleans up `renderer.dispose()`, geometry/material disposal, RAF cancel,
-  mousemove listener, and removes the canvas on unmount.
-- Uses `setClearColor(0x000000, 0)` so the canvas is transparent over the
-  page's pure black.
+- **Loaded only on the client:** `src/app/page.tsx` imports it with
+  `next/dynamic(..., { ssr: false })` and prefetches the chunk on idle so
+  `three` is not in the server bundle.
+- The component imports **`three` directly**; default **~640** points (capped
+  higher under reduced motion), storm → **gather into a Solana-style coin**
+  with block **SOL** glyph on the face → hold → burst/scatter; damping uses
+  exponential `dampExp` aligned with frame dt; pointer smoothing on mouse
+  influence.
+- Points use accent lime **`0x8aff8e`**, `transparent` + `depthWrite: false`.
+- `ResizeObserver` syncs renderer size; full dispose on unmount (renderer,
+  geometry, materials, RAF, listeners).
 
 ### `src/components/three/LeaderboardHeader3D.tsx`
 
 3D pixel-font "LEADERBOARD" wordmark on `/leaderboard`.
 
 - Builds each character from cubes using a tiny pixel-font map.
-- Cubes are lime (`MeshBasicMaterial 0xcdf078`), wrapped in a translucent
+- Cubes are lime (`MeshBasicMaterial 0x8aff8e`), wrapped in a translucent
   lime wireframe (`LineBasicMaterial`, opacity 0.55).
 - Slow oscillation: `rotation.y = sin(t*0.4)*0.4`, `rotation.x = sin(t*0.3)*0.1`.
 - Same lazy-load + dispose lifecycle as `ParticleField`.
@@ -236,15 +251,19 @@ Hero background on the homepage.
 ### Homepage — `src/app/page.tsx`
 
 ```
+[ Hot Markets — label + infinite marquee (or horizontal scroll if reduced motion) ]
 [ Hero w/ ParticleField ]
-[ Trending strip ] [ Create Market form ]
+[ Create Market form ]
 [ Stats bar (4) ]
 [ Filter tabs ]
-[ Markets grid (3 col) ]   [ Live Feed ]
+[ lg: 12-col row — Markets grid (col-span-9) | Live Feed aside (col-span-3) ]
 ```
 
-- **Trending strip** — horizontal scroll of pill cards sorted by total pool;
-  uses `hide-scrollbar`. Each pill links to `/market/:id`.
+- **Hot Markets strip** — first section on the page: **“Hot Markets”** label
+  + **CSS marquee** of top pools (duplicate row + `translateX(-50%)` loop via
+  Tailwind `animate-marquee-hot-markets`; **`useReducedMotion()`** from framer
+  swaps to a **single-row `overflow-x-auto`** strip). Pills link to `/market/:id`.
+  (Replaces the old mid-page horizontal-only trending strip.)
 - **Create market form** — Pump.fun mint input (lime border on focus, glow
   shadow), three duration pills `[1H] [6H] [24H]` backed by
   `MARKET_DURATIONS = [3600, 21600, 86400]`. **Duplicate guard:** while mint +
@@ -261,7 +280,9 @@ Hero background on the homepage.
 - **Markets grid** — `MarketCard` × N with staggered fade+slide entry
   (`staggerChildren: 0.06`). Search query from zustand filters by name /
   ticker / mint.
-- **Live Feed** — sticky right column on `xl`, full width below.
+- **Live Feed** — `<aside className="lg:col-span-3">` next to the grid
+  (`lg:grid-cols-12`); stacks **below** the grid on smaller breakpoints. Shows
+  global `bet_placed` / `market_resolved` activity (see `LiveFeed` in §7).
 
 Loading state uses `Skeletons` (`src/components/ui/skeletons.tsx`) — flat
 `bg-surface` blocks with `animate-pulse`, no gradients.
@@ -276,9 +297,9 @@ Two-column layout (60/40 on `lg`):
 - **Header**: token avatar (first letter on a black square, lime border),
   name, ticker, large mono price, 24h change colored lime/rug, risk pill,
   `[⭐ Watch]` button toggling `useWatchlist`.
-- **Price chart** — `lightweight-charts` line series, lime stroke
-  `#cdf078`, pure black background, `#1a1a1a` grid + crosshair, custom mono
-  font in axis labels. OHLCV comes from **`GET /v1/markets/:id/chart`**
+- **Price chart** — `lightweight-charts` area/line (survive line `#a3e635` with
+  soft fill; rug series when present), pure black background, `#1a1a1a` grid +
+  crosshair, mono axis labels. OHLCV from **`GET /v1/markets/:id/chart`**
   (Birdeye when configured on the API). Timeframe pills `5m / 15m / 1h` select
   the interval.
 - **Signals row** — Liquidity, Token age, Bettors (from market record). Each
