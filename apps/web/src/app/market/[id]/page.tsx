@@ -868,8 +868,12 @@ export default function MarketPage() {
                     </p>
                   ) : (
                     <p>
-                      Holder count requires a Birdeye API key on the backend. Full
-                      on-chain breakdown is not wired yet.
+                      No holder estimate from Birdeye yet. If you just added{" "}
+                      <span className="text-fg-soft">BIRDEYE_API_KEY</span>, restart{" "}
+                      <span className="text-fg-soft">apps/api</span> and refresh—cached token
+                      payloads skip Birdeye for up to ~30s otherwise. Birdeye may also omit
+                      holders for very new or unsupported mints. Full on-chain holder lists are
+                      not wired yet.
                     </p>
                   )}
                 </div>
