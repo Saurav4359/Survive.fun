@@ -23,11 +23,13 @@ export function TokenThumb({
   const src = `https://dd.dexscreener.com/ds-data/tokens/solana/${mint}.png`;
   const letter = (ticker || "?").slice(0, 1).toUpperCase();
   const r = rounded === "full" ? "rounded-full" : "rounded-md";
+  const letterClass =
+    size >= 52 ? "text-xl" : size >= 44 ? "text-lg" : "text-base";
 
   if (bad) {
     return (
       <div
-        className={`flex shrink-0 items-center justify-center border border-border bg-bg font-mono text-base font-bold text-accent ${r} ${className}`}
+        className={`flex shrink-0 items-center justify-center border border-border bg-bg font-mono font-bold text-accent ${letterClass} ${r} ${className}`}
         style={{ width: size, height: size }}
         aria-hidden
       >

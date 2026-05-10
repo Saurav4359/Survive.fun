@@ -14,29 +14,25 @@ function Shimmer({ className }: { className: string }) {
 export function MarketCardSkeleton() {
   return (
     <article
-      className="flex flex-col gap-5 rounded-lg border border-border bg-card p-5"
+      className="flex flex-col gap-2.5 rounded-lg border border-border bg-card p-3.5"
       aria-hidden
     >
-      <div className="flex items-start gap-4">
-        <Shimmer className="size-11 rounded-lg" />
+      <div className="flex items-start gap-3.5">
+        <Shimmer className="size-[52px] shrink-0 rounded-lg" />
         <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <Shimmer className="h-4 w-3/4 max-w-[200px]" />
-          <Shimmer className="h-3 w-16" />
+          <Shimmer className="h-6 w-3/4 max-w-[220px]" />
+          <Shimmer className="h-4 w-20" />
         </div>
         <div className="flex flex-col gap-2">
           <Shimmer className="h-6 w-14 rounded-md" />
           <Shimmer className="h-6 w-12 rounded-md" />
         </div>
       </div>
-      <Shimmer className="h-[72px] w-full rounded-lg" />
+      <Shimmer className="h-14 w-full rounded-lg" />
       <Shimmer className="h-2 w-full rounded-sm" />
-      <div className="grid grid-cols-2 gap-3">
-        <Shimmer className="h-[72px] w-full rounded-lg" />
-        <Shimmer className="h-[72px] w-full rounded-lg" />
-      </div>
-      <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
-        <Shimmer className="h-4 w-24" />
-        <Shimmer className="h-8 w-16 rounded-md" />
+      <div className="flex items-center justify-between gap-2 border-t border-border pt-2.5">
+        <Shimmer className="h-5 w-28" />
+        <Shimmer className="h-9 w-[4.5rem] rounded-md" />
       </div>
     </article>
   );

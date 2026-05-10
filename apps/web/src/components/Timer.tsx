@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import { cn } from "@/lib/utils";
+
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }
@@ -42,18 +44,15 @@ export function Timer({
   const ended = totalMs <= 0;
   const label = ended ? "00:00:00" : `${pad2(h)}:${pad2(m)}:${pad2(s)}`;
 
+  const base =
+    urgent
+      ? "pulse-rug font-mono text-sm font-semibold tabular-nums text-rug"
+      : ended
+        ? "font-mono text-sm font-medium tabular-nums text-fg-muted"
+        : "font-mono text-sm font-medium tabular-nums text-accent";
+
   return (
-    <span
-      suppressHydrationWarning
-      className={
-        className ??
-        (urgent
-          ? "pulse-rug font-mono text-sm font-semibold tabular-nums text-rug"
-          : ended
-            ? "font-mono text-sm font-medium tabular-nums text-fg-muted"
-            : "font-mono text-sm font-medium tabular-nums text-accent")
-      }
-    >
+    <span suppressHydrationWarning className={cn(base, className)}>
       {label}
     </span>
   );

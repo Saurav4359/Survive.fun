@@ -49,7 +49,7 @@ export function PoolBar({
   return (
     <div className="flex flex-col gap-1.5">
       {showLabels ? (
-        <div className="flex items-center justify-between font-mono text-[11px] font-semibold tracking-wide">
+        <div className="flex items-center justify-between font-mono text-xs font-semibold leading-none tracking-wide">
           <span className="text-survive">{surviveLabel}</span>
           <span className="text-rug">{rugLabel}</span>
         </div>
@@ -67,7 +67,7 @@ export function PoolBar({
       </div>
 
       {showLabels ? (
-        <div className="flex items-center justify-between font-mono text-[10px] tabular-nums">
+        <div className="flex items-center justify-between font-mono text-[11px] tabular-nums leading-none">
           <span className="text-survive/85">{surviveAmt}</span>
           <span className="text-rug/85">{rugAmt}</span>
         </div>
