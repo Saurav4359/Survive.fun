@@ -35,11 +35,15 @@ const solanaAddress = z
   .max(44)
   .regex(/^[1-9A-HJ-NP-Za-km-z]+$/, "Invalid base58 address");
 
-const durationSecondsQuery = z.union([
-  z.literal(3600),
-  z.literal(21_600),
-  z.literal(86_400),
-]);
+/** Query strings arrive as `"86400"` etc.; literals alone reject them. */
+const ALLOWED_MARKET_DURATION_SECONDS = [3600, 21_600, 86_400] as const;
+const durationSecondsQuery = z.coerce
+  .number()
+  .refine(
+    (n): n is (typeof ALLOWED_MARKET_DURATION_SECONDS)[number] =>
+      (ALLOWED_MARKET_DURATION_SECONDS as readonly number[]).includes(n),
+    { message: "Invalid duration" },
+  );
 
 const listMarketsQuerySchema = z.object({
   status: z
