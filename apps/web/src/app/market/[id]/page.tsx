@@ -4,7 +4,7 @@ import type {
   ApiResponse,
   BetSide,
   Market,
-  MarketChartResponse,
+  MarketPoolHistoryResponse,
   Outcome,
 } from "@survivefun/types";
 import { useWallet } from "@solana/wallet-adapter-react";
@@ -23,7 +23,7 @@ import {
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { UTCTimestamp } from "lightweight-charts";
+import type { MouseEventParams, Time, UTCTimestamp } from "lightweight-charts";
 
 import { BetPanel } from "@/components/BetPanel";
 import { LiveFeed } from "@/components/LiveFeed";
@@ -61,7 +61,13 @@ import {
   resolveMarketPdaForTransaction,
 } from "@/utils/transactions";
 
-const CHART_LINE = "#8aff8e";
+/** Lightweight Charts area series — Polymarket-style implied probability from pool weights */
+const CHART_SURVIVE_LINE = "#a3e635";
+const CHART_SURVIVE_TOP = "rgba(163, 230, 53, 0.2)";
+const CHART_SURVIVE_BOTTOM = "rgba(163, 230, 53, 0)";
+const CHART_RUG_LINE = "#ef4444";
+const CHART_RUG_TOP = "rgba(239, 68, 68, 0.2)";
+const CHART_RUG_BOTTOM = "rgba(239, 68, 68, 0)";
 
 function parseNum(s: string | null | undefined): number | null {
   if (s == null) return null;
@@ -70,18 +76,120 @@ function parseNum(s: string | null | undefined): number | null {
 }
 
 type DetailTab = "about" | "holders" | "transactions";
-type ChartTf = "5m" | "15m" | "1h";
 
-const TF_CONFIG: Record<ChartTf, { stepSec: number; bars: number }> = {
-  "5m": { stepSec: 300, bars: 72 },
-  "15m": { stepSec: 900, bars: 64 },
-  "1h": { stepSec: 3600, bars: 72 },
+/** Survive share of pool in percent (0–100), stable vs float division on lamports. */
+function poolSharePercentsFromRaw(
+  surviveRaw: string,
+  rugRaw: string,
+): { survivePct: number; rugPct: number } {
+  let s = 0n;
+  let r = 0n;
+  try {
+    s = BigInt(surviveRaw);
+    r = BigInt(rugRaw);
+  } catch {
+    return { survivePct: 50, rugPct: 50 };
+  }
+  const t = s + r;
+  if (t === 0n) return { survivePct: 50, rugPct: 50 };
+  const survivePct = Number((s * 10000n) / t) / 100;
+  const rugPct = Number((r * 10000n) / t) / 100;
+  return { survivePct, rugPct };
+}
+
+type PoolChartRange = "all" | "1h" | "15m" | "5m";
+
+const POOL_CHART_RANGE_SEC: Record<Exclude<PoolChartRange, "all">, number> = {
+  "5m": 300,
+  "15m": 900,
+  "1h": 3600,
 };
 
-function chartIntervalParam(tf: ChartTf): string {
-  if (tf === "5m") return "5m";
-  if (tf === "15m") return "15m";
-  return "1H";
+function filterPoolHistoryPoints<
+  T extends { t: number },
+>(points: T[], range: PoolChartRange): T[] {
+  if (range === "all" || points.length === 0) return points;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const windowSec = POOL_CHART_RANGE_SEC[range];
+  const minT = nowSec - windowSec;
+  const filtered = points.filter((p) => p.t >= minT);
+  return filtered.length > 0 ? filtered : points;
+}
+
+type PoolPctPoint = { time: UTCTimestamp; value: number };
+
+function sortDedupePoolPctPoints(points: PoolPctPoint[]): PoolPctPoint[] {
+  const sorted = [...points].sort((a, b) => a.time - b.time);
+  const out: PoolPctPoint[] = [];
+  for (const p of sorted) {
+    const last = out[out.length - 1];
+    if (last && last.time === p.time) out[out.length - 1] = p;
+    else out.push(p);
+  }
+  return out;
+}
+
+/** Extend the series to the current second with live pool shares (line reaches “now”). */
+function appendLivePoolChartTail(
+  survivePts: PoolPctPoint[],
+  rugPts: PoolPctPoint[],
+  liveSurviveRaw: string,
+  liveRugRaw: string,
+): { survivePts: PoolPctPoint[]; rugPts: PoolPctPoint[] } {
+  const live = poolSharePercentsFromRaw(liveSurviveRaw, liveRugRaw);
+  const tNow = Math.floor(Date.now() / 1000) as UTCTimestamp;
+
+  const pushTail = (pts: PoolPctPoint[], liveValue: number): PoolPctPoint[] => {
+    const out = [...pts];
+    const last = out[out.length - 1];
+    if (!last) return [{ time: tNow, value: liveValue }];
+    if (tNow > last.time) {
+      out.push({ time: tNow, value: liveValue });
+    } else {
+      out[out.length - 1] = { time: last.time, value: liveValue };
+    }
+    return out;
+  };
+
+  return {
+    survivePts: pushTail(survivePts, live.survivePct),
+    rugPts: pushTail(rugPts, live.rugPct),
+  };
+}
+
+async function fetchPoolPctSeries(
+  marketId: string,
+  range: PoolChartRange,
+  liveSurviveRaw: string,
+  liveRugRaw: string,
+): Promise<{ survivePts: PoolPctPoint[]; rugPts: PoolPctPoint[] } | null> {
+  const r = await fetch(
+    apiV1Url(`/markets/${encodeURIComponent(marketId)}/pool-history`),
+  );
+  if (!r.ok) return null;
+  const j = (await r.json()) as ApiResponse<MarketPoolHistoryResponse>;
+  if (!j.success || j.data.points.length === 0) return null;
+  const sliced = filterPoolHistoryPoints(j.data.points, range);
+  const survivePts: PoolPctPoint[] = sliced.map((p) => {
+    const { survivePct } = poolSharePercentsFromRaw(
+      p.survivePoolRaw,
+      p.rugPoolRaw,
+    );
+    return { time: p.t as UTCTimestamp, value: survivePct };
+  });
+  const rugPts: PoolPctPoint[] = sliced.map((p) => {
+    const { rugPct } = poolSharePercentsFromRaw(
+      p.survivePoolRaw,
+      p.rugPoolRaw,
+    );
+    return { time: p.t as UTCTimestamp, value: rugPct };
+  });
+  return appendLivePoolChartTail(
+    sortDedupePoolPctPoints(survivePts),
+    sortDedupePoolPctPoints(rugPts),
+    liveSurviveRaw,
+    liveRugRaw,
+  );
 }
 
 function formatTokenAge(createdIso: string): string {
@@ -149,8 +257,8 @@ export default function MarketPage() {
   const toast = useToast();
 
   const [detailTab, setDetailTab] = useState<DetailTab>("about");
-  const [chartTf, setChartTf] = useState<ChartTf>("1h");
   const [chartReady, setChartReady] = useState(false);
+  const [poolChartRange, setPoolChartRange] = useState<PoolChartRange>("all");
   const { has: isStarred, toggle: toggleStar } = useWatchlist();
 
   /**
@@ -191,15 +299,19 @@ export default function MarketPage() {
   const chartApiRef = useRef<import("lightweight-charts").IChartApi | null>(
     null,
   );
-  const seriesRef = useRef<
-    import("lightweight-charts").ISeriesApi<"Line"> | null
+  const surviveSeriesRef = useRef<
+    import("lightweight-charts").ISeriesApi<"Area"> | null
   >(null);
-  const chartTfRef = useRef(chartTf);
-  chartTfRef.current = chartTf;
-
-  const chartPriceRef = useRef(0.0001);
-  chartPriceRef.current =
-    tokenHook.price ?? parseNum(market?.openPrice ?? null) ?? 0.0001;
+  const rugSeriesRef = useRef<
+    import("lightweight-charts").ISeriesApi<"Area"> | null
+  >(null);
+  const poolChartTooltipRef = useRef<HTMLDivElement | null>(null);
+  /** Latest range + pool raw strings so async chart init does not apply stale data. */
+  const poolChartInputRef = useRef({
+    range: "all" as PoolChartRange,
+    surviveRaw: "",
+    rugRaw: "",
+  });
 
   const placeBetMut = useMutation({
     mutationFn: async ({
@@ -286,26 +398,36 @@ export default function MarketPage() {
     },
   });
 
-  const seedFlatSeries = useCallback(() => {
-    const series = seriesRef.current;
-    if (!series) return;
-    const base = chartPriceRef.current;
-    if (!Number.isFinite(base) || base <= 0) return;
-    const { stepSec, bars } = TF_CONFIG[chartTfRef.current];
-    const now = Math.floor(Date.now() / 1000);
-    const points: { time: UTCTimestamp; value: number }[] = [];
-    for (let i = bars - 1; i >= 0; i -= 1) {
-      const t = (now - i * stepSec) as UTCTimestamp;
-      points.push({ time: t, value: base });
-    }
-    series.setData(points);
-    chartApiRef.current?.timeScale().fitContent();
-  }, []);
-
   const survive = market
     ? Number(parsePoolLamports(market.survivePool))
     : 0;
   const rug = market ? Number(parsePoolLamports(market.rugPool)) : 0;
+
+  const liveSurviveSharePct = useMemo(() => {
+    if (!market) return null;
+    const { survivePct } = poolSharePercentsFromRaw(
+      parsePoolLamports(market.survivePool).toString(),
+      parsePoolLamports(market.rugPool).toString(),
+    );
+    return survivePct;
+  }, [market]);
+  const liveRugSharePct = useMemo(() => {
+    if (!market) return null;
+    const { rugPct } = poolSharePercentsFromRaw(
+      parsePoolLamports(market.survivePool).toString(),
+      parsePoolLamports(market.rugPool).toString(),
+    );
+    return rugPct;
+  }, [market]);
+
+  useEffect(() => {
+    if (!market) return;
+    poolChartInputRef.current = {
+      range: poolChartRange,
+      surviveRaw: parsePoolLamports(market.survivePool).toString(),
+      rugRaw: parsePoolLamports(market.rugPool).toString(),
+    };
+  }, [market, poolChartRange]);
   const openLiquidityUsd =
     tokenHook.liquidity ?? parseNum(market?.openLiquidity);
   const pairCreatedAtSeconds = tokenHook.pair?.pairCreatedAt ?? null;
@@ -322,10 +444,7 @@ export default function MarketPage() {
   const devShown =
     market?.devWallet ?? tokenHook.devWallet ?? market?.creatorWallet;
 
-  useEffect(() => {
-    setChartReady(false);
-  }, [id]);
-
+  /** Create the chart once per market; pool/range updates only refresh series data. */
   useEffect(() => {
     const el = chartContainerRef.current;
     if (!el || !market) return undefined;
@@ -334,6 +453,7 @@ export default function MarketPage() {
     let disposed = false;
     let chart: import("lightweight-charts").IChartApi | null = null;
     let ro: ResizeObserver | null = null;
+    let crosshairHandler: ((param: MouseEventParams<Time>) => void) | null = null;
 
     const safeResize = () => {
       if (disposed || cancelled || !chart || !chartContainerRef.current) return;
@@ -347,40 +467,137 @@ export default function MarketPage() {
     };
 
     void (async () => {
-      const { createChart, ColorType, CrosshairMode } = await import(
-        "lightweight-charts"
-      );
+      const {
+        createChart,
+        ColorType,
+        CrosshairMode,
+        LastPriceAnimationMode,
+        LineStyle,
+        LineType,
+        TickMarkType,
+      } = await import("lightweight-charts");
       if (cancelled || disposed || !chartContainerRef.current) return;
 
       chart = createChart(chartContainerRef.current, {
+        localization: {
+          locale:
+            typeof navigator !== "undefined" ? navigator.language : "en-US",
+          dateFormat: "MMM d",
+          timeFormatter: (t: Time) => {
+            const sec = typeof t === "number" ? t : Number(t);
+            if (!Number.isFinite(sec)) return "";
+            return new Date(sec * 1000).toLocaleString(undefined, {
+              month: "short",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+            });
+          },
+        },
         layout: {
-          background: { type: ColorType.Solid, color: "#000000" },
-          textColor: "#525252",
+          background: { type: ColorType.Solid, color: "#0f1114" },
+          textColor: "#8b8b8b",
         },
         grid: {
-          vertLines: { color: "#1a1a1a" },
-          horzLines: { color: "#1a1a1a" },
+          vertLines: { visible: false },
+          horzLines: { color: "rgba(255,255,255,0.045)" },
         },
         crosshair: {
-          mode: CrosshairMode.Magnet,
+          mode: CrosshairMode.Normal,
           vertLine: {
-            color: CHART_LINE,
+            color: "rgba(255,255,255,0.42)",
             width: 1,
-            labelBackgroundColor: "#8aff8e",
+            style: LineStyle.Solid,
+            labelBackgroundColor: "#262626",
           },
           horzLine: {
-            color: CHART_LINE,
-            width: 1,
-            labelBackgroundColor: "#8aff8e",
+            visible: false,
+            labelVisible: false,
           },
         },
-        rightPriceScale: { borderColor: "#1a1a1a" },
-        timeScale: { borderColor: "#1a1a1a" },
+        rightPriceScale: {
+          borderColor: "#1a1a1a",
+          ticksVisible: true,
+          scaleMargins: { top: 0.08, bottom: 0.08 },
+        },
+        /** No user zoom (wheel / pinch / axis-drag scale); pan/drag scroll still allowed. */
+        handleScale: false,
+        timeScale: {
+          borderColor: "#1a1a1a",
+          lockVisibleTimeRangeOnResize: true,
+          timeVisible: true,
+          secondsVisible: false,
+          tickMarkFormatter: (
+            time: Time,
+            tickMarkType: number,
+            _locale: string,
+          ): string | null => {
+            const sec = typeof time === "number" ? time : NaN;
+            if (!Number.isFinite(sec)) return null;
+            const d = new Date(sec * 1000);
+            if (
+              tickMarkType === TickMarkType.Time ||
+              tickMarkType === TickMarkType.TimeWithSeconds
+            ) {
+              let h = d.getHours();
+              const m = d.getMinutes();
+              const suf = h < 12 ? "a" : "p";
+              h = h % 12 || 12;
+              return `${h}:${String(m).padStart(2, "0")}${suf}`;
+            }
+            if (tickMarkType === TickMarkType.DayOfMonth) {
+              return `${d.getMonth() + 1}/${d.getDate()}`;
+            }
+            return null;
+          },
+        },
       });
 
-      const series = chart.addLineSeries({
-        color: CHART_LINE,
+      const scaleZeroToHundred = () => ({
+        priceRange: {
+          minValue: 0,
+          maxValue: 100,
+        },
+        margins: {
+          above: 4,
+          below: 4,
+        },
+      });
+
+      const pctPriceFormat = {
+        type: "percent" as const,
+        precision: 1,
+        minMove: 0.1,
+      };
+
+      const areaBase = {
         lineWidth: 2,
+        lineType: LineType.Curved,
+        lineVisible: true,
+        lastValueVisible: false,
+        priceLineVisible: false,
+        crosshairMarkerVisible: true,
+        crosshairMarkerRadius: 4,
+        crosshairMarkerBorderColor: "rgba(255,255,255,0.9)",
+        crosshairMarkerBorderWidth: 1,
+        lastPriceAnimation: LastPriceAnimationMode.OnDataUpdate,
+        priceFormat: pctPriceFormat,
+        autoscaleInfoProvider: scaleZeroToHundred,
+      } as const;
+
+      const surviveSeries = chart.addAreaSeries({
+        ...areaBase,
+        lineColor: CHART_SURVIVE_LINE,
+        topColor: CHART_SURVIVE_TOP,
+        bottomColor: CHART_SURVIVE_BOTTOM,
+        crosshairMarkerBackgroundColor: CHART_SURVIVE_LINE,
+      });
+      const rugSeries = chart.addAreaSeries({
+        ...areaBase,
+        lineColor: CHART_RUG_LINE,
+        topColor: CHART_RUG_TOP,
+        bottomColor: CHART_RUG_BOTTOM,
+        crosshairMarkerBackgroundColor: CHART_RUG_LINE,
       });
 
       if (cancelled || disposed) {
@@ -389,49 +606,91 @@ export default function MarketPage() {
       }
 
       chartApiRef.current = chart;
-      seriesRef.current = series;
-      chartPriceRef.current =
-        tokenHook.price ?? parseNum(market.openPrice ?? null) ?? 0.0001;
+      surviveSeriesRef.current = surviveSeries;
+      rugSeriesRef.current = rugSeries;
 
-      const tf = chartIntervalParam(chartTfRef.current);
-      let usedBars = false;
+      const inp = poolChartInputRef.current;
       try {
-        const r = await fetch(
-          `${apiV1Url(`/markets/${encodeURIComponent(id)}/chart`)}?interval=${encodeURIComponent(tf)}`,
+        const data = await fetchPoolPctSeries(
+          id,
+          inp.range,
+          inp.surviveRaw,
+          inp.rugRaw,
         );
-        if (r.ok) {
-          const j = (await r.json()) as ApiResponse<MarketChartResponse>;
-          if (!cancelled && !disposed && j.success && j.data.bars.length > 0) {
-            const pts = j.data.bars
-              .map((b) => ({
-                time: b.t as UTCTimestamp,
-                value: Number.parseFloat(b.c),
-              }))
-              .filter((p) => Number.isFinite(p.value) && p.value > 0);
-            if (pts.length > 0) {
-              try {
-                series.setData(pts);
-              } catch {
-                return;
-              }
-              usedBars = true;
-            }
-          }
+        if (
+          !cancelled &&
+          !disposed &&
+          data &&
+          surviveSeriesRef.current === surviveSeries
+        ) {
+          surviveSeries.setData(data.survivePts);
+          rugSeries.setData(data.rugPts);
+          chart.timeScale().fitContent();
         }
       } catch {
-        /* use synthetic series */
+        /* empty chart */
       }
       if (cancelled || disposed) return;
-      if (!usedBars) {
-        try {
-          seedFlatSeries();
-        } catch {
-          return;
-        }
-      }
       if (!cancelled && !disposed) {
         setChartReady(true);
       }
+
+      crosshairHandler = (param: MouseEventParams<Time>) => {
+        const tip = poolChartTooltipRef.current;
+        if (!tip) return;
+        const dateEl = tip.querySelector("[data-tip-date]");
+        const surviveEl = tip.querySelector("[data-tip-survive]");
+        const rugEl = tip.querySelector("[data-tip-rug]");
+        if (!dateEl || !surviveEl || !rugEl) return;
+
+        if (
+          !param.point ||
+          param.time === undefined ||
+          Number.isNaN(Number(param.time))
+        ) {
+          tip.style.opacity = "0";
+          return;
+        }
+
+        const sPt = param.seriesData.get(surviveSeries);
+        const rPt = param.seriesData.get(rugSeries);
+        const sv =
+          sPt && typeof sPt === "object" && "value" in sPt
+            ? Number((sPt as { value: number }).value)
+            : null;
+        const rv =
+          rPt && typeof rPt === "object" && "value" in rPt
+            ? Number((rPt as { value: number }).value)
+            : null;
+        if (sv == null || !Number.isFinite(sv) || rv == null || !Number.isFinite(rv)) {
+          tip.style.opacity = "0";
+          return;
+        }
+
+        const sec = Number(param.time);
+        dateEl.textContent = new Date(sec * 1000).toLocaleString(undefined, {
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        });
+        surviveEl.textContent = `Survive chance ${sv.toFixed(1)}%`;
+        rugEl.textContent = `Rug chance ${rv.toFixed(1)}%`;
+
+        const pad = 12;
+        const tw = tip.offsetWidth || 140;
+        const th = tip.offsetHeight || 56;
+        const cw = chartContainerRef.current?.clientWidth ?? 0;
+        const ch = chartContainerRef.current?.clientHeight ?? 0;
+        let left = param.point.x + pad;
+        let top = param.point.y + pad;
+        if (left + tw > cw - 8) left = Math.max(8, param.point.x - tw - pad);
+        if (top + th > ch - 8) top = Math.max(8, param.point.y - th - pad);
+        tip.style.left = `${left}px`;
+        tip.style.top = `${top}px`;
+        tip.style.opacity = "1";
+      };
+      chart.subscribeCrosshairMove(crosshairHandler);
 
       ro = new ResizeObserver(() => {
         safeResize();
@@ -445,6 +704,10 @@ export default function MarketPage() {
       disposed = true;
       ro?.disconnect();
       ro = null;
+      if (chart && crosshairHandler) {
+        chart.unsubscribeCrosshairMove(crosshairHandler);
+      }
+      crosshairHandler = null;
       try {
         chart?.remove();
       } catch {
@@ -452,16 +715,64 @@ export default function MarketPage() {
       }
       chart = null;
       chartApiRef.current = null;
-      seriesRef.current = null;
+      surviveSeriesRef.current = null;
+      rugSeriesRef.current = null;
       setChartReady(false);
     };
-    /** Recreate chart only when market identity or timeframe changes — not on every price poll. */
-  }, [id, market?.id, seedFlatSeries, chartTf]);
+  }, [id, market?.id, market?.createdAt]);
 
+  /** Refresh pool-% polylines when range or pools change; tick “now” while market is open. */
   useEffect(() => {
-    chartPriceRef.current =
-      tokenHook.price ?? parseNum(market?.openPrice ?? null) ?? 0.0001;
-  }, [market?.openPrice, tokenHook.price, market]);
+    if (!id || !market) return undefined;
+    const chart = chartApiRef.current;
+    const surviveSeries = surviveSeriesRef.current;
+    const rugSeries = rugSeriesRef.current;
+    if (!chart || !surviveSeries || !rugSeries) return undefined;
+
+    let cancelled = false;
+
+    const run = async () => {
+      const inp = poolChartInputRef.current;
+      try {
+        const data = await fetchPoolPctSeries(
+          id,
+          inp.range,
+          inp.surviveRaw,
+          inp.rugRaw,
+        );
+        if (cancelled || !data) return;
+        const s = surviveSeriesRef.current;
+        const r = rugSeriesRef.current;
+        const c = chartApiRef.current;
+        if (!s || !r || !c) return;
+        s.setData(data.survivePts);
+        r.setData(data.rugPts);
+        c.timeScale().fitContent();
+      } catch {
+        /* keep last good frame */
+      }
+    };
+
+    void run();
+    const tick =
+      market.status !== "resolved"
+        ? setInterval(() => {
+            void run();
+          }, 4000)
+        : null;
+
+    return () => {
+      cancelled = true;
+      if (tick) clearInterval(tick);
+    };
+  }, [
+    id,
+    poolChartRange,
+    market?.id,
+    market?.status,
+    market?.survivePool,
+    market?.rugPool,
+  ]);
 
   const onBet = useCallback(
     async (side: BetSide, amountUi: number) => {
@@ -676,31 +987,79 @@ export default function MarketPage() {
         <div className="order-1 min-w-0 space-y-6 xl:col-span-3">
           {/* Chart */}
           <div className="border border-border bg-card">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-              <p className="font-display text-xs font-bold uppercase tracking-[0.2em] text-white">
-                Price (USD)
-              </p>
+            <div className="border-b border-border px-4 py-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="font-display text-xs font-bold uppercase tracking-[0.2em] text-white">
+                    Implied probability (pool-weighted)
+                  </p>
+                  <p className="mt-1 font-mono text-[10px] text-fg-muted">
+                    Same idea as Polymarket “% chance Yes” — here it’s implied {" "}
+                    <span className="text-rug">RUG</span> vs{" "}
+                    <span className="text-survive">survive</span> from stake split.
+                    Updates live as bets land.
+                  </p>
+                </div>
+                <div className="flex items-center gap-4 font-mono text-[10px] font-bold uppercase tracking-[0.15em]">
+                  <span className="flex items-center gap-1.5 text-survive">
+                    <span
+                      className="h-2 w-2 rounded-full"
+                      style={{ backgroundColor: CHART_SURVIVE_LINE }}
+                      aria-hidden
+                    />
+                    Survive %
+                  </span>
+                  <span className="flex items-center gap-1.5 text-rug">
+                    <span
+                      className="h-2 w-2 rounded-full"
+                      style={{ backgroundColor: CHART_RUG_LINE }}
+                      aria-hidden
+                    />
+                    Rug %
+                  </span>
+                </div>
+              </div>
+              {liveRugSharePct != null ? (
+                <p className="mt-3 font-mono text-3xl font-bold tabular-nums leading-none text-rug sm:text-4xl">
+                  {liveRugSharePct.toFixed(1)}%{" "}
+                  <span className="text-lg font-semibold text-fg-soft sm:text-xl">
+                    chance RUG
+                  </span>
+                </p>
+              ) : null}
+              {liveSurviveSharePct != null ? (
+                <p className="mt-1 font-mono text-lg font-bold tabular-nums text-survive sm:text-xl">
+                  {liveSurviveSharePct.toFixed(1)}% survive
+                </p>
+              ) : null}
               <div
-                className="flex gap-1"
+                className="mt-3 flex flex-wrap justify-end gap-1"
                 role="tablist"
-                aria-label="Chart timeframe"
+                aria-label="Pool history range"
               >
-                {(["5m", "15m", "1h"] as const).map((tf) => {
-                  const active = chartTf === tf;
+                {(
+                  [
+                    ["all", "ALL"],
+                    ["1h", "1H"],
+                    ["15m", "15M"],
+                    ["5m", "5M"],
+                  ] as const
+                ).map(([key, label]) => {
+                  const active = poolChartRange === key;
                   return (
                     <button
-                      key={tf}
+                      key={key}
                       type="button"
                       role="tab"
                       aria-selected={active}
-                      onClick={() => setChartTf(tf)}
+                      onClick={() => setPoolChartRange(key)}
                       className={
                         active
-                          ? "rounded-sm bg-accent px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-ink"
-                          : "rounded-sm px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-fg-soft transition-colors hover:text-accent"
+                          ? "rounded-sm bg-white px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-black"
+                          : "rounded-sm px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-fg-soft transition-colors hover:text-white"
                       }
                     >
-                      {tf.toUpperCase()}
+                      {label}
                     </button>
                   );
                 })}
@@ -710,6 +1069,24 @@ export default function MarketPage() {
               {!chartReady ? (
                 <div className="absolute inset-0 animate-pulse bg-bg" />
               ) : null}
+              <div
+                ref={poolChartTooltipRef}
+                className="pointer-events-none absolute z-20 min-w-[132px] rounded-md border border-border bg-card/95 px-2.5 py-2 shadow-lg backdrop-blur-sm transition-opacity duration-75"
+                style={{ opacity: 0, left: 0, top: 0 }}
+              >
+                <p
+                  data-tip-date
+                  className="font-mono text-[10px] text-fg-muted"
+                />
+                <p
+                  data-tip-survive
+                  className="mt-1 font-mono text-[11px] font-bold tabular-nums text-survive"
+                />
+                <p
+                  data-tip-rug
+                  className="font-mono text-[11px] font-bold tabular-nums text-rug"
+                />
+              </div>
               <div ref={chartContainerRef} className="h-full w-full" />
             </div>
           </div>
