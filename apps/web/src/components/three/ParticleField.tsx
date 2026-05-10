@@ -5,14 +5,14 @@ import * as THREE from "three";
 
 /**
  * Lime-colored particle field rendered with three.js.
- * - ~200 particles
+ * - Tunable particle count (default tuned for smooth idle animations)
  * - Slow orbital drift
  * - Reacts to mouse position (gentle parallax)
  * - Pure black background, pure lime particles, NO gradients
  */
 export function ParticleField({
   className,
-  particleCount = 200,
+  particleCount = 160,
 }: {
   className?: string;
   particleCount?: number;
@@ -41,9 +41,10 @@ export function ParticleField({
 
     renderer = new THREE.WebGLRenderer({
       alpha: true,
-      antialias: true,
+      antialias: false,
+      powerPreference: "high-performance",
     });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.setSize(width, height);
     renderer.setClearColor(0x000000, 0);
     const canvas = renderer.domElement;
