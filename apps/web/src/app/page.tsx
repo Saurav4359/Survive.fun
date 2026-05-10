@@ -3,8 +3,8 @@
 import type { ApiResponse, Market, MarketListPage } from "@survivefun/types";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { motion, useReducedMotion } from "framer-motion";
-import { ArrowRight, Flame, Inbox, Skull } from "lucide-react";
+import { motion } from "framer-motion";
+import { ArrowRight, Inbox, Search, Skull } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -58,39 +58,6 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: "new", label: "⚡ New" },
   { key: "watch", label: "⭐ Watch" },
 ];
-
-function TrendingMarketPill({
-  market: m,
-  rank,
-}: {
-  market: Market;
-  rank: number;
-}) {
-  return (
-    <a
-      href={`/market/${m.id}`}
-      className="flex min-w-[200px] shrink-0 items-center gap-2.5 rounded-md border border-border bg-card px-3 py-1.5 transition-colors hover:border-accent"
-    >
-      <span className="w-5 font-mono text-[10px] font-bold tabular-nums text-fg-muted">
-        {rank + 1}
-      </span>
-      <div
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-border bg-bg font-mono text-[11px] font-bold text-accent"
-        aria-hidden
-      >
-        {(m.tokenTicker ?? "?").slice(0, 1).toUpperCase()}
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-mono text-xs font-bold text-white">
-          ${m.tokenTicker ?? "—"}
-        </p>
-        <p className="truncate font-mono text-[10px] text-fg-muted">
-          Pool {formatSolBetLine(totalPoolLamports(m) / 1e9)}
-        </p>
-      </div>
-    </a>
-  );
-}
 
 function applyFilter(
   markets: Market[],
@@ -188,7 +155,6 @@ export default function HomePage() {
   );
   const [createError, setCreateError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>("hot");
-  const reduceMotion = useReducedMotion();
 
   const trimmedMint = tokenMint.trim();
   const duplicateMarketQuery = useQuery({
@@ -208,12 +174,6 @@ export default function HomePage() {
     },
   });
   const existingMarket = duplicateMarketQuery.data;
-
-  const trending = useMemo(() => {
-    return [...markets]
-      .sort((a, b) => totalPoolLamports(b) - totalPoolLamports(a))
-      .slice(0, 12);
-  }, [markets]);
 
   const filtered = useMemo(() => {
     const base = applyFilter(markets, filter, watchIds);
@@ -245,7 +205,7 @@ export default function HomePage() {
     if (q) {
       return {
         title: "No matches for your search",
-        description: `Nothing matches “${q}”. Clear the top-bar search to see all ${markets.length} active market${markets.length === 1 ? "" : "s"}.`,
+        description: `Nothing matches “${q}”. Clear search (sidebar or below) to see all ${markets.length} active market${markets.length === 1 ? "" : "s"}.`,
         action: {
           label: "Clear search",
           onClick: () => setSearchQuery(""),
@@ -340,44 +300,6 @@ export default function HomePage() {
 
   return (
     <div className="min-h-full">
-      {/* Hot markets — top strip, infinite marquee */}
-      {trending.length > 0 ? (
-        <section
-          aria-label="Trending markets"
-          className="border-b border-border bg-bg"
-        >
-          <div className="mx-auto flex max-w-[1440px] items-stretch">
-            <div className="flex shrink-0 items-center gap-1.5 border-r border-border px-4 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-accent sm:px-6 lg:px-10">
-              <Flame className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              Hot Markets
-            </div>
-            <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden py-2 pr-4 sm:pr-6 lg:pr-10">
-              {reduceMotion ? (
-                <div className="hide-scrollbar flex gap-2 overflow-x-auto pb-0.5">
-                  {trending.map((m, i) => (
-                    <TrendingMarketPill key={m.id} market={m} rank={i} />
-                  ))}
-                </div>
-              ) : (
-                <div className="flex w-max shrink-0 flex-nowrap motion-safe:animate-marquee-hot-markets will-change-transform hover:[animation-play-state:paused]">
-                  {[0, 1].map((dup) => (
-                    <div key={dup} className="flex shrink-0 gap-2">
-                      {trending.map((m, i) => (
-                        <TrendingMarketPill
-                          key={`${dup}-${m.id}`}
-                          market={m}
-                          rank={i}
-                        />
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-      ) : null}
-
       {/* HERO with three.js particle field */}
       <section className="relative overflow-hidden border-b border-border">
         <div className="pointer-events-none absolute inset-0 -z-0">
@@ -543,20 +465,20 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* STATS BAR */}
+        {/* STATS BAR — compact row */}
         <section
           aria-label="Platform statistics"
-          className="mt-6 grid grid-cols-2 gap-4 sm:gap-5 lg:grid-cols-4 lg:gap-6"
+          className="mt-6 grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4"
         >
           {statsLoading ? (
             Array.from({ length: 4 }).map((_, i) => (
               <div
                 key={`stats-skeleton-${i}`}
-                className="h-[94px] animate-pulse border border-border bg-card"
+                className="h-[68px] animate-pulse border border-border bg-card"
               />
             ))
           ) : statsError ? (
-            <div className="col-span-full border border-rug/40 bg-card px-4 py-4">
+            <div className="col-span-full border border-rug/40 bg-card px-3 py-3">
               <p className="font-mono text-xs text-rug">
                 Failed to load stats: {statsError.message}
               </p>
@@ -589,12 +511,12 @@ export default function HomePage() {
                 initial={{ opacity: 0, y: 14 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.06, duration: 0.4 }}
-                className="border border-border border-t-2 border-t-accent bg-card px-4 py-4"
+                className="border border-border border-t border-t-accent bg-card px-3 py-2.5"
               >
-                <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-fg-muted">
+                <p className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-fg-muted">
                   {stat.label}
                 </p>
-                <p className="mt-2 font-mono text-xl font-bold tabular-nums text-accent sm:text-2xl">
+                <p className="mt-1 font-mono text-base font-bold tabular-nums text-accent sm:text-lg">
                   <CountUp
                     to={stat.value}
                     format={stat.format}
@@ -604,6 +526,31 @@ export default function HomePage() {
               </motion.div>
             ))
           )}
+        </section>
+
+        {/* Search — md/tablet; lg+ uses sidebar below Create Market */}
+        <section
+          aria-label="Search markets"
+          className="mt-4 border border-border bg-card px-4 py-3 lg:hidden"
+        >
+          <label htmlFor="home-market-search" className="sr-only">
+            Search tokens
+          </label>
+          <div className="relative">
+            <Search
+              className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-muted sm:left-3 sm:h-4 sm:w-4"
+              aria-hidden
+            />
+            <input
+              id="home-market-search"
+              type="search"
+              value={search}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search tokens..."
+              className="w-full rounded-md border border-border bg-bg py-2 pl-9 pr-3 font-mono text-[13px] text-white placeholder:text-fg-muted transition-shadow focus:border-accent focus:outline-none focus:shadow-glow-sm sm:py-2.5 sm:pl-10 sm:text-sm"
+              autoComplete="off"
+            />
+          </div>
         </section>
 
         {/* MARKETS GRID + LIVE FEED */}
