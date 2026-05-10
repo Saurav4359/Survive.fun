@@ -170,6 +170,156 @@ function devnetClusterHint(): string {
   return "\n\nTip: This app uses Solana Devnet — set your wallet to Devnet or transactions will fail.";
 }
 
+/** Only when failure is likely wallet/RPC — not on-chain program rejects. */
+function appendDevnetHintIfRelevant(message: string): string {
+  const t = message.toLowerCase();
+  if (
+    t.includes("anchorerror") ||
+    t.includes("instructionerror") ||
+    t.includes("program log: instruction:") ||
+    /custom["']?\s*:\s*600\d/.test(t) ||
+    /0x177[0-9a-f]\b/i.test(message)
+  ) {
+    return message;
+  }
+  return message + devnetClusterHint();
+}
+
+const SURVIVE_PROGRAM_USER_MSG = {
+  alreadyClaimed:
+    "This payout was already claimed on-chain. If the app still shows Claim, refresh the page — the UI may be out of sync until we record your claim.",
+  marketNotActive:
+    "This market is not active on-chain anymore (resolved or closed). Betting is disabled — refresh the page so the UI matches chain state.",
+  marketExpired:
+    "This market's betting window has ended on-chain. Refresh the page to see the latest status.",
+  betTooSmall: "Bet amount is below the minimum (0.01 SOL).",
+  betTooLarge: "Bet amount is above the maximum (10 SOL).",
+  didNotWin: "You did not win this market — no payout available.",
+  betSideMismatch:
+    "Add stake on the same side as your existing bet (Survive or Rug — switching sides is not allowed).",
+  unauthorized: "You are not authorized for this action.",
+  zeroWinningPool: "Nothing to claim — the winning pool is empty.",
+  arithmeticOverflow: "On-chain calculation error — try a smaller amount or refresh.",
+  insufficientRent: "Insufficient SOL to cover account rent for this action.",
+} as const;
+
+/**
+ * Maps Survive.fun program logs / simulation JSON to a short user-facing message.
+ * Codes align with `apps/web/src/idl/survivefun.json` errors.
+ */
+function surviveProgramUserMessage(text: string): string | null {
+  const t = text.toLowerCase();
+  if (
+    t.includes("alreadyclaimed") ||
+    t.includes("already claimed") ||
+    /\b6005\b/.test(text) ||
+    /0x1775\b/i.test(text)
+  ) {
+    return SURVIVE_PROGRAM_USER_MSG.alreadyClaimed;
+  }
+  if (
+    t.includes("marketnotactive") ||
+    t.includes("market is not active") ||
+    /\b6001\b/.test(text) ||
+    /0x1771\b/i.test(text)
+  ) {
+    return SURVIVE_PROGRAM_USER_MSG.marketNotActive;
+  }
+  if (
+    t.includes("marketexpired") ||
+    t.includes("market has expired") ||
+    /\b6002\b/.test(text) ||
+    /0x1772\b/i.test(text)
+  ) {
+    return SURVIVE_PROGRAM_USER_MSG.marketExpired;
+  }
+  if (
+    t.includes("bettoosmall") ||
+    t.includes("bet below minimum") ||
+    /\b6003\b/.test(text) ||
+    /0x1773\b/i.test(text)
+  ) {
+    return SURVIVE_PROGRAM_USER_MSG.betTooSmall;
+  }
+  if (
+    t.includes("bettoolarge") ||
+    t.includes("bet above maximum") ||
+    /\b6004\b/.test(text) ||
+    /0x1774\b/i.test(text)
+  ) {
+    return SURVIVE_PROGRAM_USER_MSG.betTooLarge;
+  }
+  if (
+    t.includes("didnotwin") ||
+    t.includes("did not win") ||
+    /\b6006\b/.test(text) ||
+    /0x1776\b/i.test(text)
+  ) {
+    return SURVIVE_PROGRAM_USER_MSG.didNotWin;
+  }
+  if (
+    t.includes("unauthorized") ||
+    /\b6007\b/.test(text) ||
+    /0x1777\b/i.test(text)
+  ) {
+    return SURVIVE_PROGRAM_USER_MSG.unauthorized;
+  }
+  if (
+    t.includes("invalidduration") ||
+    /\b6008\b/.test(text) ||
+    /0x1778\b/i.test(text)
+  ) {
+    return "Invalid market duration for this operation.";
+  }
+  if (
+    t.includes("zerowinningpool") ||
+    /\b6009\b/.test(text) ||
+    /0x1779\b/i.test(text)
+  ) {
+    return SURVIVE_PROGRAM_USER_MSG.zeroWinningPool;
+  }
+  if (
+    t.includes("arithmeticoverflow") ||
+    /\b6010\b/.test(text) ||
+    /0x177a\b/i.test(text)
+  ) {
+    return SURVIVE_PROGRAM_USER_MSG.arithmeticOverflow;
+  }
+  if (
+    t.includes("betsidemismatch") ||
+    /\b6011\b/.test(text) ||
+    /0x177b\b/i.test(text)
+  ) {
+    return SURVIVE_PROGRAM_USER_MSG.betSideMismatch;
+  }
+  if (
+    t.includes("insufficientrent") ||
+    /\b6012\b/.test(text) ||
+    /0x177c\b/i.test(text)
+  ) {
+    return SURVIVE_PROGRAM_USER_MSG.insufficientRent;
+  }
+  if (
+    t.includes("markethasopenpositions") ||
+    /\b6013\b/.test(text) ||
+    /0x177d\b/i.test(text)
+  ) {
+    return "This market still has open positions — it cannot be closed yet.";
+  }
+  if (
+    t.includes("marketalreadyexists") ||
+    /\b6000\b/.test(text) ||
+    /0x1770\b/i.test(text)
+  ) {
+    return "A market for this token and duration already exists on-chain.";
+  }
+  return null;
+}
+
+function alreadyClaimedUserMessage(): string {
+  return SURVIVE_PROGRAM_USER_MSG.alreadyClaimed;
+}
+
 async function mapSendError(
   err: unknown,
   connection: Connection,
@@ -194,38 +344,47 @@ async function mapSendError(
     const detail = te.message || ste.message;
     const blob = `${detail}\n${logText}`;
 
+    const programMsg = surviveProgramUserMessage(blob);
+    if (programMsg) {
+      return new Error(programMsg);
+    }
+
     if (/insufficient funds|InsufficientFunds|insufficient lamports/i.test(blob)) {
       return new Error(
-        "Insufficient SOL for fees or stake." + devnetClusterHint(),
+        appendDevnetHintIfRelevant("Insufficient SOL for fees or stake."),
       );
     }
     if (/Insufficient/i.test(blob)) {
       return new Error(
-        "Insufficient balance for this transaction." + devnetClusterHint(),
+        appendDevnetHintIfRelevant(
+          "Insufficient balance for this transaction.",
+        ),
       );
     }
     if (/custom program error|Program log: Error|InstructionMissing/i.test(blob)) {
       const snippet = logLines?.length
         ? `\n${logLines.slice(-12).join("\n")}`
         : "";
-      return new Error(
-        `On-chain error: ${detail}${snippet}${devnetClusterHint()}`,
-      );
+      return new Error(`On-chain error: ${detail}${snippet}`);
     }
     const tail = logLines?.length
       ? `\n--- program logs (last lines) ---\n${logLines.slice(-15).join("\n")}`
       : "";
     return new Error(
-      `Transaction failed: ${detail}${tail}${devnetClusterHint()}`,
+      appendDevnetHintIfRelevant(`Transaction failed: ${detail}${tail}`),
     );
   }
 
   if (unwrapped instanceof Error) {
     const text = unwrapped.message || "Unknown error";
-    return new Error(text + devnetClusterHint());
+    const programMsg = surviveProgramUserMessage(text);
+    if (programMsg) return new Error(programMsg);
+    return new Error(appendDevnetHintIfRelevant(text));
   }
 
-  return new Error(String(unwrapped ?? err) + devnetClusterHint());
+  return new Error(
+    appendDevnetHintIfRelevant(String(unwrapped ?? err)),
+  );
 }
 
 function isVagueTxMessage(msg: string): boolean {
@@ -285,6 +444,10 @@ async function mapCaughtSendError(
 
   let mapped = await mapSendError(e, connection);
   let msg = mapped.message;
+  const earlyFriendly = surviveProgramUserMessage(msg);
+  if (earlyFriendly) {
+    return new Error(earlyFriendly);
+  }
   const lower = msg.toLowerCase();
   if (
     lower.includes("insufficient sol") ||
@@ -312,6 +475,10 @@ async function mapCaughtSendError(
     const extra = await simulateForDebugLogs(connection, tx);
     if (extra) {
       mapped = new Error(`${msg}\n\n${extra}`);
+      const afterSim = surviveProgramUserMessage(mapped.message);
+      if (afterSim) {
+        return new Error(afterSim);
+      }
     } else if (process.env.NODE_ENV === "development") {
       // eslint-disable-next-line no-console -- surfaced when wallet hides RPC details
       console.error("[survive.fun] Raw transaction failure:", e);
@@ -584,6 +751,16 @@ export async function claimPayout(
 
   const marketAcc = await program.account.market.fetch(marketPk);
   const platformAuthority = marketAcc.platformAuthority;
+
+  try {
+    const betAcc = await program.account.bet.fetch(betPk);
+    if (betAcc.claimed) {
+      throw new Error(alreadyClaimedUserMessage());
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message === alreadyClaimedUserMessage()) throw e;
+    /* Missing bet account etc. — let the chain reject with a normal error. */
+  }
 
   const ix = await program.methods
     .claimPayout()
