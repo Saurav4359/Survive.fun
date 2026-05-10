@@ -14,26 +14,29 @@ function Shimmer({ className }: { className: string }) {
 export function MarketCardSkeleton() {
   return (
     <article
-      className="flex flex-col gap-4 border border-border bg-card p-4"
+      className="flex flex-col gap-5 rounded-lg border border-border bg-card p-5"
       aria-hidden
     >
-      <div className="flex items-start gap-3">
-        <Shimmer className="h-10 w-10 rounded-md" />
-        <div className="min-w-0 flex-1 space-y-2">
+      <div className="flex items-start gap-4">
+        <Shimmer className="size-11 rounded-lg" />
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
           <Shimmer className="h-4 w-3/4 max-w-[200px]" />
           <Shimmer className="h-3 w-16" />
         </div>
-        <Shimmer className="h-5 w-12" />
+        <div className="flex flex-col gap-2">
+          <Shimmer className="h-6 w-14 rounded-md" />
+          <Shimmer className="h-6 w-12 rounded-md" />
+        </div>
       </div>
-      <Shimmer className="h-12 w-full" />
-      <Shimmer className="h-2 w-full" />
-      <div className="grid grid-cols-2 gap-2">
-        <Shimmer className="h-10 w-full" />
-        <Shimmer className="h-10 w-full" />
+      <Shimmer className="h-[72px] w-full rounded-lg" />
+      <Shimmer className="h-2 w-full rounded-sm" />
+      <div className="grid grid-cols-2 gap-3">
+        <Shimmer className="h-[72px] w-full rounded-lg" />
+        <Shimmer className="h-[72px] w-full rounded-lg" />
       </div>
-      <div className="flex items-center justify-between border-t border-border pt-3">
-        <Shimmer className="h-4 w-20" />
-        <Shimmer className="h-7 w-14" />
+      <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
+        <Shimmer className="h-4 w-24" />
+        <Shimmer className="h-8 w-16 rounded-md" />
       </div>
     </article>
   );
@@ -46,14 +49,14 @@ export function MarketDetailPageSkeleton() {
       <div className="mt-6 border border-border bg-card p-5">
         <div className="flex gap-4">
           <Shimmer className="h-14 w-14" />
-          <div className="flex-1 space-y-3">
+          <div className="flex flex-1 flex-col gap-3">
             <Shimmer className="h-8 w-full max-w-xs" />
             <Shimmer className="h-10 w-48" />
           </div>
         </div>
       </div>
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-5">
-        <div className="space-y-6 xl:col-span-3">
+        <div className="flex flex-col gap-6 xl:col-span-3">
           <ChartSkeleton />
           <div className="grid grid-cols-3 gap-3">
             <Shimmer className="h-20" />
@@ -61,7 +64,7 @@ export function MarketDetailPageSkeleton() {
             <Shimmer className="h-20" />
           </div>
         </div>
-        <div className="space-y-5 xl:col-span-2">
+        <div className="flex flex-col gap-5 xl:col-span-2">
           <Shimmer className="h-48" />
           <BetPanelSkeleton />
         </div>
@@ -73,7 +76,7 @@ export function MarketDetailPageSkeleton() {
 export function BetPanelSkeleton() {
   return (
     <div
-      className="space-y-4 border border-border bg-card p-5"
+      className="flex flex-col gap-4 border border-border bg-card p-5"
       aria-hidden
     >
       <div className="flex items-center justify-between gap-3">
@@ -84,7 +87,7 @@ export function BetPanelSkeleton() {
         <Shimmer className="h-12 w-full" />
         <Shimmer className="h-12 w-full" />
       </div>
-      <div className="space-y-2">
+      <div className="flex flex-col gap-2">
         <Shimmer className="h-3 w-24" />
         <Shimmer className="h-11 w-full" />
         <div className="flex gap-2">
@@ -102,7 +105,7 @@ export function BetPanelSkeleton() {
 
 export function BetsPageSkeleton() {
   return (
-    <div className="space-y-3" aria-hidden>
+    <div className="flex flex-col gap-3" aria-hidden>
       {Array.from({ length: 4 }).map((_, i) => (
         <Shimmer key={i} className="h-20 sm:h-16" />
       ))}
@@ -135,7 +138,7 @@ export function ChartSkeleton({ className = "" }: { className?: string }) {
           <Shimmer className="h-7 w-10" />
         </div>
       </div>
-      <div className="relative h-[280px] w-full sm:h-[340px] p-4">
+      <div className="relative h-[280px] w-full p-4 sm:h-[340px]">
         <Shimmer className="h-full w-full opacity-50" />
       </div>
     </div>
