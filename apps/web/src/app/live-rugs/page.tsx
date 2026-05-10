@@ -50,7 +50,7 @@ export default function LiveRugsPage() {
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-6">
         <section className="min-w-0 lg:col-span-9">
           {isPending ? (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-7 xl:grid-cols-3 xl:gap-8">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div
                   key={i}
@@ -80,19 +80,10 @@ export default function LiveRugsPage() {
                 hidden: {},
                 show: { transition: { staggerChildren: 0.06 } },
               }}
-              className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
+              className="grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-7 xl:grid-cols-3 xl:gap-8"
             >
               {rugLeaning.map((m) => (
-                <motion.div
-                  key={m.id}
-                  variants={{
-                    hidden: { opacity: 0, y: 18 },
-                    show: { opacity: 1, y: 0 },
-                  }}
-                  transition={{ duration: 0.35 }}
-                >
-                  <MarketCard market={m} />
-                </motion.div>
+                <MarketCard key={m.id} market={m} />
               ))}
             </motion.div>
           )}
