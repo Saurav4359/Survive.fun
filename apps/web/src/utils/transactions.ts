@@ -5,9 +5,14 @@ import {
   Program,
   type Wallet as AnchorWallet,
 } from "@coral-xyz/anchor";
-import type { BetSide } from "@survivefun/types";
+import type { ApiResponse, Bet, BetSide } from "@survivefun/types";
 import type { WalletContextState } from "@solana/wallet-adapter-react";
-import { WalletError } from "@solana/wallet-adapter-base";
+import {
+  WalletError,
+  WalletNotConnectedError,
+  WalletSignTransactionError,
+  WalletWindowClosedError,
+} from "@solana/wallet-adapter-base";
 import {
   Connection,
   LAMPORTS_PER_SOL,
@@ -21,7 +26,9 @@ import {
 
 import survivefunIdl from "@/idl/survivefun.json";
 import type { Survivefun } from "@/types/survivefun";
+import { postBetClaim } from "@/utils/betClaimApi";
 import {
+  apiV1Url,
   MARKET_DURATIONS,
   ONCHAIN_MAX_STAKE_RAW,
   ONCHAIN_MIN_STAKE_RAW,
@@ -230,6 +237,89 @@ function isVagueTxMessage(msg: string): boolean {
   );
 }
 
+async function postMarketBetSol(params: {
+  marketId: string;
+  txSignature: string;
+  side: BetSide;
+  amountLamports: number;
+  walletAddress: string;
+}): Promise<void> {
+  const res = await fetch(
+    apiV1Url(`/markets/${encodeURIComponent(params.marketId)}/bets`),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        side: params.side,
+        currency: "sol" as const,
+        amount: params.amountLamports,
+        txSignature: params.txSignature,
+        walletAddress: params.walletAddress,
+      }),
+    },
+  );
+  const body = (await res.json()) as ApiResponse<Bet>;
+  if (!res.ok || !body.success) {
+    const msg = !body.success
+      ? body.error.message
+      : `Bet failed (${res.status})`;
+    throw new Error(msg);
+  }
+}
+
+async function mapCaughtSendError(
+  e: unknown,
+  connection: Connection,
+  tx: Transaction,
+): Promise<Error> {
+  const unwrapped = unwrapWalletErrors(e);
+  if (unwrapped instanceof WalletNotConnectedError) {
+    return new Error("Please connect wallet");
+  }
+  if (
+    unwrapped instanceof WalletSignTransactionError ||
+    unwrapped instanceof WalletWindowClosedError
+  ) {
+    return new Error("Transaction cancelled");
+  }
+
+  let mapped = await mapSendError(e, connection);
+  let msg = mapped.message;
+  const lower = msg.toLowerCase();
+  if (
+    lower.includes("insufficient sol") ||
+    lower.includes("insufficient balance") ||
+    lower.includes("insufficient lamports") ||
+    lower.includes("insufficient funds")
+  ) {
+    return new Error("Insufficient SOL balance");
+  }
+  if (
+    lower.includes("failed to fetch") ||
+    lower.includes("network request failed") ||
+    lower.includes("socket hang up") ||
+    lower.includes("econnreset") ||
+    lower.includes("etimedout") ||
+    lower.includes("timeout") ||
+    lower.includes("503") ||
+    lower.includes("502") ||
+    lower.includes("504")
+  ) {
+    return new Error("Network error, try again");
+  }
+
+  if (isVagueTxMessage(msg)) {
+    const extra = await simulateForDebugLogs(connection, tx);
+    if (extra) {
+      mapped = new Error(`${msg}\n\n${extra}`);
+    } else if (process.env.NODE_ENV === "development") {
+      // eslint-disable-next-line no-console -- surfaced when wallet hides RPC details
+      console.error("[survive.fun] Raw transaction failure:", e);
+    }
+  }
+  return mapped;
+}
+
 async function simulateForDebugLogs(
   connection: Connection,
   tx: Transaction,
@@ -254,43 +344,33 @@ async function sendInstructions(
 ): Promise<string> {
   const payer = assertWalletReady(wallet);
   const connection = getConnection();
-  const tx = new Transaction().add(...instructions);
-  tx.feePayer = payer;
-  const { blockhash, lastValidBlockHeight } =
-    await connection.getLatestBlockhash("confirmed");
-  tx.recentBlockhash = blockhash;
+  if (!wallet.sendTransaction) {
+    throw new Error("Please connect wallet");
+  }
+
+  const {
+    context: { slot: minContextSlot },
+    value: { blockhash, lastValidBlockHeight },
+  } = await connection.getLatestBlockhashAndContext("confirmed");
+
+  const tx = new Transaction({
+    feePayer: payer,
+    recentBlockhash: blockhash,
+  }).add(...instructions);
 
   try {
-    let signature: string;
-    if (wallet.sendTransaction) {
-      signature = await wallet.sendTransaction(tx, connection, {
-        skipPreflight: false,
-        preflightCommitment: "confirmed",
-      });
-    } else {
-      const signed = await wallet.signTransaction!(tx);
-      signature = await connection.sendRawTransaction(signed.serialize(), {
-        skipPreflight: false,
-      });
-    }
-
+    const signature = await wallet.sendTransaction(tx, connection, {
+      skipPreflight: false,
+      preflightCommitment: "confirmed",
+      minContextSlot,
+    });
     await connection.confirmTransaction(
       { signature, blockhash, lastValidBlockHeight },
       "confirmed",
     );
     return signature;
   } catch (e) {
-    let mapped = await mapSendError(e, connection);
-    if (isVagueTxMessage(mapped.message)) {
-      const extra = await simulateForDebugLogs(connection, tx);
-      if (extra) {
-        mapped = new Error(`${mapped.message}\n\n${extra}`);
-      } else if (process.env.NODE_ENV === "development") {
-        // eslint-disable-next-line no-console -- surfaced when wallet hides RPC details
-        console.error("[survive.fun] Raw transaction failure:", e);
-      }
-    }
-    throw mapped;
+    throw await mapCaughtSendError(e, connection, tx);
   }
 }
 
@@ -416,6 +496,8 @@ export interface PlaceBetParams {
   /** Stake in SOL (human, e.g. 0.25). */
   amount: number;
   marketPda: string | PublicKey;
+  /** API market UUID — when set, records the bet via POST `/v1/markets/:id/bets` after confirmation. */
+  marketId?: string;
 }
 
 /**
@@ -464,13 +546,24 @@ export async function placeBet(
     })
     .instruction();
 
-  return sendInstructions(wallet, [ix]);
+  const sig = await sendInstructions(wallet, [ix]);
+  if (params.marketId) {
+    await postMarketBetSol({
+      marketId: params.marketId,
+      txSignature: sig,
+      side: params.side,
+      amountLamports: Number(lamports),
+      walletAddress: bettor.toBase58(),
+    });
+  }
+  return sig;
 }
 
 export async function claimPayout(
   wallet: WalletContextState,
   marketPDA: string,
   betPDA: string,
+  opts?: { betId?: string },
 ): Promise<string> {
   const bettor = assertWalletReady(wallet);
 
@@ -502,5 +595,9 @@ export async function claimPayout(
     })
     .instruction();
 
-  return sendInstructions(wallet, [ix]);
+  const sig = await sendInstructions(wallet, [ix]);
+  if (opts?.betId) {
+    await postBetClaim(opts.betId, sig, bettor.toBase58());
+  }
+  return sig;
 }

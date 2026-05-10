@@ -2,7 +2,6 @@
 
 import type {
   ApiResponse,
-  Bet,
   BetSide,
   Market,
   MarketChartResponse,
@@ -43,7 +42,6 @@ import {
 } from "@/hooks/useMarketBetsList";
 import { useToken } from "@/hooks/useToken";
 import { userBetsQueryKey, useUserBets } from "@/hooks/useUserBets";
-import { postBetClaim } from "@/utils/betClaimApi";
 import { apiV1Url } from "@/utils/constants";
 import { solscanTxUrl } from "@/utils/explorer";
 import {
@@ -218,36 +216,12 @@ export default function MarketPage() {
         m.durationSeconds,
         m.onChainAddress,
       );
-      const sig = await placeBetOnChain(wallet, {
+      await placeBetOnChain(wallet, {
         marketPda,
         side,
         amount: amountUi,
+        marketId: id,
       });
-      const pk = wallet.publicKey;
-      if (!pk) throw new Error("Connect a wallet to place a bet");
-      const apiAmount = Number(BigInt(Math.round(amountUi * LAMPORTS_PER_SOL)));
-      const res = await fetch(
-        apiV1Url(`/markets/${encodeURIComponent(id)}/bets`),
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            side,
-            currency: "sol",
-            amount: apiAmount,
-            txSignature: sig,
-            walletAddress: pk.toBase58(),
-          }),
-        },
-      );
-      const body = (await res.json()) as ApiResponse<Bet>;
-      if (!res.ok || !body.success) {
-        const msg = !body.success
-          ? body.error.message
-          : `Bet failed (${res.status})`;
-        throw new Error(msg);
-      }
-      return body.data;
     },
     onSuccess: () => {
       toast({
@@ -282,9 +256,9 @@ export default function MarketPage() {
       const bettor = wallet.publicKey;
       if (!bettor) throw new Error("Connect a wallet to claim");
       const betPda = (await getBetPDA(marketPda, bettor.toBase58())).toBase58();
-      const sig = await claimPayout(wallet, marketPda, betPda);
-      await postBetClaim(userMarketBet.id, sig, bettor.toBase58());
-      return sig;
+      return claimPayout(wallet, marketPda, betPda, {
+        betId: userMarketBet.id,
+      });
     },
     onSuccess: () => {
       toast({

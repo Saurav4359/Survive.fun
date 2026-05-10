@@ -15,7 +15,6 @@ import { useToast } from "@/components/ToastProvider";
 import { marketResultQueryKey } from "@/hooks/useMarketResult";
 import { myPayoutQueryKey } from "@/hooks/useMyPayout";
 import { userBetsQueryKey, useUserBets } from "@/hooks/useUserBets";
-import { postBetClaim } from "@/utils/betClaimApi";
 import {
   formatBetStake,
   formatNativeBetAmount,
@@ -100,9 +99,9 @@ export default function BetsPage() {
       const bettor = walletAdapter.publicKey;
       if (!bettor) throw new Error("Connect a wallet to claim");
       const betPda = (await getBetPDA(marketPda, bettor.toBase58())).toBase58();
-      const sig = await claimPayout(walletAdapter, marketPda, betPda);
-      await postBetClaim(bet.id, sig, bettor.toBase58());
-      return sig;
+      return claimPayout(walletAdapter, marketPda, betPda, {
+        betId: bet.id,
+      });
     },
     onSuccess: (_sig, bet) => {
       toast({
