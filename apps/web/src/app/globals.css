@@ -16,7 +16,8 @@
     --accent-dim: #52c856;
 
     --survive: #8aff8e;
-    --rug: #ef4444;
+    /* Saturated rug red — reads clearly on pure black */
+    --rug: #ff3b30;
     --warning: #facc15;
 
     --text: #ffffff;
@@ -140,6 +141,14 @@
   }
   .glow-lime-soft {
     box-shadow: 0 0 0 1px rgba(138, 255, 142, 0.4), 0 0 16px var(--glow);
+  }
+
+  /**
+   * Raster logo greens are often yellower neon (~#A4FF33) than UI `--accent` (#8aff8e).
+   * Positive hue-rotate shifts yellow-lime toward the theme mint-lime; tweak ±4deg if needed.
+   */
+  .brand-logo-match-accent {
+    filter: brightness(1.07) saturate(0.93) hue-rotate(28deg);
   }
 
   /* Lime urgent pulse for timers under 5 min */
