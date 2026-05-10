@@ -92,10 +92,13 @@ const activeMarketsQuerySchema = z.object({
 router.get("/", async (req, res, next) => {
   try {
     const q = parseQuery(listMarketsQuerySchema, req.query);
+    const now = new Date();
     const where: Record<string, unknown> =
       q.status === "all"
         ? {}
-        : { status: q.status as "active" | "resolved" | "expired" };
+        : q.status === "active"
+          ? { status: "active" as const, expiresAt: { gt: now } }
+          : { status: q.status as "resolved" | "expired" };
     if (q.tokenMint) {
       where.tokenMint = q.tokenMint;
     }
@@ -131,7 +134,11 @@ router.get("/", async (req, res, next) => {
 router.get("/active", async (req, res, next) => {
   try {
     const q = parseQuery(activeMarketsQuerySchema, req.query);
-    const where: Record<string, unknown> = { status: "active" as const };
+    const now = new Date();
+    const where: Record<string, unknown> = {
+      status: "active" as const,
+      expiresAt: { gt: now },
+    };
     if (q.tokenMint) {
       where.tokenMint = q.tokenMint;
     }
