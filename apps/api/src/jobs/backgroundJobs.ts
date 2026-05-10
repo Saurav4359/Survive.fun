@@ -8,7 +8,11 @@
 
 import { Prisma } from "@prisma/client";
 import { Queue, Worker } from "bullmq";
-import IORedis from "ioredis";
+import { applyUpstashRestAsRedisUrl } from "../config/resolveRedisEnv";
+import {
+  attachRedisErrorHandlers,
+  createRedisConnection,
+} from "../lib/redisConnection";
 
 import { prisma } from "../config/database";
 import { birdeyeFetchOhlcv } from "../lib/birdeye";
@@ -129,7 +133,9 @@ async function runStatsUpdater(): Promise<void> {
 }
 
 function startOhlcvWithRedis(url: string): void {
-  const connection = new IORedis(url, { maxRetriesPerRequest: null });
+  const connection = createRedisConnection(url, "ohlcv-queue");
+  const workerConnection = connection.duplicate();
+  attachRedisErrorHandlers(workerConnection, "ohlcv-worker");
   const queue = new Queue(OHLCV_QUEUE, { connection });
   void queue
     .upsertJobScheduler(
@@ -148,11 +154,16 @@ function startOhlcvWithRedis(url: string): void {
     async () => {
       await runOhlcvAggregation();
     },
-    { connection: connection.duplicate(), concurrency: 1 },
+    { connection: workerConnection, concurrency: 1 },
   );
   worker.on("failed", (job, err) => {
     console.log(`${LOG_PREFIX} OHLCV job failed`, {
       jobId: job?.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
+  worker.on("error", (err) => {
+    console.log(`${LOG_PREFIX} OHLCV worker error`, {
       error: err instanceof Error ? err.message : String(err),
     });
   });
@@ -162,7 +173,9 @@ function startOhlcvWithRedis(url: string): void {
 }
 
 function startStatsWithRedis(url: string): void {
-  const connection = new IORedis(url, { maxRetriesPerRequest: null });
+  const connection = createRedisConnection(url, "stats-queue");
+  const workerConnection = connection.duplicate();
+  attachRedisErrorHandlers(workerConnection, "stats-worker");
   const queue = new Queue(STATS_QUEUE, { connection });
   void queue
     .upsertJobScheduler(
@@ -181,11 +194,16 @@ function startStatsWithRedis(url: string): void {
     async () => {
       await runStatsUpdater();
     },
-    { connection: connection.duplicate(), concurrency: 1 },
+    { connection: workerConnection, concurrency: 1 },
   );
   worker.on("failed", (job, err) => {
     console.log(`${LOG_PREFIX} stats job failed`, {
       jobId: job?.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
+  worker.on("error", (err) => {
+    console.log(`${LOG_PREFIX} stats worker error`, {
       error: err instanceof Error ? err.message : String(err),
     });
   });
@@ -219,6 +237,7 @@ function startStatsFallback(): void {
 export function startBackgroundJobs(): void {
   startResolver();
 
+  applyUpstashRestAsRedisUrl();
   const redisUrl = process.env.REDIS_URL?.trim();
   if (redisUrl) {
     startOhlcvWithRedis(redisUrl);

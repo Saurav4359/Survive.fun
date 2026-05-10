@@ -1,4 +1,9 @@
 import IORedis from "ioredis";
+import { applyUpstashRestAsRedisUrl } from "../config/resolveRedisEnv";
+import {
+  attachRedisErrorHandlers,
+  redisConnectionOptions,
+} from "./redisConnection";
 
 let redis: IORedis | null | undefined;
 
@@ -6,6 +11,7 @@ function connect(): IORedis | null {
   if (redis !== undefined) {
     return redis;
   }
+  applyUpstashRestAsRedisUrl();
   const url = process.env.REDIS_URL?.trim();
   if (
     !url ||
@@ -16,7 +22,8 @@ function connect(): IORedis | null {
     console.error("Current value:", process.env.REDIS_URL);
     process.exit(1);
   }
-  redis = new IORedis(url, { maxRetriesPerRequest: 3 });
+  redis = new IORedis(url, redisConnectionOptions);
+  attachRedisErrorHandlers(redis, "cache");
   return redis;
 }
 

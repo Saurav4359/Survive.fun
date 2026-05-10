@@ -2,14 +2,17 @@ import * as dotenv from 'dotenv';
 import * as path from 'path';
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
+import { applyUpstashRestAsRedisUrl, isRedisEnvConfigured } from "./config/resolveRedisEnv";
+
+applyUpstashRestAsRedisUrl();
+
 const REQUIRED_ENV = [
   "DATABASE_URL",
-  "REDIS_URL",
   "HELIUS_API_KEY",
   "PROGRAM_ID",
   "PLATFORM_WALLET_SECRET_KEY",
   "SOLANA_RPC",
-];
+] as const;
 
 for (const key of REQUIRED_ENV) {
   const val = process.env[key];
@@ -18,6 +21,14 @@ for (const key of REQUIRED_ENV) {
     console.error(`Current value: ${val}`);
     process.exit(1);
   }
+}
+
+if (!isRedisEnvConfigured()) {
+  console.error(
+    "❌ Missing or invalid Redis env: set REDIS_URL, or UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN (REST token is used as the Redis password).",
+  );
+  console.error("Current REDIS_URL:", process.env.REDIS_URL);
+  process.exit(1);
 }
 console.log("✅ All envbles loaded correctly");
 
@@ -28,6 +39,7 @@ import cors from "cors";
 import express, { Router } from "express";
 import { Server } from "socket.io";
 
+import { prisma } from "./config/database";
 import { assertProductionSafeOrExit } from "./config/productionGate";
 import { startBackgroundJobs } from "./jobs/backgroundJobs";
 import { errorHandler } from "./middleware/errorHandler";
@@ -128,12 +140,24 @@ app.use((_req, res) => {
 
 app.use(errorHandler);
 
-startBackgroundJobs();
-console.log("✅ Background jobs started (resolver + OHLCV + stats)");
+async function bootstrap(): Promise<void> {
+  try {
+    await prisma.$connect();
+    console.log("✅ Database connected");
+  } catch (e) {
+    console.error("❌ Database connection failed", e);
+    process.exit(1);
+  }
 
-httpServer.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
-  void registerHeliusWebhook().then(() => {
-    console.log("✅ Helius webhook registered");
+  startBackgroundJobs();
+  console.log("✅ Background jobs started (resolver + OHLCV + stats)");
+
+  httpServer.listen(PORT, () => {
+    console.log(`✅ Server running on port ${PORT}`);
+    void registerHeliusWebhook().then(() => {
+      console.log("✅ Helius webhook registered");
+    });
   });
-});
+}
+
+void bootstrap();

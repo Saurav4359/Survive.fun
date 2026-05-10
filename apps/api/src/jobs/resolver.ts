@@ -6,7 +6,11 @@
 
 import type { Market as DbMarket } from "@prisma/client";
 import { Queue, Worker } from "bullmq";
-import IORedis from "ioredis";
+import { applyUpstashRestAsRedisUrl } from "../config/resolveRedisEnv";
+import {
+  attachRedisErrorHandlers,
+  createRedisConnection,
+} from "../lib/redisConnection";
 
 import { prisma } from "../config/database";
 import { processMarketResolution } from "../services/payoutService";
@@ -87,13 +91,11 @@ export function startResolver(): void {
   }
   resolverStarted = true;
 
+  applyUpstashRestAsRedisUrl();
   const redisUrl = process.env.REDIS_URL?.trim();
 
   if (redisUrl) {
-    const redisConnection = new IORedis(redisUrl, {
-      maxRetriesPerRequest: null,
-    });
-
+    const redisConnection = createRedisConnection(redisUrl, "resolver-queue");
     const queue = new Queue(QUEUE_NAME, { connection: redisConnection });
 
     void queue
@@ -109,6 +111,7 @@ export function startResolver(): void {
       });
 
     const workerConnection = redisConnection.duplicate();
+    attachRedisErrorHandlers(workerConnection, "resolver-worker");
 
     const worker = new Worker(
       QUEUE_NAME,
