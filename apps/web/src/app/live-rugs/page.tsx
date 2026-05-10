@@ -6,14 +6,16 @@ import { Skull } from "lucide-react";
 
 import { LiveFeed } from "@/components/LiveFeed";
 import { MarketCard } from "@/components/MarketCard";
+import { useFilteredOpenActiveMarkets } from "@/hooks/useFilteredOpenActiveMarkets";
 import { fetchActiveMarkets, marketsQueryKey } from "@/hooks/useMarkets";
 
 export default function LiveRugsPage() {
-  const { data: markets = [], isPending } = useQuery({
+  const { data: rawMarkets = [], isPending } = useQuery({
     queryKey: marketsQueryKey,
     queryFn: fetchActiveMarkets,
     staleTime: 15_000,
   });
+  const markets = useFilteredOpenActiveMarkets(rawMarkets);
 
   // Surface markets where rug pool > survive pool, sorted by skew
   const rugLeaning = [...markets]

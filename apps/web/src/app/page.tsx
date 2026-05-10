@@ -14,12 +14,14 @@ import { EmptyState } from "@/components/EmptyState";
 import { LiveFeed } from "@/components/LiveFeed";
 import { MarketCard } from "@/components/MarketCard";
 import { useToast } from "@/components/ToastProvider";
+import { useFilteredOpenActiveMarkets } from "@/hooks/useFilteredOpenActiveMarkets";
 import { marketsQueryKey } from "@/hooks/useMarkets";
 import { fetchStats, statsQueryKey } from "@/hooks/useStats";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { useMarketSearchStore } from "@/stores/marketSearchStore";
 import { apiV1Url, MARKET_DURATIONS } from "@/utils/constants";
 import { formatSolBetLine, parsePoolLamports } from "@/utils/format";
+import { isActiveMarketStillOpen } from "@/utils/marketListing";
 import { totalPoolLamports } from "@/utils/marketRisk";
 
 /**
@@ -161,7 +163,7 @@ export default function HomePage() {
       if (!body.success) {
         throw new Error(body.error.message || "Markets request failed");
       }
-      return body.data.items;
+      return body.data.items.filter((m) => isActiveMarketStillOpen(m));
     },
     staleTime: 15_000,
   });
@@ -172,10 +174,7 @@ export default function HomePage() {
     staleTime: 20_000,
   });
 
-  const markets = useMemo(
-    () => marketsQuery.data ?? [],
-    [marketsQuery.data],
-  );
+  const markets = useFilteredOpenActiveMarkets(marketsQuery.data ?? []);
   const marketsLoading = marketsQuery.isPending;
   const marketsError =
     marketsQuery.error instanceof Error ? marketsQuery.error : null;

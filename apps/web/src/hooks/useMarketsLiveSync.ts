@@ -10,6 +10,12 @@ import { myPayoutQueryKey } from "./useMyPayout";
 import { userBetsQueryKey } from "./useUserBets";
 import { useWebSocketEvents } from "./useWebSocket";
 
+import { isActiveMarketStillOpen } from "@/utils/marketListing";
+
+function filterOpenActive(markets: Market[]): Market[] {
+  return markets.filter((m) => isActiveMarketStillOpen(m));
+}
+
 /**
  * Mounts a global socket listener that patches the active-markets list cache
  * (and any per-market caches that already exist) when `bet_placed`,
@@ -35,7 +41,7 @@ export function useMarketsLiveSync(): void {
           mutated = true;
           return { ...m, survivePool: p.survivePool, rugPool: p.rugPool };
         });
-        return mutated ? next : prev;
+        return filterOpenActive(mutated ? next : prev);
       });
 
       queryClient.setQueryData<Market>(marketQueryKey(p.marketId), (prev) =>
@@ -56,7 +62,7 @@ export function useMarketsLiveSync(): void {
           mutated = true;
           return { ...m, survivePool: b.survivePool, rugPool: b.rugPool };
         });
-        return mutated ? next : prev;
+        return filterOpenActive(mutated ? next : prev);
       });
     },
     onMarketResolved: (r) => {
@@ -77,7 +83,7 @@ export function useMarketsLiveSync(): void {
               r.rugCondition !== undefined ? r.rugCondition : m.rugCondition,
           };
         });
-        return mutated ? next : prev;
+        return filterOpenActive(mutated ? next : prev);
       });
 
       queryClient.setQueryData<Market>(marketQueryKey(r.marketId), (prev) => {

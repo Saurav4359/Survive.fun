@@ -4,6 +4,7 @@ import type { ApiResponse, Market, MarketListPage } from "@survivefun/types";
 import { useQuery } from "@tanstack/react-query";
 
 import { apiV1Url } from "@/utils/constants";
+import { isActiveMarketStillOpen } from "@/utils/marketListing";
 
 export const marketsQueryKey = ["markets", "active"] as const;
 
@@ -22,7 +23,7 @@ export async function fetchActiveMarkets(): Promise<Market[]> {
   if (!body.success) {
     throw new Error(body.error.message || "Markets request failed");
   }
-  return body.data.items;
+  return body.data.items.filter((m) => isActiveMarketStillOpen(m));
 }
 
 export function useMarkets(): {
