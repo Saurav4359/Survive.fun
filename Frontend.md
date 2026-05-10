@@ -52,7 +52,7 @@ built, and exactly which file is responsible for each behavior.
 
 | Tool                                                                                          | Use                                                              |
 | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| **@solana/wallet-adapter-react** + **react-ui** + **wallets** + **base**                      | Phantom integration, modal, autoconnect.                         |
+| **@solana/wallet-adapter-react** + **react-ui** + **phantom** + **base**                       | Phantom-only MVP: modal, `autoConnect`, devnet `ConnectionProvider`. |
 | **@solana/web3.js 1.98**                                                                      | RPC client, `Transaction`, `PublicKey`, error mapping.            |
 | **@solana/spl-token 0.4**                                                                     | Present in deps; **bet collateral is native SOL only** (no SPL stake path in UI). |
 | **@coral-xyz/anchor 0.31**                                                                    | `BN` for u64 encoding of instruction data.                        |
@@ -130,13 +130,15 @@ Plus `.hide-scrollbar` for the trending strip and feed lists.
 
 ### Providers — `src/app/providers.tsx`
 
-Single client boundary that mounts:
+Single client boundary that mounts **in this order**:
 
-1. `ConnectionProvider` (Solana web3.js connection, default cluster: **devnet**, override via `NEXT_PUBLIC_RPC_URL`).
-2. `WalletProvider` with `PhantomWalletAdapter` and `autoConnect`.
-3. `WalletModalProvider` — drives the wallet picker modal (themed in `globals.css`).
+1. `ConnectionProvider` — endpoint `NEXT_PUBLIC_RPC_URL` or devnet `clusterApiUrl` (must match `RPC_URL` / transaction helpers).
+2. `WalletProvider` — `wallets = [new PhantomWalletAdapter()]`, `autoConnect`, `onError` → wallet toasts (skips send/sign tx duplicates).
+3. `WalletModalProvider` — wallet modal (themed in `globals.css`).
 4. `QueryClientProvider` — TanStack Query, default `staleTime: 30_000ms`.
-5. `ToastProvider` — custom framer-motion toast stack used for tx success / error / market resolves.
+5. `ToastProvider` — framer-motion toasts + **`WalletToastBridge`** (listens for adapter-level wallet errors).
+
+Reference **`wallet-adapter`** monorepo was vendored for alignment, then **removed** after migration (see §17 session log).
 
 ### AppShell — `src/components/layout/AppShell.tsx`
 
@@ -188,10 +190,9 @@ button.
 - Search input writes to a zustand store (`marketSearchStore`) so the home
   page filters markets reactively as you type. Input gets
   `focus:border-accent focus:shadow-glow-sm` (the lime glow on focus).
-- Right side: when disconnected, `<WalletConnectButton>` (outlined lime →
-  fills lime on hover). When connected, a balance pill (mono **◎ SOL**) opens a
-  dropdown with deposit / withdraw / history / copy address / switch wallet
-  via `AnimatePresence` slide-down.
+- Right side: `<WalletConnectButton>` only — outlined lime when disconnected;
+  when connected, truncated address + **◎ SOL** (4 dp) with dropdown (copy /
+  switch wallet / disconnect).
 
 ### Mobile
 
@@ -342,7 +343,8 @@ error message, "Try again" button (framer `whileTap: 0.97`).
 | `BetPanel.tsx`           | **SOL-only** collateral: header “Place a bet ◎ SOL”, balance from `useWalletBalances`, amount **0.01–10 SOL** with quick picks `QUICK_SOL_AMOUNTS`, inline validation (min/max/wallet), payout preview (`potentialPayoutLamports` + `formatSolBetLine`). On-chain bet uses Anchor `place_bet` (native transfer inside program). Props: `{ market, onBet(side, amountSolUi), position?: { side, stakeSol } }`. |
 | `LiveFeed.tsx`           | `socket.io-client` listener for `bet_placed`. New rows slide in from top via `AnimatePresence`, side-coded lime/rug left border, fade-out after 30s. Optionally scoped to a `marketId`. |
 | `RiskScore.tsx`          | Risk panel with HIGH/MEDIUM/LOW badge + Dev held / Liquidity / Token age stats. Logic in `utils/marketRisk.ts`. |
-| `WalletConnectButton.tsx`| Wraps `WalletMultiButton` and applies our outlined lime → fill on hover style. |
+| `WalletConnectButton.tsx`| **`next/dynamic` client-only** wrapper around `WalletConnectButtonInner.tsx`: Connect Wallet → modal; Connecting…; connected → truncated address + ◎ SOL (4 dp) + dropdown (copy / switch / disconnect). |
+| `WalletToastBridge.tsx` | Subscribes to `survive:wallet-toast` for `WalletProvider` `onError` messages. |
 | `WalletBalancePanel.tsx` | Big balance card (**◎ SOL** primary, copy address pill, deposit/withdraw/buy/history grid, view on Solscan, switch / disconnect). |
 
 ### Animation utilities
@@ -392,7 +394,7 @@ error message, "Try again" button (framer `whileTap: 0.97`).
 | `useMarketPairsMap`        | Bulk DexScreener pair lookup keyed by mint                             | DexScreener                                |
 | `useUserBets(wallet)`      | Bets placed by a wallet                                                | `GET /v1/users/:wallet/bets`               |
 | `useStats`                 | Platform-wide aggregate stats                                          | `GET /v1/stats`                            |
-| `useWalletBalances`        | `{ lamports, sol }` for the connected wallet; **`solToDisplay(lamports)`** helper (4 dp) | RPC `getBalance` |
+| `useWalletBalances`        | `{ lamports, sol }` via `connection.getBalance(publicKey)`; **`solToDisplay(lamports)`** (4 dp); **30s refresh** via `useEffect` + `query.refetch` | TanStack Query + interval |
 | `useSolUsdPrice`           | `{ usd, isLoading, error }` — SOL→USD from CoinGecko `simple/price`     | TanStack Query, 60s stale                    |
 | `useWatchlist`             | localStorage-backed star/unstar list                                   | Local                                      |
 | `useWebSocket`             | Per-market scoped snapshot — `{ isConnected, latestBet, poolUpdate, marketResolved, subscribeToMarket }`. Only events for the subscribed market populate the snapshot. | shared singleton |
@@ -446,17 +448,18 @@ in dev, override via `NEXT_PUBLIC_PROGRAM_ID`):
   mutation submits this first, then **POST `/v1/markets`** with the returned
   signature so the indexer persists the market.
 - **`placeBet(wallet, params)`** — `PlaceBetParams`:
-  `{ marketPda, side, amount }` with **`amount`** = human SOL (e.g. `0.25`).
-  Anchor `program.methods.placeBet` with stake in lamports; native transfer is
-  **inside** the program (no separate client `SystemProgram.transfer` for the stake).
+  `{ marketPda, side, amount, marketId? }` with **`amount`** = human SOL (e.g. `0.25`).
+  Builds a legacy `Transaction` with `getLatestBlockhashAndContext`, confirms after
+  **`wallet.sendTransaction`** (`minContextSlot`). With **`marketId`** set, after confirmation
+  POSTs **`/v1/markets/:id/bets`** (`currency: "sol"`, `amount` lamports, `txSignature`, `walletAddress`) — camelCase matches `apps/api`.
 - **`src/idl/survivefun.json`** — copy of `contracts/target/idl/survivefun.json`
   for Anchor method builders; regenerate when the program changes.
-- **`claimPayout(wallet, marketPda, betPda)`** — single instruction, 8-byte
-  discriminator only.
-- **Error mapping** — `unwrapWalletErrors` peels nested `WalletError.cause`,
-  `asSendTransactionError` duck-types around bundler-duplicated web3.js,
-  `mapSendError` extracts program logs and re-throws human-readable strings
-  with a "Tip: app uses devnet" hint.
+- **`claimPayout(wallet, marketPda, betPda, opts?)`** — Anchor `claim_payout` ix;
+  same send/confirm path as other helpers. With **`opts.betId`**, POST **`/v1/bets/:id/claim`**
+  (`txSignature`, `walletAddress`) after confirmation.
+- **Error mapping** — `mapCaughtSendError` maps adapter errors (connect wallet / cancelled /
+  insufficient / network) for UI toasts; RPC/program failures still use `mapSendError` +
+  optional simulation logs for vague wallet errors.
 
 ---
 
@@ -534,12 +537,8 @@ pnpm --filter web lint         # next lint
 Current state of green:
 
 - `pnpm --filter web typecheck` → `0 errors`.
-- `pnpm --filter web lint` → `No ESLint warnings or errors`.
-- `pnpm --filter web build` → 10 routes built (1 dynamic `/market/[id]`,
-  9 static), homepage `7.63 kB / 264 kB First Load JS`, market detail
-  `10.5 kB / 310 kB`.
-- Only build warning is the third-party `viem`/`ox` dynamic require deep in
-  `@reown/appkit`'s walletconnect adapter chain — not from our code.
+- `pnpm --filter web lint` → clean aside from an existing `react-hooks/exhaustive-deps` note on `market/[id]/page.tsx` (chart effect).
+- `pnpm --filter web build` → 10 routes built (1 dynamic `/market/[id]`, 9 static).
 
 ---
 
@@ -662,6 +661,45 @@ the legacy `lib/gsap/*` files are orphaned and can be removed.
 ---
 
 ## 17. Frontend Agent — Session Log
+
+### 2026-05-09 (wallet-adapter reference migration)
+
+**Reference repo**
+
+- Vendored Solana **`wallet-adapter`** monorepo (starter **react-ui-starter** + richer **example**) was read for patterns, then **`rm -rf wallet-adapter`** after green build.
+
+**Packages**
+
+- **Added:** `@solana/wallet-adapter-phantom`
+- **Removed:** `@solana/wallet-adapter-wallets` (Phantom-only MVP)
+
+**Files added**
+
+- `src/utils/walletErrorToast.ts` — wallet toast event + adapter error copy + skip duplicate tx errors on `WalletProvider.onError`
+- `src/components/WalletToastBridge.tsx` — listens for wallet toast events inside `ToastProvider`
+- `src/components/WalletConnectButtonInner.tsx` — connect / connecting / connected UI + dropdown
+
+**Files changed**
+
+- `src/app/providers.tsx` — Phantom package adapter, explicit devnet endpoint, provider order, `onError`, `WalletToastBridge`
+- `src/utils/transactions.ts` — `sendTransaction` + `minContextSlot`, user-facing error strings, `placeBet` optional API record, `claimPayout` optional claim POST
+- `src/hooks/useWalletBalances.ts` — 30s balance polling via `useEffect` + `refetch`
+- `src/components/WalletConnectButton.tsx` — dynamic import (`ssr: false`)
+- `src/components/layout/TopBar.tsx` — single `WalletConnectButton` for wallet UX
+- `src/app/market/[id]/page.tsx` — `placeBet` passes `marketId`; claim uses `claimPayout(..., { betId })`
+- `src/app/bets/page.tsx` — claim uses `claimPayout(..., { betId })`
+- `apps/web/next.config.mjs` — transpile `@solana/wallet-adapter-phantom`
+
+**Files deleted**
+
+- Entire **`wallet-adapter/`** reference directory (post-migration).
+
+**Build**
+
+- `pnpm --filter web typecheck` → 0 errors
+- `pnpm --filter web build` → success
+
+**Note:** Backend expects **camelCase** JSON (`txSignature`, `walletAddress`, `amount`); the implementation matches `apps/api` routes.
 
 ### 2026-05-09 (SOL-only collateral UI)
 
