@@ -15,7 +15,7 @@ const nextConfig = {
     "@solana/wallet-adapter-base-ui",
     "@solana/wallet-adapter-react",
     "@solana/wallet-adapter-react-ui",
-    "@solana/wallet-adapter-wallets",
+    "@solana/wallet-adapter-phantom",
   ],
 };
 
