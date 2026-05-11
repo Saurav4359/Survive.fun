@@ -15,6 +15,7 @@ import {
 } from "@solana/wallet-adapter-base";
 import {
   Connection,
+  Keypair,
   LAMPORTS_PER_SOL,
   PublicKey,
   SendTransactionError,
@@ -25,7 +26,6 @@ import {
 } from "@solana/web3.js";
 
 import survivefunIdl from "@/idl/survivefun.json";
-import type { Survivefun } from "@/types/survivefun";
 import { postBetClaim } from "@/utils/betClaimApi";
 import {
   apiV1Url,
@@ -177,8 +177,11 @@ function appendDevnetHintIfRelevant(message: string): string {
     t.includes("anchorerror") ||
     t.includes("instructionerror") ||
     t.includes("program log: instruction:") ||
+    t.includes("accountdiddeserialize") ||
     /custom["']?\s*:\s*600\d/.test(t) ||
-    /0x177[0-9a-f]\b/i.test(message)
+    /custom["']?\s*:\s*3003\b/.test(t) ||
+    /0x177[0-9a-f]\b/i.test(message) ||
+    /0xbbb\b/i.test(message)
   ) {
     return message;
   }
@@ -209,6 +212,16 @@ const SURVIVE_PROGRAM_USER_MSG = {
  */
 function surviveProgramUserMessage(text: string): string | null {
   const t = text.toLowerCase();
+  if (
+    t.includes("accountdiddeserialize") ||
+    t.includes("3003") ||
+    /0xbbb\b/i.test(text)
+  ) {
+    return (
+      "Wrong on-chain market address — the app was using a legacy PDA. Refresh the page and try again; " +
+      "new markets need the API's chainMarketKey seed. Use Devnet in Phantom if your RPC is devnet."
+    );
+  }
   if (
     t.includes("alreadyclaimed") ||
     t.includes("already claimed") ||
@@ -542,12 +555,15 @@ async function sendInstructions(
 }
 
 /**
- * Market PDA: `[b"market", mint]` (one market per token mint; duration only affects expiry in `create_market`).
+ * Market PDA — must match `contracts/programs/survivefun` + API `createMarketOnChain`:
+ * `[b"market", mint, market_id]` when `chainMarketKey` (market_id) is set.
+ * Legacy deployments: `[b"market", mint]` only when `chainMarketKey` is null/empty.
  */
-export async function getMarketPDA(
+export function getMarketPDA(
   tokenMint: string,
+  chainMarketKey: string | null | undefined,
   durationSeconds: number,
-): Promise<PublicKey> {
+): PublicKey {
   let mint: PublicKey;
   try {
     mint = new PublicKey(tokenMint);
@@ -560,6 +576,20 @@ export async function getMarketPDA(
       `Invalid market duration: ${durationSeconds}s. Allowed: ${allowed.join(", ")}.`,
     );
   }
+  const trimmed = chainMarketKey?.trim();
+  if (trimmed) {
+    let marketId: PublicKey;
+    try {
+      marketId = new PublicKey(trimmed);
+    } catch {
+      throw new Error("Invalid chain market key (market_id seed).");
+    }
+    const [pda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("market"), mint.toBuffer(), marketId.toBuffer()],
+      PROGRAM_ID,
+    );
+    return pda;
+  }
   const [pda] = PublicKey.findProgramAddressSync(
     [Buffer.from("market"), mint.toBuffer()],
     PROGRAM_ID,
@@ -570,15 +600,20 @@ export async function getMarketPDA(
 /**
  * API `onChainAddress` may still reference a market account from a **previous**
  * program deployment. Anchor then fails with 3007 (`AccountOwnedByWrongProgram`).
- * Always derive the PDA for the **current** `PROGRAM_ID`; reuse stored address only
- * when it matches derived or is on-chain owned by `PROGRAM_ID`.
+ * Prefer deriving from `tokenMint` + `chainMarketKey`; reuse stored address only when
+ * it matches derived or is on-chain owned by `PROGRAM_ID`.
  */
 export async function resolveMarketPdaForTransaction(
   tokenMint: string,
   durationSeconds: number,
   storedOnChainAddress: string | null | undefined,
+  chainMarketKey: string | null | undefined,
 ): Promise<string> {
-  const derived = (await getMarketPDA(tokenMint, durationSeconds)).toBase58();
+  const derived = getMarketPDA(
+    tokenMint,
+    chainMarketKey,
+    durationSeconds,
+  ).toBase58();
   const stored = storedOnChainAddress?.trim();
   if (!stored || stored === derived) return derived;
 
@@ -638,15 +673,26 @@ export async function createMarket(
 
   await assertSufficientSolBalance(platformAuthority, PLATFORM_SEED_LAMPORTS_TOTAL);
 
-  const marketPk = await getMarketPDA(tokenMint, duration);
   const connection = getConnection();
+  const marketIdKey = Keypair.generate().publicKey;
+  const marketPk = getMarketPDA(tokenMint, marketIdKey.toBase58(), duration);
+  const devBalanceLamports = await connection.getBalance(creator, "confirmed");
+
   const provider = new AnchorProvider(connection, toAnchorWallet(wallet), {
     commitment: "confirmed",
   });
   const program = new Program(survivefunIdl as Idl, provider);
 
   const ix = await program.methods
-    .createMarket(mintPk, new BN(duration))
+    .createMarket(
+      mintPk,
+      marketIdKey,
+      new BN(duration),
+      creator,
+      new BN(devBalanceLamports),
+      new BN(0),
+      new BN(0),
+    )
     .accounts({
       creator,
       platformAuthority,
@@ -747,13 +793,17 @@ export async function claimPayout(
   const provider = new AnchorProvider(connection, toAnchorWallet(wallet), {
     commitment: "confirmed",
   });
-  const program = new Program<Survivefun>(survivefunIdl, provider);
+  const program = new Program(survivefunIdl as Idl, provider);
+  const acc = program.account as unknown as {
+    market: { fetch: (pk: PublicKey) => Promise<{ platformAuthority: PublicKey }> };
+    bet: { fetch: (pk: PublicKey) => Promise<{ claimed: boolean }> };
+  };
 
-  const marketAcc = await program.account.market.fetch(marketPk);
+  const marketAcc = await acc.market.fetch(marketPk);
   const platformAuthority = marketAcc.platformAuthority;
 
   try {
-    const betAcc = await program.account.bet.fetch(betPk);
+    const betAcc = await acc.bet.fetch(betPk);
     if (betAcc.claimed) {
       throw new Error(alreadyClaimedUserMessage());
     }

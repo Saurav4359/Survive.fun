@@ -95,6 +95,7 @@ export default function BetsPage() {
         m.tokenMint,
         m.durationSeconds,
         m.onChainAddress,
+        m.chainMarketKey,
       );
       const bettor = walletAdapter.publicKey;
       if (!bettor) throw new Error("Connect a wallet to claim");

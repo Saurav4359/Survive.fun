@@ -475,6 +475,7 @@ export default function MarketPage() {
         m.tokenMint,
         m.durationSeconds,
         m.onChainAddress,
+        m.chainMarketKey,
       );
       return placeBetOnChain(wallet, {
         marketPda,
@@ -513,6 +514,7 @@ export default function MarketPage() {
         market.tokenMint,
         market.durationSeconds,
         market.onChainAddress,
+        market.chainMarketKey,
       );
       const bettor = wallet.publicKey;
       if (!bettor) throw new Error("Connect a wallet to claim");

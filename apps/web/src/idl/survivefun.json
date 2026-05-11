@@ -73,6 +73,11 @@
                 "kind": "account",
                 "path": "market.token_mint",
                 "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
               }
             ]
           }
@@ -127,6 +132,10 @@
               {
                 "kind": "arg",
                 "path": "token_mint"
+              },
+              {
+                "kind": "arg",
+                "path": "market_id"
               }
             ]
           }
@@ -142,7 +151,27 @@
           "type": "pubkey"
         },
         {
+          "name": "market_id",
+          "type": "pubkey"
+        },
+        {
           "name": "duration_seconds",
+          "type": "u64"
+        },
+        {
+          "name": "dev_wallet",
+          "type": "pubkey"
+        },
+        {
+          "name": "dev_balance_at_open",
+          "type": "u64"
+        },
+        {
+          "name": "open_price",
+          "type": "u64"
+        },
+        {
+          "name": "open_liquidity",
           "type": "u64"
         }
       ]
@@ -320,70 +349,75 @@
     {
       "code": 6000,
       "name": "MarketAlreadyExists",
-      "msg": "Market already exists for this token mint"
+      "msg": "Market already exists for this token mint and market id"
     },
     {
       "code": 6001,
+      "name": "InvalidMarketId",
+      "msg": "Invalid market id"
+    },
+    {
+      "code": 6002,
       "name": "MarketNotActive",
       "msg": "Market is not active"
     },
     {
-      "code": 6002,
+      "code": 6003,
       "name": "MarketExpired",
       "msg": "Market has expired"
     },
     {
-      "code": 6003,
+      "code": 6004,
       "name": "BetTooSmall",
       "msg": "Bet below minimum (0.01 SOL)"
     },
     {
-      "code": 6004,
+      "code": 6005,
       "name": "BetTooLarge",
       "msg": "Bet above maximum (10 SOL)"
     },
     {
-      "code": 6005,
+      "code": 6006,
       "name": "AlreadyClaimed",
       "msg": "Already claimed"
     },
     {
-      "code": 6006,
+      "code": 6007,
       "name": "DidNotWin",
       "msg": "Did not win"
     },
     {
-      "code": 6007,
+      "code": 6008,
       "name": "Unauthorized",
       "msg": "Unauthorized"
     },
     {
-      "code": 6008,
+      "code": 6009,
       "name": "InvalidDuration",
       "msg": "Invalid duration"
     },
     {
-      "code": 6009,
+      "code": 6010,
       "name": "ZeroWinningPool",
       "msg": "Winning pool is zero"
     },
     {
-      "code": 6010,
+      "code": 6011,
       "name": "ArithmeticOverflow",
       "msg": "Arithmetic overflow"
     },
     {
-      "code": 6011,
+      "code": 6012,
       "name": "BetSideMismatch",
       "msg": "Add stake on the same side as your existing bet (cannot switch survive/rug)"
     },
     {
-      "code": 6012,
+      "code": 6013,
       "name": "InsufficientRent",
       "msg": "Insufficient lamports to preserve rent on market"
     },
     {
-      "code": 6013,
+      "code": 6014,
       "name": "MarketHasOpenPositions",
       "msg": "Market cannot be closed while it has bets or non-seed pool funds"
     }
@@ -483,6 +517,41 @@
           {
             "name": "token_mint",
             "type": "pubkey"
+          },
+          {
+            "name": "market_id",
+            "docs": [
+              "Unique id per round; included in the market PDA seeds so the same mint can open new markets after resolution."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "dev_wallet",
+            "docs": [
+              "Token creator / dev wallet — snapshot address at market open (no retroactive manipulation)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "dev_balance_at_open",
+            "docs": [
+              "Dev wallet native SOL balance at creation (lamports)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "open_price",
+            "docs": [
+              "Price at open (fixed-point: price × 1_000_000)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "open_liquidity",
+            "docs": [
+              "Liquidity at open (fixed-point: liquidity × 100)."
+            ],
+            "type": "u64"
           },
           {
             "name": "creator",
