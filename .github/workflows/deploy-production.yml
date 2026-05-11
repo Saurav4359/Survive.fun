@@ -1,0 +1,66 @@
+# Production deploy — runs the same quality gate as CI, then optional Vercel production deploy.
+#
+# Triggers:
+#   • workflow_dispatch — optional "Skip Vercel" to run the quality gate only
+#   • Git tag push matching v* (e.g. v1.0.0) — runs quality + Vercel when secrets are set
+#
+# Secrets (Settings → Secrets and variables → Actions):
+#   • VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID
+#
+# Optional repository variables (Settings → Variables) to override build-time public env:
+#   • NEXT_PUBLIC_API_URL, NEXT_PUBLIC_WS_URL, NEXT_PUBLIC_PROGRAM_ID,
+#     NEXT_PUBLIC_NETWORK, NEXT_PUBLIC_RPC_URL
+
+name: Deploy production
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_vercel:
+        description: "Run quality gate only (no Vercel deploy)"
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: deploy-production-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    uses: ./.github/workflows/ci-reusable.yml
+    with:
+      next_public_api_url: ${{ vars.NEXT_PUBLIC_API_URL || 'https://api.survive.fun/api/v1' }}
+      next_public_ws_url: ${{ vars.NEXT_PUBLIC_WS_URL || 'https://api.survive.fun' }}
+      next_public_program_id: ${{ vars.NEXT_PUBLIC_PROGRAM_ID || '9ZqPpXBid4xzB49HjB7zE6BnTWryMuuZFTULTSJqqTd8' }}
+      next_public_network: ${{ vars.NEXT_PUBLIC_NETWORK || 'mainnet-beta' }}
+      next_public_rpc_url: ${{ vars.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com' }}
+    secrets: inherit
+
+  deploy-web-vercel:
+    name: Deploy web (Vercel)
+    needs: quality
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+      || (github.event_name == 'workflow_dispatch' && github.event.inputs.skip_vercel != 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy to Vercel (production)
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          working-directory: apps/web
+          prod: true

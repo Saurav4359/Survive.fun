@@ -1,0 +1,88 @@
+# Reusable quality gate: install → typecheck → strict lint → test → production build.
+# Called from `ci.yml` (PR/push) and `deploy-production.yml` (manual / tag).
+
+name: Reusable CI
+
+on:
+  workflow_call:
+    inputs:
+      next_public_api_url:
+        description: "NEXT_PUBLIC_API_URL for Next.js build"
+        type: string
+        required: false
+        default: "http://localhost:3001/api/v1"
+      next_public_ws_url:
+        description: "NEXT_PUBLIC_WS_URL (http(s) or ws(s))"
+        type: string
+        required: false
+        default: "http://localhost:3001"
+      next_public_program_id:
+        description: "Deployed Survive.fun program id (base58)"
+        type: string
+        required: false
+        default: "9ZqPpXBid4xzB49HjB7zE6BnTWryMuuZFTULTSJqqTd8"
+      next_public_network:
+        type: string
+        required: false
+        default: "mainnet-beta"
+      next_public_rpc_url:
+        type: string
+        required: false
+        default: "https://api.mainnet-beta.solana.com"
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Quality gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CI: "true"
+      NODE_ENV: development
+      TZ: UTC
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck (turbo)
+        run: pnpm typecheck
+
+      - name: Lint — strict on web (zero warnings)
+        run: |
+          pnpm --dir apps/web exec next lint --max-warnings 0
+          pnpm turbo run lint --filter=!web
+
+      - name: Test (API — Vitest)
+        run: pnpm test
+
+      - name: Build (turbo — types, API, web)
+        env:
+          NODE_ENV: production
+          NEXT_PUBLIC_API_URL: ${{ inputs.next_public_api_url }}
+          NEXT_PUBLIC_WS_URL: ${{ inputs.next_public_ws_url }}
+          NEXT_PUBLIC_PROGRAM_ID: ${{ inputs.next_public_program_id }}
+          NEXT_PUBLIC_NETWORK: ${{ inputs.next_public_network }}
+          NEXT_PUBLIC_RPC_URL: ${{ inputs.next_public_rpc_url }}
+        run: pnpm build
+
+      - name: Dependency audit (critical only; informational)
+        continue-on-error: true
+        run: pnpm audit --audit-level critical 2>&1 | tee audit.txt
+        # Remove continue-on-error when you want the pipeline to fail on critical CVEs.

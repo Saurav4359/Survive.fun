@@ -905,6 +905,8 @@ export default function MarketPage() {
       rugSeriesRef.current = null;
       setChartReady(false);
     };
+    // Recreate chart only when market identity / open time changes — not on every pool tick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional narrow deps for chart lifecycle
   }, [id, market?.id, market?.createdAt]);
 
   /** Refresh pool-% polylines when range or pools change; tick “now” while market is open. */
@@ -952,6 +954,8 @@ export default function MarketPage() {
       cancelled = true;
       if (tick) clearInterval(tick);
     };
+    // Pool series refresh uses primitive fields; full `market` would thrash on unrelated updates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional narrow deps for pool polylines
   }, [
     id,
     poolChartRange,

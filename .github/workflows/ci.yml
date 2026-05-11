@@ -1,0 +1,22 @@
+# Survive.fun — CI on every push / PR to main (typecheck, strict web lint, tests, production build).
+# Quality steps live in `ci-reusable.yml` so deploy can reuse the same gate.
+
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    uses: ./.github/workflows/ci-reusable.yml
+    secrets: inherit
