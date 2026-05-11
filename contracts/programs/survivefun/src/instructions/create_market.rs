@@ -99,32 +99,30 @@ pub fn create_market(
         .checked_add(duration_seconds as i64)
         .ok_or(SurviveError::ArithmeticOverflow)?;
 
+    // Initial survive/rug pool liquidity: paid by the market maker (`creator`), not the platform.
+    // `platform_authority` remains a co-signer so only the configured resolver key is recorded.
+    let creator_ai = ctx.accounts.creator.to_account_info();
+    let market_ai = market.to_account_info();
+    let system_ai = ctx.accounts.system_program.to_account_info();
+
     let ix = anchor_lang::solana_program::system_instruction::transfer(
-        &ctx.accounts.platform_authority.key(),
+        &ctx.accounts.creator.key(),
         &market.key(),
         PLATFORM_SEED_LAMPORTS_PER_SIDE,
     );
     anchor_lang::solana_program::program::invoke(
         &ix,
-        &[
-            ctx.accounts.platform_authority.to_account_info(),
-            market.to_account_info(),
-            ctx.accounts.system_program.to_account_info(),
-        ],
+        &[creator_ai.clone(), market_ai.clone(), system_ai.clone()],
     )?;
 
     let ix = anchor_lang::solana_program::system_instruction::transfer(
-        &ctx.accounts.platform_authority.key(),
+        &ctx.accounts.creator.key(),
         &market.key(),
         PLATFORM_SEED_LAMPORTS_PER_SIDE,
     );
     anchor_lang::solana_program::program::invoke(
         &ix,
-        &[
-            ctx.accounts.platform_authority.to_account_info(),
-            market.to_account_info(),
-            ctx.accounts.system_program.to_account_info(),
-        ],
+        &[creator_ai, market_ai, system_ai],
     )?;
 
     market.token_mint = token_mint;

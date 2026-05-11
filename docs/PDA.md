@@ -51,3 +51,14 @@ Database inference:
 2. Update **`packages/solana-pda`** (and bump **`PDA_LAYOUT_VERSION`** / **`MarketAddressScheme`** if layout changes).  
 3. Ship a DB migration strategy for existing rows.  
 4. Run **`pnpm pda:audit`** against staging/prod snapshots.
+
+## Market creation (maker cost)
+
+At `create_market`, the **market maker (`creator`)** pays:
+
+- **Rent** for the new market account (`payer = creator`).
+- **0.02 SOL** total bootstrap into the vault — two CPI transfers of **0.01 SOL** each (`PLATFORM_SEED_LAMPORTS_PER_SIDE`) from **creator → market PDA**, credited to `survive_pool` and `rug_pool`.
+
+The **`platform_authority`** account still **must sign** `create_market` so the resolver / fee-recipient pubkey written into the market is the one the protocol controls; it does **not** fund those seed transfers.
+
+The **web** “paste mint → Create Market” flow signs `create_market` in the user’s wallet first, then calls **`POST /v1/markets`** with **`transactionSignature`** so the API verifies the tx and indexes the market (no server-paid `create_market` in that path). Server-only callers (e.g. webhooks) can still omit the signature and use the platform wallet to submit on-chain.
