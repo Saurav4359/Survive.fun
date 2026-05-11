@@ -1499,6 +1499,15 @@ export default function MarketPage() {
               ) : null}
             </motion.div>
           </AnimatePresence>
+
+          <LiveFeed
+            marketId={market.id}
+            maxRows={20}
+            heading="Last 20 Bets"
+            refreshKey={liveFeedRefresh}
+            className="border-border bg-surface"
+            listClassName="max-h-[min(340px,45vh)] xl:max-h-[380px]"
+          />
         </div>
 
         {/* RIGHT (40% sticky) */}
@@ -1697,16 +1706,6 @@ export default function MarketPage() {
           ) : null}
         </aside>
       </div>
-
-      {/* Live feed below */}
-      <section className="mt-12">
-        <LiveFeed
-          marketId={market.id}
-          maxRows={20}
-          heading="Last 20 Bets"
-          refreshKey={liveFeedRefresh}
-        />
-      </section>
       </div>
     </>
   );
