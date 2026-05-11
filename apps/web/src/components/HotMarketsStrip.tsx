@@ -16,9 +16,8 @@ import { totalPoolLamports } from "@/utils/marketRisk";
 
 function TrendingMarketPill({ market: m }: { market: Market }) {
   return (
-    <a
-      href={`/market/${m.id}`}
-      className="inline-flex w-fit max-w-[200px] shrink-0 items-center gap-2 rounded border border-border bg-card px-2 py-1 transition-colors hover:border-accent"
+    <div
+      className="pointer-events-none inline-flex w-fit max-w-[200px] shrink-0 select-none items-center gap-2 rounded border border-border bg-card px-2 py-1"
     >
       <TokenThumb
         mint={m.tokenMint}
@@ -33,7 +32,7 @@ function TrendingMarketPill({ market: m }: { market: Market }) {
           Pool {formatSolBetLine(totalPoolLamports(m) / 1e9)}
         </p>
       </div>
-    </a>
+    </div>
   );
 }
 

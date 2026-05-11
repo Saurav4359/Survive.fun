@@ -190,10 +190,6 @@
     animation: survive-hot-marquee 42s linear infinite;
   }
 
-  .survive-hot-marquee-viewport:hover .survive-hot-marquee-track {
-    animation-play-state: paused;
-  }
-
   @media (prefers-reduced-motion: reduce) {
     .survive-hot-marquee-track {
       animation: none !important;
