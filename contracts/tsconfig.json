@@ -10,5 +10,5 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["node", "mocha", "chai"]
   },
-  "include": ["tests/**/*.ts", "target/**/*.ts"]
+  "include": ["tests/**/*.ts", "target/**/*.ts", "idl/**/*.json"]
 }

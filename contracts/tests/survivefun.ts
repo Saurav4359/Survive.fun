@@ -13,7 +13,7 @@ import {
 } from "@solana/web3.js";
 import { assert } from "chai";
 
-import idl from "../target/idl/survivefun.json";
+import idl from "../idl/survivefun.json";
 
 /** Production: 3600 | 21600 | 86400. Local tests: 10s when program built with `--features integration-test`. */
 let marketDurationSec: number;

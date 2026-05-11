@@ -1,0 +1,708 @@
+{
+  "address": "9ZqPpXBid4xzB49HjB7zE6BnTWryMuuZFTULTSJqqTd8",
+  "metadata": {
+    "name": "survivefun",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Survive.fun Anchor program"
+  },
+  "instructions": [
+    {
+      "name": "claim_payout",
+      "discriminator": [
+        127,
+        240,
+        132,
+        62,
+        227,
+        198,
+        146,
+        133
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "bet",
+          "writable": true
+        },
+        {
+          "name": "bettor",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "platform_authority",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_market",
+      "discriminator": [
+        88,
+        154,
+        248,
+        186,
+        48,
+        14,
+        123,
+        244
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.token_mint",
+                "account": "Market"
+              },
+              {
+                "kind": "account",
+                "path": "market.market_id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "create_market",
+      "discriminator": [
+        103,
+        226,
+        97,
+        235,
+        200,
+        188,
+        251,
+        254
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "platform_authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "token_mint"
+              },
+              {
+                "kind": "arg",
+                "path": "market_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "token_mint",
+          "type": "pubkey"
+        },
+        {
+          "name": "market_id",
+          "type": "pubkey"
+        },
+        {
+          "name": "duration_seconds",
+          "type": "u64"
+        },
+        {
+          "name": "dev_wallet",
+          "type": "pubkey"
+        },
+        {
+          "name": "dev_balance_at_open",
+          "type": "u64"
+        },
+        {
+          "name": "open_price",
+          "type": "u64"
+        },
+        {
+          "name": "open_liquidity",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "place_bet",
+      "discriminator": [
+        222,
+        62,
+        67,
+        220,
+        63,
+        166,
+        126,
+        33
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "bettor",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "bet",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "bettor"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "side",
+          "type": {
+            "defined": {
+              "name": "BetSide"
+            }
+          }
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "resolve_market",
+      "discriminator": [
+        155,
+        23,
+        80,
+        173,
+        46,
+        74,
+        23,
+        239
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "writable": true
+        },
+        {
+          "name": "platform_authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "outcome",
+          "type": {
+            "defined": {
+              "name": "Outcome"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Bet",
+      "discriminator": [
+        147,
+        23,
+        35,
+        59,
+        15,
+        75,
+        155,
+        32
+      ]
+    },
+    {
+      "name": "Market",
+      "discriminator": [
+        219,
+        190,
+        213,
+        55,
+        0,
+        227,
+        198,
+        154
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "BetPlaced",
+      "discriminator": [
+        88,
+        88,
+        145,
+        226,
+        126,
+        206,
+        32,
+        0
+      ]
+    },
+    {
+      "name": "MarketResolved",
+      "discriminator": [
+        89,
+        67,
+        230,
+        95,
+        143,
+        106,
+        199,
+        202
+      ]
+    },
+    {
+      "name": "PayoutClaimed",
+      "discriminator": [
+        200,
+        39,
+        105,
+        112,
+        116,
+        63,
+        58,
+        149
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "MarketAlreadyExists",
+      "msg": "Market already exists for this token mint and market id"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidMarketId",
+      "msg": "Invalid market id"
+    },
+    {
+      "code": 6002,
+      "name": "MarketNotActive",
+      "msg": "Market is not active"
+    },
+    {
+      "code": 6003,
+      "name": "MarketExpired",
+      "msg": "Market has expired"
+    },
+    {
+      "code": 6004,
+      "name": "BetTooSmall",
+      "msg": "Bet below minimum (0.01 SOL)"
+    },
+    {
+      "code": 6005,
+      "name": "BetTooLarge",
+      "msg": "Bet above maximum (10 SOL)"
+    },
+    {
+      "code": 6006,
+      "name": "AlreadyClaimed",
+      "msg": "Already claimed"
+    },
+    {
+      "code": 6007,
+      "name": "DidNotWin",
+      "msg": "Did not win"
+    },
+    {
+      "code": 6008,
+      "name": "Unauthorized",
+      "msg": "Unauthorized"
+    },
+    {
+      "code": 6009,
+      "name": "InvalidDuration",
+      "msg": "Invalid duration"
+    },
+    {
+      "code": 6010,
+      "name": "ZeroWinningPool",
+      "msg": "Winning pool is zero"
+    },
+    {
+      "code": 6011,
+      "name": "ArithmeticOverflow",
+      "msg": "Arithmetic overflow"
+    },
+    {
+      "code": 6012,
+      "name": "BetSideMismatch",
+      "msg": "Add stake on the same side as your existing bet (cannot switch survive/rug)"
+    },
+    {
+      "code": 6013,
+      "name": "InsufficientRent",
+      "msg": "Insufficient lamports to preserve rent on market"
+    },
+    {
+      "code": 6014,
+      "name": "MarketHasOpenPositions",
+      "msg": "Market cannot be closed while it has bets or non-seed pool funds"
+    }
+  ],
+  "types": [
+    {
+      "name": "Bet",
+      "docs": [
+        "Per-bettor position for a single market.",
+        "Rent: allocate `8 + Bet::INIT_SPACE` bytes (8-byte Anchor account discriminator)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "bettor",
+            "type": "pubkey"
+          },
+          {
+            "name": "side",
+            "type": {
+              "defined": {
+                "name": "BetSide"
+              }
+            }
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "claimed",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BetPlaced",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "bettor",
+            "type": "pubkey"
+          },
+          {
+            "name": "side",
+            "type": {
+              "defined": {
+                "name": "BetSide"
+              }
+            }
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BetSide",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Survive"
+          },
+          {
+            "name": "Rug"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Market",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "token_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "market_id",
+            "docs": [
+              "Unique id per round; included in the market PDA seeds so the same mint can open new markets after resolution."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "dev_wallet",
+            "docs": [
+              "Token creator / dev wallet — snapshot address at market open (no retroactive manipulation)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "dev_balance_at_open",
+            "docs": [
+              "Dev wallet native SOL balance at creation (lamports)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "open_price",
+            "docs": [
+              "Price at open (fixed-point: price × 1_000_000)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "open_liquidity",
+            "docs": [
+              "Liquidity at open (fixed-point: liquidity × 100)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "survive_pool",
+            "type": "u64"
+          },
+          {
+            "name": "rug_pool",
+            "type": "u64"
+          },
+          {
+            "name": "total_bettors",
+            "type": "u32"
+          },
+          {
+            "name": "duration",
+            "type": "u64"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "expires_at",
+            "type": "i64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "MarketStatus"
+              }
+            }
+          },
+          {
+            "name": "outcome",
+            "type": {
+              "option": {
+                "defined": {
+                  "name": "Outcome"
+                }
+              }
+            }
+          },
+          {
+            "name": "platform_fee_bps",
+            "type": "u64"
+          },
+          {
+            "name": "platform_authority",
+            "docs": [
+              "Resolver + fee recipient; set once in `create_market` from `platform_authority` signer."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketResolved",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "outcome",
+            "type": {
+              "defined": {
+                "name": "Outcome"
+              }
+            }
+          },
+          {
+            "name": "survive_pool",
+            "type": "u64"
+          },
+          {
+            "name": "rug_pool",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MarketStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Active"
+          },
+          {
+            "name": "Resolved"
+          },
+          {
+            "name": "Expired"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Outcome",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Survive"
+          },
+          {
+            "name": "Rug"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PayoutClaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "bettor",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    }
+  ]
+}
