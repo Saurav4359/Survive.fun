@@ -318,6 +318,8 @@ export interface BetPlaced {
   survivePool: string;
   rugPool: string;
   timestamp: string;
+  /** DB row id — lets clients dedupe REST rows vs `bet_placed` socket events. */
+  betId?: string;
 }
 
 export interface MarketResolved {
