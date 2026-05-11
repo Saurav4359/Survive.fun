@@ -9,6 +9,8 @@ type Props = {
   /** Homepage cards use `md`; trending strip uses `full`. */
   rounded?: "md" | "full";
   className?: string;
+  /** Marquee / above-fold: `eager` to avoid width metric drift after paint. */
+  loading?: "eager" | "lazy";
 };
 
 /** DexScreener CDN token icon; falls back to ticker initial on error. */
@@ -18,6 +20,7 @@ export function TokenThumb({
   size = 40,
   rounded = "md",
   className = "",
+  loading = "lazy",
 }: Props) {
   const [bad, setBad] = useState(false);
   const src = `https://dd.dexscreener.com/ds-data/tokens/solana/${mint}.png`;
@@ -49,7 +52,7 @@ export function TokenThumb({
         alt=""
         width={size}
         height={size}
-        loading="lazy"
+        loading={loading}
         decoding="async"
         draggable={false}
         className="h-full w-full object-cover"
