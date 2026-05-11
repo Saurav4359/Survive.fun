@@ -7,10 +7,10 @@ on:
   workflow_call:
     inputs:
       next_public_api_url:
-        description: "NEXT_PUBLIC_API_URL for Next.js build"
+        description: "NEXT_PUBLIC_API_URL for Next.js build (origin only; app adds /v1)"
         type: string
         required: false
-        default: "http://localhost:3001/api/v1"
+        default: "http://localhost:3001"
       next_public_ws_url:
         description: "NEXT_PUBLIC_WS_URL (http(s) or ws(s))"
         type: string
@@ -47,10 +47,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Version comes from root package.json `packageManager` — do not pin here (pnpm/action-setup errors if both exist).
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
