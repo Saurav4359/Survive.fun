@@ -20,7 +20,8 @@
     "db:generate": "prisma generate --schema=./prisma/schema.prisma",
     "db:studio": "node ../../scripts/run-prisma-studio.mjs",
     "db:push": "prisma db push --schema=./prisma/schema.prisma",
-    "db:delete-market": "tsx scripts/delete-market.ts"
+    "db:delete-market": "tsx scripts/delete-market.ts",
+    "verify:env": "tsx scripts/verify-env.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1",
