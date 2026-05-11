@@ -1,14 +1,38 @@
 import type {
   ApiResponse,
+  Bet,
   PlatformSnapshot,
   RecentPayout,
 } from "@survivefun/types";
 import { Prisma } from "@prisma/client";
 import { Router } from "express";
+import { z } from "zod";
 
 import { prisma } from "../config/database";
+import { toBetDto } from "../lib/dto";
+import { parseQuery } from "../lib/zodUtil";
 
 const router = Router();
+
+const recentBetsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).optional().default(50),
+});
+
+/** Latest bets platform-wide — hydrates home LiveFeed when socket events were missed. */
+router.get("/recent-bets", async (req, res, next) => {
+  try {
+    const { limit } = parseQuery(recentBetsQuerySchema, req.query);
+    const rows = await prisma.bet.findMany({
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    });
+    const data: Bet[] = rows.map(toBetDto);
+    const body: ApiResponse<Bet[]> = { success: true, data };
+    res.json(body);
+  } catch (e) {
+    next(e);
+  }
+});
 
 router.get("/", async (_req, res, next) => {
   try {
