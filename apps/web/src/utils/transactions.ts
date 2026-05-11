@@ -34,6 +34,8 @@ import survivefunIdl from "@/idl/survivefun.json";
 import { postBetClaim } from "@/utils/betClaimApi";
 import {
   apiV1Url,
+  CREATE_MARKET_TX_FEE_BUFFER_LAMPORTS,
+  MARKET_ACCOUNT_SIZE_BYTES,
   MARKET_DURATIONS,
   ONCHAIN_MAX_STAKE_RAW,
   ONCHAIN_MIN_STAKE_RAW,
@@ -127,6 +129,17 @@ async function assertSufficientSolBalance(owner: PublicKey, minLamports: bigint)
       `Insufficient SOL (need at least ${(Number(minLamports) / LAMPORTS_PER_SOL).toFixed(4)} SOL).`,
     );
   }
+}
+
+/** Seeds (0.02 SOL) + market account rent + small fee buffer — avoids failing after wallet opens. */
+async function assertSufficientForCreateMarket(creator: PublicKey): Promise<void> {
+  const connection = getConnection();
+  const rent = BigInt(
+    await connection.getMinimumBalanceForRentExemption(MARKET_ACCOUNT_SIZE_BYTES),
+  );
+  const min =
+    PLATFORM_SEED_LAMPORTS_TOTAL + rent + CREATE_MARKET_TX_FEE_BUFFER_LAMPORTS;
+  await assertSufficientSolBalance(creator, min);
 }
 
 function platformAuthorityOrCreator(creator: PublicKey): PublicKey {
@@ -645,7 +658,8 @@ export async function getBetPDA(
 }
 
 /**
- * `create_market` — platform authority pays two 0.01 SOL seed transfers into the market vault.
+ * `create_market` — creator pays rent + two 0.01 SOL seed transfers into the market vault.
+ * `platform_authority` co-signs (same wallet if `NEXT_PUBLIC_PLATFORM_AUTHORITY` unset) so the resolver pubkey is authorized.
  */
 export async function createMarket(
   wallet: WalletContextState,
@@ -669,7 +683,7 @@ export async function createMarket(
     );
   }
 
-  await assertSufficientSolBalance(platformAuthority, PLATFORM_SEED_LAMPORTS_TOTAL);
+  await assertSufficientForCreateMarket(creator);
 
   const connection = getConnection();
   const marketIdKey = Keypair.generate().publicKey;

@@ -46,8 +46,17 @@ export const SOL_BET_LIMITS = {
 
 export const QUICK_SOL_AMOUNTS = [0.1, 0.5, 1, 2] as const;
 
-/** Platform seeds 0.01 SOL per side into new markets (`PLATFORM_SEED_LAMPORTS_PER_SIDE`). */
+/** Market maker pays 0.01 SOL per side into the new market vault at `create_market` (matches on-chain `PLATFORM_SEED_LAMPORTS_PER_SIDE` × 2). */
 export const PLATFORM_SEED_LAMPORTS_TOTAL = 20_000_000n;
+
+/**
+ * Upper bound for `getMinimumBalanceForRentExemption` when creating a market account.
+ * Must stay ≥ `8 + Market::INIT_SPACE` in `contracts/programs/survivefun` (slightly high is OK).
+ */
+export const MARKET_ACCOUNT_SIZE_BYTES = 512;
+
+/** Headroom for tx fee when pre-checking create-market balance. */
+export const CREATE_MARKET_TX_FEE_BUFFER_LAMPORTS = 200_000n;
 
 export const MARKET_DURATIONS = [3600, 21600, 86400] as const;
 

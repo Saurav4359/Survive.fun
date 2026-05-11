@@ -29,6 +29,7 @@ import { fetchStats, statsQueryKey } from "@/hooks/useStats";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { useMarketSearchStore } from "@/stores/marketSearchStore";
 import { apiV1Url, MARKET_DURATIONS } from "@/utils/constants";
+import { createMarket as walletCreateMarket } from "@/utils/transactions";
 import { formatSolBetLine, parsePoolLamports } from "@/utils/format";
 import { isActiveMarketStillOpen } from "@/utils/marketListing";
 import { totalPoolLamports } from "@/utils/marketRisk";
@@ -257,6 +258,7 @@ export default function HomePage() {
       if (!publicKey) {
         throw new Error("Connect a wallet to create a market");
       }
+      const txSig = await walletCreateMarket(wallet, mint, duration);
       const res = await fetch(apiV1Url("/markets"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -265,6 +267,7 @@ export default function HomePage() {
           duration,
           walletAddress: publicKey.toBase58(),
           currency: "sol",
+          transactionSignature: txSig,
         }),
       });
       const body = (await res.json()) as ApiResponse<Market>;
@@ -348,7 +351,7 @@ export default function HomePage() {
             <h2 className="font-display text-[11px] font-bold uppercase tracking-[0.18em] text-white sm:text-xs">
               Create a market
             </h2>
-            <p className="mt-0.5 hidden font-mono text-[10px] leading-tight text-fg-muted sm:block">
+            <p className="mt-0.5 font-mono text-[10px] leading-tight text-fg-soft">
               Paste a Pump.fun mint, pick duration, create.
             </p>
           </div>
@@ -358,8 +361,8 @@ export default function HomePage() {
                 type="text"
                 value={tokenMint}
                 onChange={(e) => setTokenMint(e.target.value)}
-                placeholder="Paste any Pump.fun token mint..."
-                className="w-full rounded-md border border-border bg-bg px-3 py-2 font-mono text-[13px] text-white placeholder:text-fg-muted transition-shadow focus:border-accent focus:outline-none focus:shadow-glow-sm sm:text-sm"
+                placeholder="Paste Pump.fun token mint address…"
+                className="w-full rounded-md border border-neutral-600 bg-surface px-3 py-2.5 font-mono text-[13px] text-white caret-accent placeholder:text-fg-soft placeholder:opacity-100 transition-shadow focus:border-accent focus:outline-none focus:shadow-glow-sm sm:py-2 sm:text-sm"
                 autoComplete="off"
                 spellCheck={false}
               />
@@ -387,8 +390,8 @@ export default function HomePage() {
             !existingMarket ? (
               <p className="font-mono text-[11px] text-fg-soft">
                 Connect your wallet (top right) to enable{" "}
-                <span className="text-accent">Create Market</span> — creation is
-                on-chain.
+                <span className="text-accent">Create Market</span> — you sign
+                on-chain creation (pool seed + rent from your SOL).
               </p>
             ) : null}
 
