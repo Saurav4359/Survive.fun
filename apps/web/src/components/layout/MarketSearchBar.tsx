@@ -14,7 +14,7 @@ export function MarketSearchBar() {
         Search tokens
       </label>
       <Search
-        className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-muted sm:left-3 sm:h-4 sm:w-4"
+        className="pointer-events-none absolute left-2.5 top-1/2 h-[15.4px] w-[15.4px] -translate-y-1/2 text-fg-muted sm:left-3 sm:h-[17.6px] sm:w-[17.6px]"
         aria-hidden
       />
       <input
@@ -23,7 +23,7 @@ export function MarketSearchBar() {
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Search tokens..."
-        className="w-full rounded-md border border-border bg-bg py-2 pl-9 pr-3 font-mono text-[12px] text-white placeholder:text-fg-muted transition-shadow focus:border-accent focus:outline-none focus:shadow-glow-sm sm:py-2.5 sm:pl-10 sm:text-sm"
+        className="w-full rounded-md border border-border bg-bg py-2 pl-9 pr-3 font-mono text-[13.2px] text-white placeholder:text-fg-muted transition-shadow focus:border-accent focus:outline-none focus:shadow-glow-sm sm:py-2.5 sm:pl-10 sm:text-[15.4px]"
         autoComplete="off"
       />
     </div>
