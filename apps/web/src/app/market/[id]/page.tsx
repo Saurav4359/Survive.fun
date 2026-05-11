@@ -405,6 +405,7 @@ export default function MarketPage() {
   const [detailTab, setDetailTab] = useState<DetailTab>("about");
   const [chartReady, setChartReady] = useState(false);
   const [poolChartRange, setPoolChartRange] = useState<PoolChartRange>("all");
+  const [liveFeedRefresh, setLiveFeedRefresh] = useState(0);
   const { has: isStarred, toggle: toggleStar } = useWatchlist();
 
   /**
@@ -488,6 +489,7 @@ export default function MarketPage() {
         title: "Bet placed",
         message: `${solscanTxUrl(txSig)} — Phantom Activity is per-network: enable Devnet (test mode) to see this tx; the app defaults to devnet.`,
       });
+      setLiveFeedRefresh((n) => n + 1);
       void queryClient.invalidateQueries({ queryKey: marketQueryKey(id) });
       void queryClient.invalidateQueries({ queryKey: marketBetsQueryKey(id) });
       if (userWallet) {
@@ -1698,7 +1700,12 @@ export default function MarketPage() {
 
       {/* Live feed below */}
       <section className="mt-12">
-        <LiveFeed marketId={market.id} maxRows={20} heading="Last 20 Bets" />
+        <LiveFeed
+          marketId={market.id}
+          maxRows={20}
+          heading="Last 20 Bets"
+          refreshKey={liveFeedRefresh}
+        />
       </section>
       </div>
     </>

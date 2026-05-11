@@ -98,7 +98,8 @@ function isBetPlaced(v: unknown): v is BetPlaced {
     (v.amountLamports === null || typeof v.amountLamports === "string") &&
     typeof v.survivePool === "string" &&
     typeof v.rugPool === "string" &&
-    typeof v.timestamp === "string"
+    typeof v.timestamp === "string" &&
+    (v.betId === undefined || typeof v.betId === "string")
   );
 }
 
