@@ -474,18 +474,18 @@ export default function MarketPage() {
         m.durationSeconds,
         m.onChainAddress,
       );
-      await placeBetOnChain(wallet, {
+      return placeBetOnChain(wallet, {
         marketPda,
         side,
         amount: amountUi,
         marketId: id,
       });
     },
-    onSuccess: () => {
+    onSuccess: (txSig) => {
       toast({
         variant: "success",
         title: "Bet placed",
-        message: "Your trade is on-chain and recorded.",
+        message: `${solscanTxUrl(txSig)} — Phantom Activity is per-network: enable Devnet (test mode) to see this tx; the app defaults to devnet.`,
       });
       void queryClient.invalidateQueries({ queryKey: marketQueryKey(id) });
       void queryClient.invalidateQueries({ queryKey: marketBetsQueryKey(id) });
@@ -518,11 +518,11 @@ export default function MarketPage() {
         betId: userMarketBet.id,
       });
     },
-    onSuccess: () => {
+    onSuccess: (txSig) => {
       toast({
         variant: "success",
         title: "Payout claimed",
-        message: "Funds should appear in your wallet shortly.",
+        message: `${solscanTxUrl(txSig)} — Enable Devnet in Phantom if Activity looks empty.`,
       });
       void queryClient.invalidateQueries({ queryKey: marketQueryKey(id) });
       void queryClient.invalidateQueries({ queryKey: marketBetsQueryKey(id) });
