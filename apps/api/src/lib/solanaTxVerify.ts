@@ -79,7 +79,7 @@ export async function verifyCreateMarketTransaction(
   expectedCreator: string,
   expectedMint: string,
   expectedDurationSec: number,
-): Promise<{ marketPda: string }> {
+): Promise<{ marketPda: string; chainMarketKey: string }> {
   const programId = getProgramId();
   const tx = await connection.getParsedTransaction(signature, {
     maxSupportedTransactionVersion: 0,
@@ -137,7 +137,10 @@ export async function verifyCreateMarketTransaction(
       );
     }
 
-    return { marketPda: expectedPda.toBase58() };
+    return {
+      marketPda: expectedPda.toBase58(),
+      chainMarketKey: ixMarketId.toBase58(),
+    };
   }
 
   throw new AppError(

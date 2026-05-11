@@ -8,6 +8,7 @@ import type {
   OhlcvBar,
 } from "@survivefun/types";
 import { Prisma, type Market as DbMarket } from "@prisma/client";
+import { PublicKey } from "@solana/web3.js";
 import { Router } from "express";
 import { z } from "zod";
 
@@ -19,8 +20,10 @@ import { dexBodyToMarketBootstrap } from "../lib/dexscreener";
 import { resolveMarketTokenBootstrap } from "../lib/tokenBootstrap";
 import {
   createMarketOnChain,
+  fetchMarketSnapshotFromChain,
   isMarketResolvedOnChain,
 } from "../lib/onchainProgram";
+import { verifyCreateMarketTransaction } from "../lib/solanaTxVerify";
 import { enforceSolanaMarketRowInvariants } from "../lib/marketPdaGuard";
 import { toMarketDto } from "../lib/dto";
 import { formatZod, parseQuery } from "../lib/zodUtil";
@@ -70,6 +73,13 @@ const createMarketBodySchema = z.object({
   ]),
   walletAddress: solanaAddress,
   currency: z.literal("sol").default("sol"),
+  /** When set, API skips `create_market` RPC and indexes a tx the user already signed (fees + seed SOL come from their wallet). */
+  transactionSignature: z
+    .string()
+    .min(80)
+    .max(90)
+    .regex(/^[1-9A-HJ-NP-Za-km-z]+$/)
+    .optional(),
 });
 
 const idParamSchema = z.object({
@@ -505,71 +515,111 @@ router.post("/", async (req, res, next) => {
     const now = snapshotAt;
     const expiresAt = new Date(now.getTime() + input.duration * 1000);
 
+    const seedLamportsPerSide = "10000000";
     let onChainAddress: string;
     let chainMarketKey: string;
-    try {
-      const chain = await createMarketOnChain(
+    let survivePoolStr: string;
+    let rugPoolStr: string;
+    let openPriceVal: string | null = boot.openPrice;
+    let openLiquidityVal: string | null = boot.openLiquidity;
+    let devWalletVal: string | null = boot.devWallet;
+
+    const userTxSig = input.transactionSignature?.trim();
+    if (userTxSig) {
+      const verified = await verifyCreateMarketTransaction(
         connection,
+        userTxSig,
+        input.walletAddress,
         input.tokenMint,
         input.duration,
-        undefined,
-        boot,
       );
-      onChainAddress = chain.marketPda;
-      chainMarketKey = chain.chainMarketKey;
-      console.log("[markets] create_market on-chain success", {
+      onChainAddress = verified.marketPda;
+      chainMarketKey = verified.chainMarketKey;
+      const chainSnap = await fetchMarketSnapshotFromChain(
+        connection,
+        new PublicKey(verified.marketPda),
+      );
+      survivePoolStr = chainSnap.survivePool;
+      rugPoolStr = chainSnap.rugPool;
+      devWalletVal = chainSnap.devWallet;
+      openPriceVal =
+        chainSnap.openPrice === "0" ? null : chainSnap.openPrice;
+      openLiquidityVal =
+        chainSnap.openLiquidity === "0" ? null : chainSnap.openLiquidity;
+      console.log("[markets] create_market indexed from user-signed tx", {
         tokenMint: input.tokenMint,
         duration: input.duration,
         creatorWallet: input.walletAddress,
-        platformAuthority: chain.platformAuthority,
-        marketPda: chain.marketPda,
-        chainMarketKey: chain.chainMarketKey,
-        signature: chain.signature,
+        marketPda: verified.marketPda,
+        chainMarketKey: verified.chainMarketKey,
+        signature: userTxSig,
       });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.log("[markets] create_market on-chain failed", {
-        tokenMint: input.tokenMint,
-        duration: input.duration,
-        creatorWallet: input.walletAddress,
-        error: msg,
-      });
-      if (
-        msg.includes("MarketAlreadyExists") ||
-        msg.includes("custom program error: 0x1770")
-      ) {
-        try {
-          const retry = await createMarketOnChain(
-            connection,
-            input.tokenMint,
-            input.duration,
-            undefined,
-            boot,
-          );
-          onChainAddress = retry.marketPda;
-          chainMarketKey = retry.chainMarketKey;
-          console.log("[markets] create_market retry OK after MarketAlreadyExists", {
-            marketPda: retry.marketPda,
-            chainMarketKey: retry.chainMarketKey,
-          });
-        } catch (e2) {
-          const msg2 = e2 instanceof Error ? e2.message : String(e2);
+    } else {
+      try {
+        const chain = await createMarketOnChain(
+          connection,
+          input.tokenMint,
+          input.duration,
+          undefined,
+          boot,
+        );
+        onChainAddress = chain.marketPda;
+        chainMarketKey = chain.chainMarketKey;
+        console.log("[markets] create_market on-chain success", {
+          tokenMint: input.tokenMint,
+          duration: input.duration,
+          creatorWallet: input.walletAddress,
+          platformAuthority: chain.platformAuthority,
+          marketPda: chain.marketPda,
+          chainMarketKey: chain.chainMarketKey,
+          signature: chain.signature,
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.log("[markets] create_market on-chain failed", {
+          tokenMint: input.tokenMint,
+          duration: input.duration,
+          creatorWallet: input.walletAddress,
+          error: msg,
+        });
+        if (
+          msg.includes("MarketAlreadyExists") ||
+          msg.includes("custom program error: 0x1770")
+        ) {
+          try {
+            const retry = await createMarketOnChain(
+              connection,
+              input.tokenMint,
+              input.duration,
+              undefined,
+              boot,
+            );
+            onChainAddress = retry.marketPda;
+            chainMarketKey = retry.chainMarketKey;
+            console.log("[markets] create_market retry OK after MarketAlreadyExists", {
+              marketPda: retry.marketPda,
+              chainMarketKey: retry.chainMarketKey,
+            });
+          } catch (e2) {
+            const msg2 = e2 instanceof Error ? e2.message : String(e2);
+            throw new AppError(
+              "ONCHAIN_CREATE_FAILED",
+              `create_market failed on-chain: ${msg2}`,
+              502,
+            );
+          }
+        } else {
           throw new AppError(
             "ONCHAIN_CREATE_FAILED",
-            `create_market failed on-chain: ${msg2}`,
+            `create_market failed on-chain: ${msg}`,
             502,
           );
         }
-      } else {
-        throw new AppError(
-          "ONCHAIN_CREATE_FAILED",
-          `create_market failed on-chain: ${msg}`,
-          502,
-        );
       }
+      survivePoolStr = seedLamportsPerSide;
+      rugPoolStr = seedLamportsPerSide;
     }
 
-    const seedLamportsPerSide = "10000000";
     let row: DbMarket;
     try {
       row = await prisma.market.create({
@@ -580,11 +630,11 @@ router.post("/", async (req, res, next) => {
           creatorWallet: input.walletAddress,
           durationSeconds: input.duration,
           expiresAt,
-          survivePool: seedLamportsPerSide,
-          rugPool: seedLamportsPerSide,
-          openPrice: boot.openPrice,
-          openLiquidity: boot.openLiquidity,
-          devWallet: boot.devWallet,
+          survivePool: survivePoolStr,
+          rugPool: rugPoolStr,
+          openPrice: openPriceVal,
+          openLiquidity: openLiquidityVal,
+          devWallet: devWalletVal,
           openSnapshotAt: snapshotAt,
           status: "active",
           onChainAddress,

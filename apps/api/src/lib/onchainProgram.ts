@@ -203,6 +203,42 @@ async function snapshotFromBootstrap(
   return { devWallet, devBalanceAtOpen, openPrice, openLiquidity };
 }
 
+/** Read `Market` account after a successful `create_market` (for wallet-first indexing). */
+export async function fetchMarketSnapshotFromChain(
+  connection: Connection,
+  marketPda: PublicKey,
+): Promise<{
+  survivePool: string;
+  rugPool: string;
+  devWallet: string;
+  devBalanceAtOpen: string;
+  openPrice: string;
+  openLiquidity: string;
+}> {
+  const idl = loadIdl();
+  const coder = new BorshAccountsCoder(idl);
+  const info = await connection.getAccountInfo(marketPda, "confirmed");
+  if (!info?.data) {
+    throw new Error(`Market account missing at ${marketPda.toBase58()}`);
+  }
+  const m = coder.decode("Market", info.data) as {
+    survive_pool: BN;
+    rug_pool: BN;
+    dev_wallet: PublicKey;
+    dev_balance_at_open: BN;
+    open_price: BN;
+    open_liquidity: BN;
+  };
+  return {
+    survivePool: m.survive_pool.toString(),
+    rugPool: m.rug_pool.toString(),
+    devWallet: m.dev_wallet.toBase58(),
+    devBalanceAtOpen: m.dev_balance_at_open.toString(),
+    openPrice: m.open_price.toString(),
+    openLiquidity: m.open_liquidity.toString(),
+  };
+}
+
 export async function createMarketOnChain(
   connection: Connection,
   tokenMintBase58: string,
