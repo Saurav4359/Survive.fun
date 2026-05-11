@@ -315,7 +315,7 @@ export default function HomePage() {
           <ParticleField />
         </div>
 
-        <div className="relative z-[1] mx-auto max-w-[1440px] px-4 py-6 sm:px-6 sm:py-8 lg:px-10 lg:py-10">
+        <div className="relative z-[1] mx-auto max-w-[1440px] px-4 py-[2.145rem] sm:px-6 sm:py-[2.86rem] lg:px-10 lg:py-[3.575rem]">
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
