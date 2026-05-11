@@ -4,7 +4,7 @@ import type { ApiResponse, Market, MarketListPage } from "@survivefun/types";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { ArrowRight, Inbox, Search, Skull } from "lucide-react";
+import { ArrowRight, Inbox, Skull } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -205,7 +205,7 @@ export default function HomePage() {
     if (q) {
       return {
         title: "No matches for your search",
-        description: `Nothing matches “${q}”. Clear search (sidebar or below) to see all ${markets.length} active market${markets.length === 1 ? "" : "s"}.`,
+        description: `Nothing matches “${q}”. Clear the search bar (top) to see all ${markets.length} active market${markets.length === 1 ? "" : "s"}.`,
         action: {
           label: "Clear search",
           onClick: () => setSearchQuery(""),
@@ -526,31 +526,6 @@ export default function HomePage() {
               </motion.div>
             ))
           )}
-        </section>
-
-        {/* Search — md/tablet; lg+ uses sidebar below Create Market */}
-        <section
-          aria-label="Search markets"
-          className="mt-4 border border-border bg-card px-4 py-3 lg:hidden"
-        >
-          <label htmlFor="home-market-search" className="sr-only">
-            Search tokens
-          </label>
-          <div className="relative">
-            <Search
-              className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-muted sm:left-3 sm:h-4 sm:w-4"
-              aria-hidden
-            />
-            <input
-              id="home-market-search"
-              type="search"
-              value={search}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search tokens..."
-              className="w-full rounded-md border border-border bg-bg py-2 pl-9 pr-3 font-mono text-[13px] text-white placeholder:text-fg-muted transition-shadow focus:border-accent focus:outline-none focus:shadow-glow-sm sm:py-2.5 sm:pl-10 sm:text-sm"
-              autoComplete="off"
-            />
-          </div>
         </section>
 
         {/* MARKETS GRID + LIVE FEED */}

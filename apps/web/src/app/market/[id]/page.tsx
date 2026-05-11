@@ -30,6 +30,7 @@ import { BetPanel } from "@/components/BetPanel";
 import { LiveFeed } from "@/components/LiveFeed";
 import { MarketResultBanner } from "@/components/MarketResultBanner";
 import { PoolBar } from "@/components/PoolBar";
+import { TokenThumb } from "@/components/TokenThumb";
 import { Timer } from "@/components/Timer";
 import { useToast } from "@/components/ToastProvider";
 import { marketQueryKey, useMarket } from "@/hooks/useMarket";
@@ -608,7 +609,6 @@ export default function MarketPage() {
       ? `${change24Num >= 0 ? "+" : ""}${change24Num.toFixed(2)}%`
       : "—";
 
-  const tickerLetter = (market?.tokenTicker ?? "?").slice(0, 1).toUpperCase();
   const devShown =
     market?.devWallet ?? tokenHook.devWallet ?? market?.creatorWallet;
 
@@ -1097,12 +1097,11 @@ export default function MarketPage() {
         className="mt-4 flex flex-wrap items-start justify-between gap-4 border border-border bg-card p-5"
       >
         <div className="flex min-w-0 items-start gap-4">
-          <div
-            className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md border border-border bg-bg font-mono text-2xl font-bold text-accent"
-            aria-hidden
-          >
-            {tickerLetter}
-          </div>
+          <TokenThumb
+            mint={market.tokenMint}
+            ticker={market.tokenTicker ?? "?"}
+            size={56}
+          />
           <div className="min-w-0">
             <div className="flex flex-wrap items-baseline gap-2">
               <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">

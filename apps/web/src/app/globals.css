@@ -167,6 +167,39 @@
 }
 
 @layer components {
+  /**
+   * Hot markets marquee — plain CSS so animation isn’t dropped by Tailwind ordering/JIT.
+   * Viewport must stay `flex: 1 1 0%; min-width: 0` inside flex rows or the track
+   * expands to fit `width: max-content` and translate(-50%) looks “frozen”.
+   * Keyframes live below (outside @layer) for parser compatibility.
+   */
+  .survive-hot-marquee-viewport {
+    position: relative;
+    isolation: isolate;
+    flex: 1 1 0%;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .survive-hot-marquee-track {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    width: max-content;
+    max-width: none;
+    animation: survive-hot-marquee 42s linear infinite;
+  }
+
+  .survive-hot-marquee-viewport:hover .survive-hot-marquee-track {
+    animation-play-state: paused;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .survive-hot-marquee-track {
+      animation: none !important;
+    }
+  }
+
   /* Card primitive — pure black background, sharp 1px border, no gradient */
   .panel {
     background: var(--bg-card);
@@ -209,5 +242,15 @@
   .wallet-adapter-modal-list .wallet-adapter-button:hover {
     border-color: var(--accent) !important;
     box-shadow: 0 0 16px var(--glow) !important;
+  }
+}
+
+/* Referenced by `.survive-hot-marquee-track` — keep outside @layer for reliable keyframe registration */
+@keyframes survive-hot-marquee {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-50%, 0, 0);
   }
 }

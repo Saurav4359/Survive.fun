@@ -4,8 +4,8 @@ import { Menu } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 
-import { HotMarketsStrip } from "@/components/HotMarketsStrip";
 import { BrandWordmark } from "@/components/layout/BrandWordmark";
+import { MarketSearchBar } from "@/components/layout/MarketSearchBar";
 import { WalletConnectButton } from "@/components/WalletConnectButton";
 import { BRAND_LOGO_SRC } from "@/utils/constants";
 
@@ -18,7 +18,7 @@ type Props = {
 
 export function TopBar({ onMenuClick }: Props) {
   return (
-    <header className="sticky top-0 z-30 flex h-14 w-full shrink-0 items-center gap-3 border-b border-border bg-bg px-3 sm:h-16 sm:gap-4 sm:px-5">
+    <header className="flex h-14 w-full min-w-0 shrink-0 items-center gap-3 border-b border-border bg-bg px-3 sm:h-16 sm:gap-4 sm:px-5">
       {/* Left: menu + brand (mobile / tablet only) */}
       <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-2.5">
         <button
@@ -46,9 +46,7 @@ export function TopBar({ onMenuClick }: Props) {
         </Link>
       </div>
 
-      <div className="flex min-h-0 min-w-0 flex-1 items-center overflow-hidden">
-        <HotMarketsStrip compact />
-      </div>
+      <MarketSearchBar />
 
       <div className="flex shrink-0 items-center">
         <WalletConnectButton className={CONNECT_CLASS} />

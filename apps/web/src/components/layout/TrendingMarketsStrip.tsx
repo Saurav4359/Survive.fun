@@ -8,23 +8,14 @@ import { TokenThumb } from "@/components/TokenThumb";
 import { formatSolBetLine } from "@/utils/format";
 import { totalPoolLamports } from "@/utils/marketRisk";
 
-type RowProps = {
-  rank: number;
-  market: Market;
-  pair: TokenPair | null;
-};
-
-function StripRow({ rank, market, pair }: RowProps) {
+function StripRow({ market }: { market: Market }) {
   const ticker = market.tokenTicker?.trim() || "—";
   const pool = totalPoolLamports(market);
   return (
     <Link
       href={`/market/${market.id}`}
-      className="flex min-w-[200px] shrink-0 items-center gap-3 rounded-xl border border-border bg-surface/90 px-3 py-2 transition hover:border-accent/50 hover:bg-surface"
+      className="inline-flex w-fit max-w-[220px] shrink-0 items-center gap-2 rounded-xl border border-border bg-surface/90 px-3 py-2 transition hover:border-accent/50 hover:bg-surface"
     >
-      <span className="w-6 font-mono text-xs font-bold tabular-nums text-muted-foreground">
-        {rank}
-      </span>
       <TokenThumb
         mint={market.tokenMint}
         ticker={ticker}
@@ -32,7 +23,7 @@ function StripRow({ rank, market, pair }: RowProps) {
         rounded="full"
         className="bg-accent/20"
       />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 leading-tight">
         <p className="truncate font-mono text-sm font-bold text-accent-bright">
           ${ticker}
         </p>
@@ -46,10 +37,11 @@ function StripRow({ rank, market, pair }: RowProps) {
 
 type Props = {
   markets: Market[];
-  pairByMint: Map<string, TokenPair | null>;
+  /** Optional map for future pair metadata; strip layout does not use it. */
+  pairByMint?: Map<string, TokenPair | null>;
 };
 
-export function TrendingMarketsStrip({ markets, pairByMint }: Props) {
+export function TrendingMarketsStrip({ markets }: Props) {
   const ranked = useMemo(() => {
     return [...markets]
       .sort((a, b) => totalPoolLamports(b) - totalPoolLamports(a))
@@ -68,13 +60,8 @@ export function TrendingMarketsStrip({ markets, pairByMint }: Props) {
           🔥 Trending
         </span>
         <div className="hide-scrollbar flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1">
-          {ranked.map((m, i) => (
-            <StripRow
-              key={m.id}
-              rank={i + 1}
-              market={m}
-              pair={pairByMint.get(m.tokenMint) ?? null}
-            />
+          {ranked.map((m) => (
+            <StripRow key={m.id} market={m} />
           ))}
         </div>
       </div>

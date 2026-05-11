@@ -71,7 +71,7 @@ export default function RootLayout({
       )}
       suppressHydrationWarning
     >
-      <body className="min-h-screen bg-bg text-foreground antialiased">
+      <body className="min-h-screen min-w-0 bg-bg text-foreground antialiased">
         <Providers>
           <AppShell>{children}</AppShell>
         </Providers>

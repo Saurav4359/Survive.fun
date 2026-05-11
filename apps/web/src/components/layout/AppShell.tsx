@@ -3,6 +3,8 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useState, type ReactNode } from "react";
 
+import { HotMarketsStrip } from "@/components/HotMarketsStrip";
+
 import { SidebarNav } from "./SidebarNav";
 import { TopBar } from "./TopBar";
 
@@ -10,7 +12,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <div className="relative flex min-h-screen w-full">
+    <div className="relative flex min-h-screen w-full min-w-0">
       <motion.aside
         initial={{ x: -32, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
@@ -49,8 +51,12 @@ export function AppShell({ children }: { children: ReactNode }) {
         ) : null}
       </AnimatePresence>
 
-      <div className="flex min-w-0 flex-1 flex-col lg:pl-[240px]">
-        <TopBar onMenuClick={() => setMobileOpen(true)} />
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:pl-[240px]">
+        {/* min-w-0 + w-full: clamp flex descendants so max-content marquee tracks overflow an inner viewport instead of widening the whole shell. */}
+        <div className="sticky top-0 z-30 flex w-full min-w-0 max-w-full flex-col bg-bg">
+          <HotMarketsStrip />
+          <TopBar onMenuClick={() => setMobileOpen(true)} />
+        </div>
         <main className="min-h-0 flex-1">{children}</main>
       </div>
     </div>

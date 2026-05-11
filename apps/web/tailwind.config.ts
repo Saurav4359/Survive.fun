@@ -80,12 +80,14 @@ const config: Config = {
       },
       keyframes: {
         "marquee-hot-markets": {
-          from: { transform: "translateX(0)" },
-          to: { transform: "translateX(-50%)" },
+          from: { transform: "translate3d(0, 0, 0)" },
+          to: { transform: "translate3d(-50%, 0, 0)" },
         },
       },
       animation: {
-        "marquee-hot-markets": "marquee-hot-markets 45s linear infinite",
+        /* seamless loop: duplicated track; -50% == one full copy */
+        "marquee-hot-markets":
+          "marquee-hot-markets var(--hot-marquee-duration, 40s) linear infinite",
       },
     },
   },
