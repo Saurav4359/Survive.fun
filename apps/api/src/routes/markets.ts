@@ -15,10 +15,8 @@ import { connection } from "../config/solana";
 import { prisma } from "../config/database";
 import { birdeyeFetchOhlcv } from "../lib/birdeye";
 import { cacheGet } from "../lib/redisCache";
-import {
-  dexBodyToMarketBootstrap,
-  requireDexBodyForMint,
-} from "../lib/dexscreener";
+import { dexBodyToMarketBootstrap } from "../lib/dexscreener";
+import { resolveMarketTokenBootstrap } from "../lib/tokenBootstrap";
 import {
   createMarketOnChain,
   isMarketResolvedOnChain,
@@ -468,19 +466,20 @@ router.post("/", async (req, res, next) => {
     const snapshotAt = new Date();
     let boot: NonNullable<ReturnType<typeof dexBodyToMarketBootstrap>>;
     try {
-      const dexBody = await requireDexBodyForMint(input.tokenMint);
-      const b = dexBodyToMarketBootstrap(dexBody, input.tokenMint);
-      if (!b) {
+      const { bootstrap: b, source } = await resolveMarketTokenBootstrap(
+        input.tokenMint,
+      );
+      if (source === "placeholder") {
         throw new AppError(
           "TOKEN_NOT_FOUND",
-          "No DexScreener pair with valid price for this mint",
+          "Could not resolve this mint from Pump.fun, DexScreener, or chain RPC",
           404,
         );
       }
       boot = b;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      console.error("[markets] DexScreener snapshot failed", {
+      console.error("[markets] token snapshot failed", {
         tokenMint: input.tokenMint,
         error: msg,
       });
@@ -490,8 +489,8 @@ router.post("/", async (req, res, next) => {
       }
       next(
         new AppError(
-          "DEXSCREENER_ERROR",
-          `DexScreener snapshot failed: ${msg}`,
+          "TOKEN_SNAPSHOT_ERROR",
+          `Token snapshot failed: ${msg}`,
           502,
         ),
       );

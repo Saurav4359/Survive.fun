@@ -306,7 +306,7 @@ export default function HomePage() {
           <ParticleField />
         </div>
 
-        <div className="relative z-[1] mx-auto max-w-[1440px] px-4 py-12 sm:px-6 sm:py-16 lg:px-10 lg:py-20">
+        <div className="relative z-[1] mx-auto max-w-[1440px] px-4 py-6 sm:px-6 sm:py-8 lg:px-10 lg:py-10">
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
@@ -315,10 +315,10 @@ export default function HomePage() {
             <p className="font-mono text-[10px] font-bold uppercase tracking-[0.32em] text-accent">
               Survive · Pump.fun prediction market
             </p>
-            <h1 className="mt-4 font-display text-4xl font-bold leading-[1.05] tracking-tight text-white sm:text-5xl lg:text-6xl">
+            <h1 className="mt-2.5 font-display text-3xl font-bold leading-[1.05] tracking-tight text-white sm:mt-3 sm:text-4xl lg:text-5xl">
               RUG OR <span className="text-accent">SURVIVE</span>?
             </h1>
-            <p className="mt-4 max-w-xl font-mono text-sm leading-relaxed text-fg-soft sm:text-base">
+            <p className="mt-2.5 max-w-xl font-mono text-xs leading-snug text-fg-soft sm:mt-3 sm:text-sm">
               Bet on whether memecoins{" "}
               <span className="font-bold text-survive">survive</span> or{" "}
               <span className="font-bold text-rug">rug</span>. Pooled odds, live
@@ -328,45 +328,45 @@ export default function HomePage() {
         </div>
       </section>
 
-      <div className="mx-auto max-w-[1440px] px-4 py-8 sm:px-6 lg:px-10">
+      <div className="mx-auto max-w-[1440px] px-4 py-3 sm:px-6 lg:px-10">
         {/* CREATE MARKET */}
         <section
           id="create-market"
           aria-label="Create market"
           className="border border-border bg-card"
         >
-          <div className="border-b border-border px-5 py-3">
-            <h2 className="font-display text-xs font-bold uppercase tracking-[0.2em] text-white">
+          <div className="border-b border-border px-3 py-1.5 sm:px-3.5 sm:py-2">
+            <h2 className="font-display text-[11px] font-bold uppercase tracking-[0.18em] text-white sm:text-xs">
               Create a market
             </h2>
-            <p className="mt-1 font-mono text-[11px] text-fg-muted">
-              Paste any Pump.fun token mint. Pick a duration. Ship it.
+            <p className="mt-0.5 hidden font-mono text-[10px] leading-tight text-fg-muted sm:block">
+              Paste a Pump.fun mint, pick duration, create.
             </p>
           </div>
-          <div className="space-y-4 p-5">
+          <div className="space-y-2 p-3 sm:p-3.5">
             <div className="relative">
               <input
                 type="text"
                 value={tokenMint}
                 onChange={(e) => setTokenMint(e.target.value)}
                 placeholder="Paste any Pump.fun token mint..."
-                className="w-full rounded-md border border-border bg-bg px-4 py-3.5 font-mono text-sm text-white placeholder:text-fg-muted transition-shadow focus:border-accent focus:outline-none focus:shadow-glow-sm"
+                className="w-full rounded-md border border-border bg-bg px-3 py-2 font-mono text-[13px] text-white placeholder:text-fg-muted transition-shadow focus:border-accent focus:outline-none focus:shadow-glow-sm sm:text-sm"
                 autoComplete="off"
                 spellCheck={false}
               />
             </div>
 
             {existingMarket ? (
-              <div className="rounded-md border border-accent/35 bg-bg px-4 py-4">
-                <p className="font-mono text-sm font-bold text-white">
+              <div className="rounded-md border border-accent/35 bg-bg px-3 py-2.5">
+                <p className="font-mono text-xs font-bold text-white sm:text-sm">
                   Market already exists
                 </p>
-                <p className="mt-1 font-mono text-[11px] text-fg-muted">
+                <p className="mt-0.5 font-mono text-[10px] text-fg-muted sm:text-[11px]">
                   A market for this token and duration is already live.
                 </p>
                 <Link
                   href={`/market/${existingMarket.id}`}
-                  className="mt-4 inline-flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-accent transition-colors hover:text-white"
+                  className="mt-2 inline-flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-accent transition-colors hover:text-white sm:text-[11px]"
                 >
                   View market →
                 </Link>
@@ -383,9 +383,9 @@ export default function HomePage() {
               </p>
             ) : null}
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div
-                className="flex flex-wrap gap-1.5"
+                className="flex flex-wrap gap-1"
                 role="group"
                 aria-label="Market duration"
               >
@@ -399,8 +399,8 @@ export default function HomePage() {
                       onClick={() => setDurationSeconds(seconds)}
                       className={
                         active
-                          ? "rounded-md bg-accent px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-ink"
-                          : "rounded-md border border-border bg-bg px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-fg-soft transition-colors hover:border-accent hover:text-accent"
+                          ? "rounded-md bg-accent px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-ink"
+                          : "rounded-md border border-border bg-bg px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-fg-soft transition-colors hover:border-accent hover:text-accent"
                       }
                     >
                       {label}
@@ -446,7 +446,7 @@ export default function HomePage() {
                     duration: durationSeconds,
                   });
                 }}
-                className="group inline-flex items-center justify-center gap-2 rounded-md bg-accent px-5 py-2.5 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-ink transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+                className="group inline-flex items-center justify-center gap-1.5 rounded-md bg-accent px-3 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-ink transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-40 sm:px-3.5 sm:text-[11px]"
               >
                 {createMarket.isPending ? "Creating…" : "Create Market"}
                 <motion.span
@@ -455,7 +455,7 @@ export default function HomePage() {
                   whileHover={{ x: 3 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+                  <ArrowRight className="h-3 w-3 sm:h-3.5 sm:w-3.5" aria-hidden />
                 </motion.span>
               </motion.button>
             </div>
@@ -468,13 +468,13 @@ export default function HomePage() {
         {/* STATS BAR — compact row */}
         <section
           aria-label="Platform statistics"
-          className="mt-6 grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4"
+          className="mt-2.5 grid grid-cols-2 gap-1 sm:gap-1.5 lg:grid-cols-4"
         >
           {statsLoading ? (
             Array.from({ length: 4 }).map((_, i) => (
               <div
                 key={`stats-skeleton-${i}`}
-                className="h-[68px] animate-pulse border border-border bg-card"
+                className="h-[48px] animate-pulse border border-border bg-card"
               />
             ))
           ) : statsError ? (
@@ -511,12 +511,12 @@ export default function HomePage() {
                 initial={{ opacity: 0, y: 14 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.06, duration: 0.4 }}
-                className="border border-border border-t border-t-accent bg-card px-3 py-2.5"
+                className="border border-border border-t border-t-accent bg-card px-2 py-1.5"
               >
-                <p className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-fg-muted">
+                <p className="font-mono text-[8px] font-bold uppercase tracking-[0.16em] text-fg-muted sm:text-[9px]">
                   {stat.label}
                 </p>
-                <p className="mt-1 font-mono text-base font-bold tabular-nums text-accent sm:text-lg">
+                <p className="mt-0.5 font-mono text-sm font-bold tabular-nums text-accent sm:text-base">
                   <CountUp
                     to={stat.value}
                     format={stat.format}
@@ -529,10 +529,10 @@ export default function HomePage() {
         </section>
 
         {/* MARKETS GRID + LIVE FEED */}
-        <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-6">
+        <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-12 lg:gap-4">
           <section className="min-w-0 lg:col-span-9" aria-label="Active markets">
             {/* Filter tabs */}
-            <div className="flex flex-wrap gap-1 border-b border-border">
+            <div className="flex flex-wrap gap-0.5 border-b border-border">
               {FILTERS.map(({ key, label }) => {
                 const active = filter === key;
                 return (
@@ -540,7 +540,7 @@ export default function HomePage() {
                     key={key}
                     type="button"
                     onClick={() => setFilter(key)}
-                    className="relative px-3 py-2.5 font-mono text-[11px] font-bold uppercase tracking-[0.15em] transition-colors"
+                    className="relative px-2 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.14em] transition-colors sm:px-2.5 sm:text-[11px]"
                   >
                     <span className={active ? "text-accent" : "text-fg-soft hover:text-white"}>
                       {label}
@@ -557,9 +557,9 @@ export default function HomePage() {
               })}
             </div>
 
-            <div className="mt-5">
+            <div className="mt-2">
               {search.trim() ? (
-                <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.15em] text-fg-muted">
+                <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-fg-muted">
                   Search:{" "}
                   <span className="text-accent">{search.trim()}</span>
                   <span className="text-fg-soft">
@@ -569,11 +569,11 @@ export default function HomePage() {
                 </p>
               ) : null}
               {marketsLoading ? (
-                <div className="grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-7 xl:grid-cols-3 xl:gap-8">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4 xl:grid-cols-3 xl:gap-5">
                   {Array.from({ length: 6 }).map((_, i) => (
                     <div
                       key={i}
-                      className="h-[320px] animate-pulse border border-border bg-card"
+                      className="h-[260px] animate-pulse border border-border bg-card"
                     />
                   ))}
                 </div>
@@ -602,7 +602,7 @@ export default function HomePage() {
                     hidden: {},
                     show: { transition: { staggerChildren: 0.06 } },
                   }}
-                  className="grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-7 xl:grid-cols-3 xl:gap-8"
+                  className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4 xl:grid-cols-3 xl:gap-5"
                 >
                   {filtered.map((market) => (
                     <MarketCard key={market.id} market={market} />
@@ -619,7 +619,7 @@ export default function HomePage() {
           </aside>
         </div>
 
-        <footer className="mt-16 flex items-center justify-between border-t border-border pt-6 font-mono text-[10px] uppercase tracking-[0.15em] text-fg-muted">
+        <footer className="mt-10 flex items-center justify-between border-t border-border pt-5 font-mono text-[10px] uppercase tracking-[0.15em] text-fg-muted">
           <span className="flex items-center gap-1.5">
             <Skull className="h-3 w-3" />
             survive.fun

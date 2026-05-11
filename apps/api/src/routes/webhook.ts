@@ -14,10 +14,8 @@ import express, { Router, type Request, type Response } from "express";
 
 import { connection } from "../config/solana";
 import { prisma } from "../config/database";
-import {
-  dexBodyToMarketBootstrap,
-  fetchDexTokenJson,
-} from "../lib/dexscreener";
+import type { MarketTokenBootstrap } from "../lib/dexscreener";
+import { resolveMarketTokenBootstrap } from "../lib/tokenBootstrap";
 import { createMarketOnChain } from "../lib/onchainProgram";
 import {
   buildResolutionMetaFromDetectResult,
@@ -233,19 +231,12 @@ async function handleTokenMintEvent(ev: Record<string, unknown>): Promise<void> 
   }
 
   const snapshotAt = new Date();
-  let boot: NonNullable<ReturnType<typeof dexBodyToMarketBootstrap>>;
+  let boot: MarketTokenBootstrap;
   try {
-    const dexBody = await fetchDexTokenJson(mint);
-    const b = dexBodyToMarketBootstrap(dexBody, mint);
-    if (!b) {
-      console.log(`${LOG_PREFIX} DexScreener: no priced pairs; skip auto-market`, {
-        mint,
-      });
-      return;
-    }
-    boot = b;
+    const { bootstrap } = await resolveMarketTokenBootstrap(mint);
+    boot = bootstrap;
   } catch (e) {
-    console.log(`${LOG_PREFIX} DexScreener snapshot failed; skip auto-market`, {
+    console.log(`${LOG_PREFIX} token snapshot failed; skip auto-market`, {
       mint,
       error: e instanceof Error ? e.message : String(e),
     });

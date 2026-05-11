@@ -10,14 +10,16 @@ import {
   fetchDexTokenJson,
   firstPairFromDexBody,
 } from "../lib/dexscreener";
+import { fetchPumpFunData, pumpFunRecordToTokenPair } from "../lib/pumpfun";
 import { cacheGet, cacheSet } from "../lib/redisCache";
+import { tokenPairFromHeliusOrPlaceholder } from "../lib/tokenBootstrap";
 import { mapDexRecordToTokenPair } from "../lib/tokenPair";
 import { parseQuery } from "../lib/zodUtil";
-import { AppError } from "../middleware/errorHandler";
 
 const router = Router();
 
-const CACHE_PREFIX = "dex:token:";
+/** v2: Pump.fun-first cascade (invalidate old `dex:token:` entries). */
+const CACHE_PREFIX = "token:pair:v2:";
 const CACHE_TTL_SEC = 30;
 
 /** Segment cache by Birdeye availability so adding `BIRDEYE_API_KEY` does not reuse pre-key Redis entries. */
@@ -51,20 +53,39 @@ router.get("/:mint", async (req, res, next) => {
       }
     }
 
-    const json = await fetchDexTokenJson(mint);
-    const pair = firstPairFromDexBody(json);
-    if (!pair) {
-      throw new AppError("TOKEN_NOT_FOUND", "Token not found on DexScreener", 404);
+    let data: TokenPair | null = null;
+
+    try {
+      const raw = await fetchPumpFunData(mint);
+      data = pumpFunRecordToTokenPair(mint, raw);
+    } catch {
+      /* DexScreener next */
     }
 
-    let data = mapDexRecordToTokenPair(pair, mint);
+    if (!data) {
+      try {
+        const json = await fetchDexTokenJson(mint);
+        const pair = firstPairFromDexBody(json);
+        if (pair) {
+          data = mapDexRecordToTokenPair(pair, mint);
+        }
+      } catch {
+        /* Helius / placeholder */
+      }
+    }
+
+    if (!data) {
+      data = await tokenPairFromHeliusOrPlaceholder(mint);
+    }
+
+    let enriched = data;
     const overview = await birdeyeTokenOverview(mint);
     if (overview) {
-      data = enrichTokenPairFromBirdeye(data, overview);
+      enriched = enrichTokenPairFromBirdeye(enriched, overview);
     }
-    void cacheSet(cacheKey, JSON.stringify(data), CACHE_TTL_SEC);
+    void cacheSet(cacheKey, JSON.stringify(enriched), CACHE_TTL_SEC);
 
-    const body: ApiResponse<TokenPair> = { success: true, data };
+    const body: ApiResponse<TokenPair> = { success: true, data: enriched };
     res.json(body);
   } catch (e) {
     next(e);

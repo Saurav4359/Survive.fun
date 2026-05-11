@@ -251,12 +251,12 @@ export function ParticleField({
     );
 
     const ptSize = reduced
-      ? 0.032
+      ? 0.048
       : n >= 600
-        ? 0.019
+        ? 0.03
         : n >= 480
-          ? 0.022
-          : 0.025;
+          ? 0.034
+          : 0.038;
 
     const material = new THREE.PointsMaterial({
       color: 0x8aff8e,
