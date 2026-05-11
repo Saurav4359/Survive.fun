@@ -21,6 +21,7 @@ import {
   createMarketOnChain,
   isMarketResolvedOnChain,
 } from "../lib/onchainProgram";
+import { enforceSolanaMarketRowInvariants } from "../lib/marketPdaGuard";
 import { toMarketDto } from "../lib/dto";
 import { formatZod, parseQuery } from "../lib/zodUtil";
 import { AppError } from "../middleware/errorHandler";
@@ -181,6 +182,7 @@ router.get("/:id/result", async (req, res, next) => {
       throw new AppError("NOT_FOUND", "Market not found", 404);
     }
 
+    enforceSolanaMarketRowInvariants(row);
     const market = toMarketDto(row);
     const surviveN = row.survivePool.toNumber();
     const rugN = row.rugPool.toNumber();
@@ -234,6 +236,8 @@ router.get("/:id/my-payout", async (req, res, next) => {
     if (!marketRow) {
       throw new AppError("NOT_FOUND", "Market not found", 404);
     }
+
+    enforceSolanaMarketRowInvariants(marketRow);
 
     let onChainResolved = false;
     try {
@@ -423,6 +427,7 @@ router.get("/:id", async (req, res, next) => {
     if (!row) {
       throw new AppError("NOT_FOUND", "Market not found", 404);
     }
+    enforceSolanaMarketRowInvariants(row);
     const body: ApiResponse<Market> = { success: true, data: toMarketDto(row) };
     res.json(body);
   } catch (e) {

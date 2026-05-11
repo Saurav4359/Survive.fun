@@ -11,6 +11,11 @@ import {
   Transaction,
   type TransactionInstruction,
 } from "@solana/web3.js";
+import {
+  deriveBetPDA,
+  deriveMarketPDA,
+  MarketAddressScheme,
+} from "@survivefun/solana-pda";
 import { assert } from "chai";
 
 import idl from "../idl/survivefun.json";
@@ -27,22 +32,22 @@ function bn(n: bigint | number): BN {
   return new BN(typeof n === "bigint" ? n.toString() : n.toString());
 }
 
+/** Delegates to `@survivefun/solana-pda` so Anchor tests stay aligned with API/web. */
 function marketPda(
   programId: PublicKey,
   tokenMint: PublicKey,
   marketId: PublicKey,
 ): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("market"), tokenMint.toBuffer(), marketId.toBuffer()],
-    programId,
-  );
+  const d = deriveMarketPDA(programId, tokenMint, {
+    scheme: MarketAddressScheme.MintAndMarketId,
+    chainMarketKey: marketId,
+  });
+  return [d.publicKey, d.bump];
 }
 
 function betPda(programId: PublicKey, market: PublicKey, bettor: PublicKey): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("bet"), market.toBuffer(), bettor.toBuffer()],
-    programId,
-  );
+  const d = deriveBetPDA(programId, market, bettor);
+  return [d.publicKey, d.bump];
 }
 
 function expectAnchorError(err: unknown, needle: string): void {

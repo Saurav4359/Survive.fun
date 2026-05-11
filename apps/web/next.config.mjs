@@ -18,6 +18,7 @@ const nextConfig = {
   },
   transpilePackages: [
     "@survivefun/types",
+    "@survivefun/solana-pda",
     "@solana/wallet-adapter-base",
     "@solana/wallet-adapter-base-ui",
     "@solana/wallet-adapter-react",

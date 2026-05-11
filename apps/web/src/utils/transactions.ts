@@ -6,6 +6,11 @@ import {
   type Wallet as AnchorWallet,
 } from "@coral-xyz/anchor";
 import type { ApiResponse, Bet, BetSide } from "@survivefun/types";
+import {
+  deriveBetPDA,
+  deriveMarketPDA,
+  MarketAddressScheme,
+} from "@survivefun/solana-pda";
 import type { WalletContextState } from "@solana/wallet-adapter-react";
 import {
   WalletError,
@@ -584,17 +589,14 @@ export function getMarketPDA(
     } catch {
       throw new Error("Invalid chain market key (market_id seed).");
     }
-    const [pda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("market"), mint.toBuffer(), marketId.toBuffer()],
-      PROGRAM_ID,
-    );
-    return pda;
+    return deriveMarketPDA(PROGRAM_ID, mint, {
+      scheme: MarketAddressScheme.MintAndMarketId,
+      chainMarketKey: marketId,
+    }).publicKey;
   }
-  const [pda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("market"), mint.toBuffer()],
-    PROGRAM_ID,
-  );
-  return pda;
+  return deriveMarketPDA(PROGRAM_ID, mint, {
+    scheme: MarketAddressScheme.LegacyMintOnly,
+  }).publicKey;
 }
 
 /**
@@ -639,11 +641,7 @@ export async function getBetPDA(
   } catch {
     throw new Error("Invalid market PDA or wallet address.");
   }
-  const [pda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("bet"), market.toBuffer(), bettor.toBuffer()],
-    PROGRAM_ID,
-  );
-  return pda;
+  return deriveBetPDA(PROGRAM_ID, market, bettor).publicKey;
 }
 
 /**

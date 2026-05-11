@@ -39,6 +39,10 @@ import {
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 import {
+  deriveMarketPDA,
+  MarketAddressScheme,
+} from "@survivefun/solana-pda";
+import {
   Connection,
   Keypair,
   PublicKey,
@@ -184,11 +188,9 @@ function encodeCreateMarket(tokenMint: PublicKey, durationSeconds: number): Buff
 }
 
 function marketPda(tokenMint: PublicKey): PublicKey {
-  const [pda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("market"), tokenMint.toBuffer()],
-    PROGRAM_ID,
-  );
-  return pda;
+  return deriveMarketPDA(PROGRAM_ID, tokenMint, {
+    scheme: MarketAddressScheme.LegacyMintOnly,
+  }).publicKey;
 }
 
 async function fundWalletWithUsdc(

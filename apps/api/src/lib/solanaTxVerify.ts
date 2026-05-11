@@ -13,6 +13,11 @@ import {
   type TokenBalance,
 } from "@solana/web3.js";
 
+import {
+  deriveMarketPDA,
+  MarketAddressScheme,
+} from "@survivefun/solana-pda";
+
 import { getProgramId } from "../config/solana";
 import { AppError } from "../middleware/errorHandler";
 
@@ -113,10 +118,10 @@ export async function verifyCreateMarketTransaction(
     const ixMint = new PublicKey(buf.subarray(8, 40));
     const ixMarketId = new PublicKey(buf.subarray(40, 72));
     const dur = Number(buf.readBigUInt64LE(72));
-    const [expectedPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("market"), ixMint.toBuffer(), ixMarketId.toBuffer()],
-      programId,
-    );
+    const expectedPda = deriveMarketPDA(programId, ixMint, {
+      scheme: MarketAddressScheme.MintAndMarketId,
+      chainMarketKey: ixMarketId,
+    }).publicKey;
     if (!ixMint.equals(mintPk)) {
       throw new AppError(
         "TX_MINT_MISMATCH",

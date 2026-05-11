@@ -29,6 +29,7 @@
     "@prisma/client": "^6.19.3",
     "@solana/spl-token": "^0.4.13",
     "@solana/web3.js": "^1.98.4",
+    "@survivefun/solana-pda": "workspace:*",
     "@survivefun/types": "workspace:*",
     "axios": "^1.12.2",
     "bs58": "^6.0.0",

@@ -17,6 +17,12 @@ import {
   type Connection,
 } from "@solana/web3.js";
 
+import {
+  deriveMarketPDA,
+  deriveMarketPDAForDbRow,
+  MarketAddressScheme,
+} from "@survivefun/solana-pda";
+
 import { getProgramId } from "../config/solana";
 import type { MarketTokenBootstrap } from "./dexscreener";
 
@@ -96,32 +102,14 @@ async function ensureSignerFunded(
   }
 }
 
-function marketPda(tokenMint: PublicKey, marketId: PublicKey): PublicKey {
-  const [pda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("market"), tokenMint.toBuffer(), marketId.toBuffer()],
-    getProgramId(),
-  );
-  return pda;
-}
-
-/** Legacy deployments: `[market, mint]` only. */
-function marketPdaLegacy(tokenMint: PublicKey): PublicKey {
-  const [pda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("market"), tokenMint.toBuffer()],
-    getProgramId(),
-  );
-  return pda;
-}
-
 function resolveMarketPubkey(
   tokenMint: PublicKey,
   chainMarketKeyBase58: string | null | undefined,
 ): PublicKey {
-  const trimmed = chainMarketKeyBase58?.trim();
-  if (trimmed) {
-    return marketPda(tokenMint, new PublicKey(trimmed));
-  }
-  return marketPdaLegacy(tokenMint);
+  return deriveMarketPDAForDbRow(getProgramId(), {
+    tokenMint: tokenMint.toBase58(),
+    chainMarketKey: chainMarketKeyBase58,
+  }).publicKey;
 }
 
 function accountEnumVariant(status: unknown): string | null {
@@ -234,7 +222,10 @@ export async function createMarketOnChain(
   const marketIdKey = chainMarketKeyBase58?.trim()
     ? new PublicKey(chainMarketKeyBase58.trim())
     : Keypair.generate().publicKey;
-  const market = marketPda(tokenMint, marketIdKey);
+  const market = deriveMarketPDA(getProgramId(), tokenMint, {
+    scheme: MarketAddressScheme.MintAndMarketId,
+    chainMarketKey: marketIdKey,
+  }).publicKey;
   const platformAuthority = provider.wallet.publicKey;
   await ensureSignerFunded(connection, platformAuthority);
 

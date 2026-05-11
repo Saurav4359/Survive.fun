@@ -19,6 +19,8 @@
     "simulate-survive": "ts-node --project tsconfig.scripts.json scripts/simulate-survive.ts",
     "test-resolution": "prisma generate --schema=apps/api/prisma/schema.prisma && tsx scripts/test-resolution.ts",
     "check-onchain": "prisma generate --schema=apps/api/prisma/schema.prisma && tsx scripts/check-onchain.ts",
+    "pda:audit": "prisma generate --schema=apps/api/prisma/schema.prisma && pnpm --dir apps/api exec tsx scripts/pda-migration-audit.ts",
+    "pda:backfill-keys": "prisma generate --schema=apps/api/prisma/schema.prisma && pnpm --dir apps/api exec tsx scripts/pda-backfill-chain-market-key.ts",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f --tail=200",
@@ -30,6 +32,7 @@
     "db:studio": "node scripts/run-prisma-studio.mjs"
   },
   "devDependencies": {
+    "@survivefun/solana-pda": "workspace:^",
     "@survivefun/types": "workspace:^",
     "@prisma/client": "^6.19.3",
     "@solana/spl-token": "^0.4.13",

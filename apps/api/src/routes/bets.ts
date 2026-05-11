@@ -13,6 +13,7 @@ import { connection } from "../config/solana";
 import { prisma } from "../config/database";
 import { toBetDto, toBetWithMarketDto, toMarketDto } from "../lib/dto";
 import { marketPdaBase58ForDbRow } from "../lib/marketOnChain";
+import { enforceSolanaMarketRowInvariants } from "../lib/marketPdaGuard";
 import {
   ONCHAIN_MAX_STAKE_RAW,
   ONCHAIN_MIN_STAKE_RAW,
@@ -122,6 +123,7 @@ marketBetsRouter.post("/:id/bets", async (req, res, next) => {
     if (!marketRow) {
       throw new AppError("NOT_FOUND", "Market not found", 404);
     }
+    enforceSolanaMarketRowInvariants(marketRow);
     if (marketRow.status !== "active") {
       throw new AppError(
         "MARKET_NOT_ACTIVE",

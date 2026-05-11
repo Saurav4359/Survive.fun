@@ -26,6 +26,11 @@ import {
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 import {
+  deriveBetPDA,
+  deriveMarketPDA,
+  MarketAddressScheme,
+} from "@survivefun/solana-pda";
+import {
   Connection,
   Keypair,
   PublicKey,
@@ -100,19 +105,13 @@ function loadAuthority(): Keypair {
 }
 
 function marketPda(tokenMint: PublicKey): PublicKey {
-  const [pda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("market", "utf8"), tokenMint.toBuffer()],
-    PROGRAM_ID,
-  );
-  return pda;
+  return deriveMarketPDA(PROGRAM_ID, tokenMint, {
+    scheme: MarketAddressScheme.LegacyMintOnly,
+  }).publicKey;
 }
 
 function betPda(market: PublicKey, bettor: PublicKey): PublicKey {
-  const [pda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("bet", "utf8"), market.toBuffer(), bettor.toBuffer()],
-    PROGRAM_ID,
-  );
-  return pda;
+  return deriveBetPDA(PROGRAM_ID, market, bettor).publicKey;
 }
 
 async function usdcBalance(

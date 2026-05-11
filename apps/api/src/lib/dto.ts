@@ -17,11 +17,24 @@ function lamportsIntegerString(d: { toFixed: (n: number) => string }): string {
 }
 
 export function toMarketDto(row: DbMarket): Market {
+  const stored = row.onChainAddress?.trim() ?? null;
+  const chainKey = row.chainMarketKey?.trim();
   let onChainAddress: string | null = null;
-  try {
-    onChainAddress = marketPdaBase58ForDbRow(row);
-  } catch {
-    onChainAddress = row.onChainAddress?.trim() ?? null;
+  if (chainKey) {
+    try {
+      onChainAddress = marketPdaBase58ForDbRow(row);
+    } catch {
+      onChainAddress = stored;
+    }
+  } else if (stored) {
+    // Persisted vault from create_market (3-seed); legacy derivation would be wrong here.
+    onChainAddress = stored;
+  } else {
+    try {
+      onChainAddress = marketPdaBase58ForDbRow(row);
+    } catch {
+      onChainAddress = null;
+    }
   }
   return {
     id: row.id,

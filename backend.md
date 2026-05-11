@@ -27,7 +27,7 @@ Anchor IDL reference: `contracts/target/idl/survivefun.json`
 
 | Area | Behavior |
 |------|----------|
-| `apps/api/src/lib/marketOnChain.ts` | **`marketPdaBase58ForMintAndDuration`** / **`marketPdaBase58ForDbRow`** always derive from mint + duration + **`getProgramId()`**. They **do not** return a raw DB `on_chain_address` for logic. |
+| `apps/api/src/lib/marketOnChain.ts` | **`marketPdaBase58ForDbRow`** / **`betPdaBase58`** delegate to **`@survivefun/solana-pda`** with **`getProgramId()`** (see `docs/PDA.md`). |
 | `apps/api/src/lib/dto.ts` | **`toMarketDto`**: `onChainAddress` is **`null`** if the row has no on-chain marker (`on_chain_address` null/empty); otherwise the API returns the **canonical** PDA for the current program, **not** the stored pubkey from an old deployment. |
 | `apps/api/src/routes/bets.ts` | Bet tx verification uses **`marketPdaBase58ForDbRow(marketRow)`**, aligned with what the wallet submits after a program upgrade. |
 | `apps/api/src/jobs/resolver.ts` | **`resolveOnChain`** builds `resolve_market` against **`marketPda(...)`** from **`getProgramId()`** (same seed layout). Uses shared **`toMarketDto`** from `lib/dto` (no duplicate DTO helper). |
