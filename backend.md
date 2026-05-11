@@ -38,7 +38,7 @@ Anchor IDL reference: `contracts/target/idl/survivefun.json`
 
 **Env checklist (must match deployed program):**
 
-- **API:** `SURVIVEFUN_PROGRAM_ID` or `PROGRAM_ID` = current deploy (see `contracts/contract.md`; e.g. devnet **`3shYxrDG1srw1Wxu2yVnrnEUk53m6tS8HDyVKuoYLVd1`**).
+- **API:** `SURVIVEFUN_PROGRAM_ID` or `PROGRAM_ID` = current deploy (see `contracts/contract.md` / `apps/api/src/idl/survivefun.json`; e.g. **`9ZqPpXBid4xzB49HjB7zE6BnTWryMuuZFTULTSJqqTd8`**).
 - **Web:** `NEXT_PUBLIC_PROGRAM_ID` = same value.
 
 Restart the API after changing program id so DTO and verification pick up the new id. With **`SKIP_TX_VERIFICATION=false`**, SOL bets whose transactions hit the **new** market PDA should verify successfully.
@@ -192,7 +192,11 @@ Client events: `subscribe_market`, `subscribe_stats`.
 ## Rug detection & resolution
 
 - **Cadence:** `detectRug()` runs for **every DB-`active` market every 30s** (`apps/api/src/jobs/resolver.ts` — no `expires_at` filter so post-deadline markets are still processed), using BullMQ when `REDIS_URL` is set, else `setInterval`.
-- **Checks inside `detectRug`:** dev sell ratio (Helius + RPC), price drop vs open (DexScreener), liquidity removed vs open (DexScreener), graduation stall (Birdeye); **time:** `now > expiresAt` + no rug → **survive** path.
+- **Open snapshot (never refetched for baseline math):** At **`POST /v1/markets`** and **Helius `TOKEN_MINT` auto-create**, DexScreener is read **before** `create_market`; **`open_price`**, **`open_liquidity`**, **`dev_wallet`**, and **`open_snapshot_at`** are persisted and used for drop / liquidity checks — not live Dex “open” values.
+- **Checks inside `detectRug`:** dev sell ratio (**RPC:** up to **100** recent txs for dev-wallet ratio), price drop vs DB open (DexScreener **average of up to 3** priced pairs), liquidity vs DB open (same averages), graduation stall (Birdeye); **time:** `now > expiresAt` + no rug → **survive** path.
+- **Dependency outages:** DexScreener or RPC failures return **`api_failure` / `rpc_failure`** — resolver **skips** resolution (market stays active); **never** resolves on outage.
+- **Rug double-confirmation:** First **`isRug`** sets **`pending_rug_at`**; a **second** confirmed rug signal **≥ 120s** later triggers **`processMarketResolution(..., 'rug', …)`**. Clears **`pending_rug_at`** if rug signals stop. Same logic applies to **Helius `TRANSFER`** sweep (`apps/api/src/routes/webhook.ts`).
+- **Resolution audit:** On resolve, **`resolution_data`** JSON stores condition, timestamps, Dex averages scanned, dev-sell ratio, tx scan count, etc. (`buildResolutionMetaFromDetectResult` + `payoutService`).
 - **Exported helpers** (same heuristics): `checkDevSell`, `checkPriceDrop`, `checkLiquidityRemoved` in `apps/api/src/services/rugDetector.ts`.
 - **On rug or survive:** `processMarketResolution` → on-chain **`resolve_market`** (requires `PLATFORM_WALLET_SECRET_KEY` + RPC), then DB **`resolved`** + **`emitMarketResolved`**. See **Active market list** for how this relates to **`expires_at`** on list endpoints.
 
@@ -202,7 +206,7 @@ Client events: `subscribe_market`, `subscribe_stats`.
 
 - **Pump.fun program:** `6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P` (`PUMP_FUN_PROGRAM_ADDRESS`).
 - **Registration:** `registerHeliusWebhook()` on boot if `HELIUS_API_KEY`, `HELIUS_WEBHOOK_URL` (public HTTPS, e.g. `https://api.example.com/webhook/helius`), and `HELIUS_WEBHOOK_AUTH_SECRET` are set.
-- **Auto-market:** `TOKEN_MINT` events create a DB market when `AUTO_MARKET_CREATOR_WALLET` is set (no on-chain market in that path by default).
+- **Auto-market:** `TOKEN_MINT` events call **`create_market`** on-chain (same Dex snapshot + bootstrap as **`POST /v1/markets`**) and persist **`open_snapshot_at`**, then insert the DB row when **`AUTO_MARKET_CREATOR_WALLET`** is set. If DexScreener fails or no priced pairs, auto-create is **skipped** (logged).
 
 ---
 
@@ -266,11 +270,11 @@ All listed REST and webhook routes above are implemented in `apps/api/src`, incl
 2. **On-chain resolve** requires a funded platform key and matching program deployment (`PLATFORM_WALLET_SECRET_KEY`, `SURVIVEFUN_PROGRAM_ID`, RPC).
 3. **Rug heuristics** need `HELIUS_API_KEY` (dev sell path) and DexScreener reachability; Birdeye improves charts + graduation rule.
 4. **Helius webhook** needs a **public HTTPS** URL; local dev typically uses a tunnel.
-5. **Auto-create from webhook** creates **DB-only** markets unless you extend the handler to submit `create_market` on-chain.
+5. **Auto-create from webhook** submits **`create_market`** on-chain with Dex snapshot bootstrap (see **Helius webhook** above).
 6. **Monorepo note:** Prisma lives under `apps/api/prisma/`, not repo root `prisma/`.
 7. **Breaking changes:** Response shapes are extended (`Market.currency`, `Bet` stake fields). Clients must treat `amountUsdc` as nullable when `currency === "sol"` (use `amountLamports`). No removal of USDC defaults.
 
-Migration: `apps/api/prisma/migrations/20260208120000_add_market_bet_currency/migration.sql`
+Migration: `apps/api/prisma/migrations/20260509010000_add_market_bet_currency/migration.sql`
 
 ---
 
@@ -280,24 +284,26 @@ Migration: `apps/api/prisma/migrations/20260208120000_add_market_bet_currency/mi
 
 - **`backend.md`** must stay in sync with **`apps/api/`** changes (this file). Pool-history, chart vs pool semantics, and token Redis/Birdeye behavior are documented in the sections above.
 
-### Task status
+### Smart-contract upgrade — program id & rug pipeline (May 2026)
 
-- Task 1 (env update): ✅ `apps/api/.env` updated with requested keys and backend compatibility vars.
-- Task 2 (IDL copy): ⚠️ Copied to backend path only (`apps/api/src/idl/survivefun.json`). I did not modify `apps/web` per your backend-only rule.
-- Task 3 (create market route): ✅ `POST /v1/markets` validates request, fetches DexScreener, calls on-chain `create_market` via IDL, persists to DB only after chain success.
-- Task 4 (place bet route): ✅ `POST /v1/markets/:id/bets` verifies tx (program id + side + amount + market + bettor) against RPC before DB write and socket emit.
-- Task 5 (resolver): ✅ `resolveOnChain` now uses IDL-backed Anchor call (`resolve_market`) and logs signature/details.
-- Task 6 (Helius webhooks): ✅ register uses `HELIUS_API_KEY` + `${BACKEND_URL}/v1/webhook/helius`; intake responds 200 immediately and processes TOKEN_MINT / TRANSFER asynchronously.
-- Task 7 (demo seed): ✅ `scripts/setup-demo.ts` now seeds 3 markets and 15 mixed bets ($5-$50 range).
+| Item | Status |
+|------|--------|
+| **Program ID** (`PROGRAM_ID` / `SURVIVEFUN_PROGRAM_ID`) | **`9ZqPpXBid4xzB49HjB7zE6BnTWryMuuZFTULTSJqqTd8`** — set in `apps/api/.env` and `apps/api/env.sample`; matches `apps/api/src/idl/survivefun.json`. |
+| **Fix 1 — Snapshot at market creation** | ✅ `POST /v1/markets` + webhook auto-market: Dex body → `dexBodyToMarketBootstrap` → on-chain args + DB `open_snapshot_at` / open fields. |
+| **Fix 2 — 100 tx history** | ✅ `conditionDevSell`: `getSignaturesForAddress` **`limit: 100`**. |
+| **Fix 3 — Multi-pair Dex average** | ✅ Live checks use **`fetchDexAggregatesForMint`** (up to 3 pairs with valid `priceUsd`). |
+| **Fix 4 — Double confirmation** | ✅ `resolver.ts` + webhook transfer rug path: `pending_rug_at` then **≥ 120s** before resolve. |
+| **Fix 5 — API / RPC failure handling** | ✅ `detectRug` returns **`error`**; resolver + webhook **skip** resolve and log **`marketId`**. |
+| **Fix 6 — Resolution transcript** | ✅ `processMarketResolution(..., resolutionMeta)` → **`resolution_data`** JSON on market row. |
+| **Migration** | `apps/api/prisma/migrations/20260510120000_add_resolution_fields/migration.sql` — `pending_rug_at`, `resolution_data`, `open_snapshot_at`. |
+| **`pnpm --dir apps/api run build`** | ✅ Passes (Prisma generate + `tsc`). |
+| **Manual test checklist** | Run against staging DB/RPC: new program id tx paths; create stores snapshot; Dex/RPC fail → market active; single rug sets `pending_rug_at`; second confirmation after **≥ 120s** → resolved; multi-pair avg; 100 sigs; `resolution_data` populated. |
 
-### Files updated this session
+### Prior task status (historical)
 
-- `apps/api/.env`
-- `apps/api/src/config/solana.ts`
-- `apps/api/src/idl/survivefun.json`
-- `apps/api/src/lib/onchainProgram.ts`
-- `apps/api/src/routes/markets.ts`
-- `apps/api/src/routes/bets.ts`
-- `apps/api/src/jobs/resolver.ts`
-- `apps/api/src/routes/webhook.ts`
-- `scripts/setup-demo.ts`
+- Env / IDL / markets / bets / resolver / Helius / demo seed work completed in earlier sessions (see git history).
+
+### Files touched in rug-upgrade follow-up
+
+- `apps/api/src/routes/webhook.ts` — Dex bootstrap parity with `markets.ts`, seeded pools, double-confirm rug on transfers.
+- `backend.md` — this section.

@@ -17,6 +17,16 @@ pub enum Outcome {
 #[derive(InitSpace)]
 pub struct Market {
     pub token_mint: Pubkey,
+    /// Unique id per round; included in the market PDA seeds so the same mint can open new markets after resolution.
+    pub market_id: Pubkey,
+    /// Token creator / dev wallet — snapshot address at market open (no retroactive manipulation).
+    pub dev_wallet: Pubkey,
+    /// Dev wallet native SOL balance at creation (lamports).
+    pub dev_balance_at_open: u64,
+    /// Price at open (fixed-point: price × 1_000_000).
+    pub open_price: u64,
+    /// Liquidity at open (fixed-point: liquidity × 100).
+    pub open_liquidity: u64,
     pub creator: Pubkey,
     pub survive_pool: u64,
     pub rug_pool: u64,

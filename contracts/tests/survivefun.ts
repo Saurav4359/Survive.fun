@@ -30,9 +30,12 @@ function bn(n: bigint | number): BN {
 function marketPda(
   programId: PublicKey,
   tokenMint: PublicKey,
-  _durationSeconds: number,
+  marketId: PublicKey,
 ): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync([Buffer.from("market"), tokenMint.toBuffer()], programId);
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("market"), tokenMint.toBuffer(), marketId.toBuffer()],
+    programId,
+  );
 }
 
 function betPda(programId: PublicKey, market: PublicKey, bettor: PublicKey): [PublicKey, number] {
@@ -60,6 +63,8 @@ describe("survivefun SOL-only (local validator)", function () {
   let authority: Keypair;
   /** Separate from fee-paying wallet so claim fee-share balance checks are not confounded by tx fees. */
   let platformKp: Keypair;
+  /** Snapshot target for dev-wallet fields at `create_market` (fixed across tests). */
+  let devWallet: Keypair;
   /** Devnet: avoid RPC faucet (429) by funding from ANCHOR_WALLET; keep transfers small enough for typical post-deploy balances. */
   let leanDevnet: boolean;
 
@@ -76,6 +81,7 @@ describe("survivefun SOL-only (local validator)", function () {
     leanDevnet = !usesLocalValidatorRpc(provider.connection.rpcEndpoint);
     marketDurationSec = leanDevnet ? 3600 : 10;
     platformKp = Keypair.generate();
+    devWallet = Keypair.generate();
     const platformFund = leanDevnet ? 250_000_000 : 5_000_000_000;
     await fundLamports(provider, authority, platformKp.publicKey, platformFund);
   });
@@ -125,10 +131,22 @@ describe("survivefun SOL-only (local validator)", function () {
     return fundLamports(provider, authority, pubkey, lamports);
   }
 
-  async function createMarketIx(tokenMint: PublicKey, durationSeconds: number) {
-    const [market] = marketPda(program.programId, tokenMint, durationSeconds);
+  const SNAP_DEV_BALANCE = 1_000_000_000n;
+  const SNAP_OPEN_PRICE = 1_000n;
+  const SNAP_OPEN_LIQ = 100_000n;
+
+  async function createMarketIx(tokenMint: PublicKey, marketId: PublicKey, durationSeconds: number) {
+    const [market] = marketPda(program.programId, tokenMint, marketId);
     return program.methods
-      .createMarket(tokenMint, bn(durationSeconds))
+      .createMarket(
+        tokenMint,
+        marketId,
+        bn(durationSeconds),
+        devWallet.publicKey,
+        bn(SNAP_DEV_BALANCE),
+        bn(SNAP_OPEN_PRICE),
+        bn(SNAP_OPEN_LIQ),
+      )
       .accountsPartial({
         creator: authority.publicKey,
         platformAuthority: platformKp.publicKey,
@@ -159,20 +177,26 @@ describe("survivefun SOL-only (local validator)", function () {
 
   it("test 1: create market → succeeds", async () => {
     const tokenMint = Keypair.generate().publicKey;
-    const ix = await createMarketIx(tokenMint, marketDurationSec);
+    const marketId = Keypair.generate().publicKey;
+    const ix = await createMarketIx(tokenMint, marketId, marketDurationSec);
     await send(provider, ix, [authority, platformKp]);
-    const [market] = marketPda(program.programId, tokenMint, marketDurationSec);
+    const [market] = marketPda(program.programId, tokenMint, marketId);
     const acc: any = await (program.account as any).market.fetch(market);
     assert.equal(acc.tokenMint.toBase58(), tokenMint.toBase58());
+    assert.equal(acc.devWallet.toBase58(), devWallet.publicKey.toBase58());
+    assert.equal(acc.devBalanceAtOpen.toString(), SNAP_DEV_BALANCE.toString());
+    assert.equal(acc.openPrice.toString(), SNAP_OPEN_PRICE.toString());
+    assert.equal(acc.openLiquidity.toString(), SNAP_OPEN_LIQ.toString());
     assert.equal(acc.survivePool.toString(), PLATFORM_SEED_PER_SIDE.toString());
     assert.equal(acc.rugPool.toString(), PLATFORM_SEED_PER_SIDE.toString());
   });
 
   it("test 2: create same market again → fails (MarketAlreadyExists)", async () => {
     const tokenMint = Keypair.generate().publicKey;
-    const ix1 = await createMarketIx(tokenMint, marketDurationSec);
+    const marketId = Keypair.generate().publicKey;
+    const ix1 = await createMarketIx(tokenMint, marketId, marketDurationSec);
     await send(provider, ix1, [authority, platformKp]);
-    const ix2 = await createMarketIx(tokenMint, marketDurationSec);
+    const ix2 = await createMarketIx(tokenMint, marketId, marketDurationSec);
     try {
       await send(provider, ix2, [authority, platformKp]);
       assert.fail("expected MarketAlreadyExists");
@@ -181,10 +205,25 @@ describe("survivefun SOL-only (local validator)", function () {
     }
   });
 
+  it("test 2b: same mint, new market id → second market succeeds", async () => {
+    const tokenMint = Keypair.generate().publicKey;
+    const marketIdA = Keypair.generate().publicKey;
+    const marketIdB = Keypair.generate().publicKey;
+    await send(provider, await createMarketIx(tokenMint, marketIdA, marketDurationSec), [authority, platformKp]);
+    await send(provider, await createMarketIx(tokenMint, marketIdB, marketDurationSec), [authority, platformKp]);
+    const [marketA] = marketPda(program.programId, tokenMint, marketIdA);
+    const [marketB] = marketPda(program.programId, tokenMint, marketIdB);
+    assert.notEqual(marketA.toBase58(), marketB.toBase58());
+    const accB: any = await (program.account as any).market.fetch(marketB);
+    assert.equal(accB.marketId.toBase58(), marketIdB.toBase58());
+    assert.equal(accB.tokenMint.toBase58(), tokenMint.toBase58());
+  });
+
   it("test 3: place SOL bet SURVIVE → works", async () => {
     const tokenMint = Keypair.generate().publicKey;
-    await send(provider, await createMarketIx(tokenMint, marketDurationSec), [authority, platformKp]);
-    const [market] = marketPda(program.programId, tokenMint, marketDurationSec);
+    const marketId = Keypair.generate().publicKey;
+    await send(provider, await createMarketIx(tokenMint, marketId, marketDurationSec), [authority, platformKp]);
+    const [market] = marketPda(program.programId, tokenMint, marketId);
 
     const bettor = Keypair.generate();
     await fundSmallBettor(bettor.publicKey);
@@ -210,8 +249,9 @@ describe("survivefun SOL-only (local validator)", function () {
 
   it("test 4: place SOL bet RUG → works", async () => {
     const tokenMint = Keypair.generate().publicKey;
-    await send(provider, await createMarketIx(tokenMint, marketDurationSec), [authority, platformKp]);
-    const [market] = marketPda(program.programId, tokenMint, marketDurationSec);
+    const marketId = Keypair.generate().publicKey;
+    await send(provider, await createMarketIx(tokenMint, marketId, marketDurationSec), [authority, platformKp]);
+    const [market] = marketPda(program.programId, tokenMint, marketId);
 
     const bettor = Keypair.generate();
     await fundSmallBettor(bettor.publicKey);
@@ -237,8 +277,9 @@ describe("survivefun SOL-only (local validator)", function () {
 
   it("test 4b: second placeBet same wallet + side → tops up (no account init error)", async () => {
     const tokenMint = Keypair.generate().publicKey;
-    await send(provider, await createMarketIx(tokenMint, marketDurationSec), [authority, platformKp]);
-    const [market] = marketPda(program.programId, tokenMint, marketDurationSec);
+    const marketId = Keypair.generate().publicKey;
+    await send(provider, await createMarketIx(tokenMint, marketId, marketDurationSec), [authority, platformKp]);
+    const [market] = marketPda(program.programId, tokenMint, marketId);
 
     const bettor = Keypair.generate();
     await fundSmallBettor(bettor.publicKey);
@@ -284,8 +325,9 @@ describe("survivefun SOL-only (local validator)", function () {
 
   it("test 4c: second placeBet opposite side → BetSideMismatch", async () => {
     const tokenMint = Keypair.generate().publicKey;
-    await send(provider, await createMarketIx(tokenMint, marketDurationSec), [authority, platformKp]);
-    const [market] = marketPda(program.programId, tokenMint, marketDurationSec);
+    const marketId = Keypair.generate().publicKey;
+    await send(provider, await createMarketIx(tokenMint, marketId, marketDurationSec), [authority, platformKp]);
+    const [market] = marketPda(program.programId, tokenMint, marketId);
 
     const bettor = Keypair.generate();
     await fundSmallBettor(bettor.publicKey);
@@ -324,8 +366,9 @@ describe("survivefun SOL-only (local validator)", function () {
 
   it("test 5: bet below 0.01 SOL → fails", async () => {
     const tokenMint = Keypair.generate().publicKey;
-    await send(provider, await createMarketIx(tokenMint, marketDurationSec), [authority, platformKp]);
-    const [market] = marketPda(program.programId, tokenMint, marketDurationSec);
+    const marketId = Keypair.generate().publicKey;
+    await send(provider, await createMarketIx(tokenMint, marketId, marketDurationSec), [authority, platformKp]);
+    const [market] = marketPda(program.programId, tokenMint, marketId);
 
     const bettor = Keypair.generate();
     await fundSmallBettor(bettor.publicKey);
@@ -350,8 +393,9 @@ describe("survivefun SOL-only (local validator)", function () {
 
   it("test 6: bet above 10 SOL → fails", async () => {
     const tokenMint = Keypair.generate().publicKey;
-    await send(provider, await createMarketIx(tokenMint, marketDurationSec), [authority, platformKp]);
-    const [market] = marketPda(program.programId, tokenMint, marketDurationSec);
+    const marketId = Keypair.generate().publicKey;
+    await send(provider, await createMarketIx(tokenMint, marketId, marketDurationSec), [authority, platformKp]);
+    const [market] = marketPda(program.programId, tokenMint, marketId);
 
     const bettor = Keypair.generate();
     await fundSmallBettor(bettor.publicKey);
@@ -382,8 +426,9 @@ describe("survivefun SOL-only (local validator)", function () {
 
   it("test 7: rug resolves → winner claims SOL", async () => {
     const tokenMint = Keypair.generate().publicKey;
-    await send(provider, await createMarketIx(tokenMint, marketDurationSec), [authority, platformKp]);
-    const [market] = marketPda(program.programId, tokenMint, marketDurationSec);
+    const marketId = Keypair.generate().publicKey;
+    await send(provider, await createMarketIx(tokenMint, marketId, marketDurationSec), [authority, platformKp]);
+    const [market] = marketPda(program.programId, tokenMint, marketId);
 
     const winnerBet = 500_000_000n;
     const loserBet = 500_000_000n;
@@ -476,8 +521,9 @@ describe("survivefun SOL-only (local validator)", function () {
   it("test 8: loser tries claim → fails", async () => {
     const stake = 100_000_000n;
     const tokenMint = Keypair.generate().publicKey;
-    await send(provider, await createMarketIx(tokenMint, marketDurationSec), [authority, platformKp]);
-    const [market] = marketPda(program.programId, tokenMint, marketDurationSec);
+    const marketId = Keypair.generate().publicKey;
+    await send(provider, await createMarketIx(tokenMint, marketId, marketDurationSec), [authority, platformKp]);
+    const [market] = marketPda(program.programId, tokenMint, marketId);
 
     const loser = Keypair.generate();
     const winner = Keypair.generate();
@@ -550,8 +596,9 @@ describe("survivefun SOL-only (local validator)", function () {
   it("test 9: claim twice → fails", async () => {
     const stake = 100_000_000n;
     const tokenMint = Keypair.generate().publicKey;
-    await send(provider, await createMarketIx(tokenMint, marketDurationSec), [authority, platformKp]);
-    const [market] = marketPda(program.programId, tokenMint, marketDurationSec);
+    const marketId = Keypair.generate().publicKey;
+    await send(provider, await createMarketIx(tokenMint, marketId, marketDurationSec), [authority, platformKp]);
+    const [market] = marketPda(program.programId, tokenMint, marketId);
 
     const loser = Keypair.generate();
     const winner = Keypair.generate();

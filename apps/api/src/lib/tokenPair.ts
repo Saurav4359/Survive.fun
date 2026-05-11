@@ -4,6 +4,8 @@ import type {
   TokenPair,
 } from "@survivefun/types";
 
+import { normalizeDexUnixSeconds } from "./unixSecondsNormalize";
+
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
@@ -143,12 +145,13 @@ export function mapDexRecordToTokenPair(
     liquidity: readLiquidity(pair.liquidity),
     fdv: parseNumOrNull(pair.fdv),
     marketCap: parseNumOrNull(pair.marketCap),
-    pairCreatedAt:
+    pairCreatedAt: normalizeDexUnixSeconds(
       typeof pair.pairCreatedAt === "number"
         ? pair.pairCreatedAt
         : typeof pair.pairCreatedAt === "string"
           ? Number.parseInt(pair.pairCreatedAt, 10)
           : null,
+    ),
     devWallet: extractDevWallet(pair),
   };
 }

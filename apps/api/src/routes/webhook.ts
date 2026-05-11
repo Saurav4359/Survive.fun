@@ -9,14 +9,21 @@
 import { timingSafeEqual } from "node:crypto";
 
 import { Prisma, type Market as DbMarket } from "@prisma/client";
-import axios from "axios";
 import { createHelius } from "@helius-labs/helius-sdk";
 import express, { Router, type Request, type Response } from "express";
 
 import { connection } from "../config/solana";
 import { prisma } from "../config/database";
+import {
+  dexBodyToMarketBootstrap,
+  fetchDexTokenJson,
+} from "../lib/dexscreener";
 import { createMarketOnChain } from "../lib/onchainProgram";
-import { dbMarketToDetectInput, detectRug } from "../services/rugDetector";
+import {
+  buildResolutionMetaFromDetectResult,
+  dbMarketToDetectInput,
+  detectRug,
+} from "../services/rugDetector";
 import { processMarketResolution } from "../services/payoutService";
 import { emitNewToken } from "../websocket/socketHandler";
 
@@ -26,10 +33,8 @@ const LOG_PREFIX = "[heliusWebhook]";
 export const PUMP_FUN_PROGRAM_ADDRESS =
   "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
 
-const DEXSCREENER_TOKEN_URL =
-  "https://api.dexscreener.com/latest/dex/tokens";
-
 const ONE_HOUR_SECONDS = 3600;
+const SEED_LAMPORTS_PER_SIDE = "10000000";
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
@@ -79,30 +84,6 @@ function extractEventRecords(body: unknown): Record<string, unknown>[] {
 function eventTypeOf(ev: Record<string, unknown>): string {
   const t = ev.type;
   return typeof t === "string" ? t.toUpperCase() : "";
-}
-
-async function fetchDexscreenerPair(
-  mint: string,
-): Promise<Record<string, unknown> | null> {
-  try {
-    const url = `${DEXSCREENER_TOKEN_URL}/${encodeURIComponent(mint)}`;
-    const res = await axios.get<unknown>(url, {
-      timeout: 15_000,
-      validateStatus: (s) => s === 200,
-    });
-    const data = res.data;
-    if (!isRecord(data)) return null;
-    const pairs = data.pairs;
-    if (!Array.isArray(pairs) || pairs.length === 0) return null;
-    const first = pairs[0];
-    return isRecord(first) ? first : null;
-  } catch (e) {
-    console.log(`${LOG_PREFIX} DexScreener fetch failed`, {
-      mint,
-      error: e instanceof Error ? e.message : String(e),
-    });
-    return null;
-  }
 }
 
 function extractMintFromTokenMintEvent(ev: Record<string, unknown>): string | null {
@@ -164,17 +145,65 @@ function collectTransferSenders(ev: Record<string, unknown>): string[] {
 }
 
 async function resolveActiveMarketAsRug(row: DbMarket): Promise<void> {
-  const rug = await detectRug(dbMarketToDetectInput(row));
-  if (!rug.isRug) return;
+  const fresh = await prisma.market.findUnique({ where: { id: row.id } });
+  if (!fresh || fresh.status !== "active") return;
+
+  const result = await detectRug(dbMarketToDetectInput(fresh));
+
+  if (result.error === "api_failure" || result.error === "rpc_failure") {
+    console.log(`${LOG_PREFIX} skip rug resolution (dependency outage)`, {
+      marketId: fresh.id,
+      error: result.error,
+    });
+    return;
+  }
+
+  if (!result.isRug && fresh.pendingRugAt) {
+    await prisma.market.update({
+      where: { id: fresh.id },
+      data: { pendingRugAt: null },
+    });
+    return;
+  }
+
+  if (!result.isRug) return;
+
+  if (!fresh.pendingRugAt) {
+    await prisma.market.update({
+      where: { id: fresh.id },
+      data: { pendingRugAt: new Date() },
+    });
+    console.log(`${LOG_PREFIX} rug signal (transfer) — awaiting confirmation`, {
+      marketId: fresh.id,
+      condition: result.condition,
+    });
+    return;
+  }
+
+  const elapsed = Date.now() - fresh.pendingRugAt.getTime();
+  if (elapsed < 120_000) {
+    console.log(`${LOG_PREFIX} rug confirmation timer (transfer)`, {
+      marketId: fresh.id,
+      elapsedMs: elapsed,
+    });
+    return;
+  }
+
+  const meta = buildResolutionMetaFromDetectResult(
+    "rug",
+    result,
+    result.condition ?? "unknown",
+  );
   try {
     await processMarketResolution(
-      row.id,
+      fresh.id,
       "rug",
-      rug.condition ?? "unknown",
+      result.condition ?? "unknown",
+      meta,
     );
   } catch (e) {
     console.log(`${LOG_PREFIX} processMarketResolution failed (rug)`, {
-      marketId: row.id,
+      marketId: fresh.id,
       error: e instanceof Error ? e.message : String(e),
     });
   }
@@ -203,33 +232,37 @@ async function handleTokenMintEvent(ev: Record<string, unknown>): Promise<void> 
     return;
   }
 
-  const pair = await fetchDexscreenerPair(mint);
-  let tokenName: string | null = null;
-  let tokenTicker: string | null = null;
-  let openPrice: string | null = null;
-  let openLiquidity: string | null = null;
-
-  if (pair) {
-    const base = pair.baseToken;
-    if (isRecord(base)) {
-      if (typeof base.name === "string") tokenName = base.name;
-      if (typeof base.symbol === "string") tokenTicker = base.symbol;
+  const snapshotAt = new Date();
+  let boot: NonNullable<ReturnType<typeof dexBodyToMarketBootstrap>>;
+  try {
+    const dexBody = await fetchDexTokenJson(mint);
+    const b = dexBodyToMarketBootstrap(dexBody, mint);
+    if (!b) {
+      console.log(`${LOG_PREFIX} DexScreener: no priced pairs; skip auto-market`, {
+        mint,
+      });
+      return;
     }
-    const pu = pair.priceUsd;
-    if (typeof pu === "string" || typeof pu === "number") {
-      openPrice = String(pu);
-    }
-    const liq = pair.liquidity;
-    if (isRecord(liq) && liq.usd != null) {
-      openLiquidity = String(liq.usd);
-    }
+    boot = b;
+  } catch (e) {
+    console.log(`${LOG_PREFIX} DexScreener snapshot failed; skip auto-market`, {
+      mint,
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return;
   }
 
-  const now = new Date();
+  const now = snapshotAt;
   const expiresAt = new Date(now.getTime() + ONE_HOUR_SECONDS * 1000);
-  let chain: { signature: string; marketPda: string; platformAuthority: string };
+  let chain: Awaited<ReturnType<typeof createMarketOnChain>>;
   try {
-    chain = await createMarketOnChain(connection, mint, ONE_HOUR_SECONDS);
+    chain = await createMarketOnChain(
+      connection,
+      mint,
+      ONE_HOUR_SECONDS,
+      undefined,
+      boot,
+    );
     console.log(`${LOG_PREFIX} webhook create_market on-chain success`, {
       mint,
       durationSeconds: ONE_HOUR_SECONDS,
@@ -250,19 +283,21 @@ async function handleTokenMintEvent(ev: Record<string, unknown>): Promise<void> 
     market = await prisma.market.create({
       data: {
         tokenMint: mint,
-        tokenName,
-        tokenTicker,
+        tokenName: boot.tokenName,
+        tokenTicker: boot.tokenTicker,
         creatorWallet,
         durationSeconds: ONE_HOUR_SECONDS,
         expiresAt,
-        openPrice,
-        openLiquidity,
-        devWallet: pair?.info && isRecord(pair.info) && typeof pair.info.creatorAddress === "string"
-          ? pair.info.creatorAddress
-          : null,
+        survivePool: SEED_LAMPORTS_PER_SIDE,
+        rugPool: SEED_LAMPORTS_PER_SIDE,
+        openPrice: boot.openPrice,
+        openLiquidity: boot.openLiquidity,
+        devWallet: boot.devWallet,
+        openSnapshotAt: snapshotAt,
         status: "active",
         outcome: null,
         onChainAddress: chain.marketPda,
+        chainMarketKey: chain.chainMarketKey,
         currency: "sol",
       },
     });
@@ -282,13 +317,13 @@ async function handleTokenMintEvent(ev: Record<string, unknown>): Promise<void> 
   console.log(`${LOG_PREFIX} auto-created 1h market`, {
     marketId: market.id,
     mint,
-    tokenName,
+    tokenName: boot.tokenName,
   });
 
   try {
     emitNewToken({
       tokenMint: mint,
-      tokenName,
+      tokenName: boot.tokenName,
     });
   } catch (e) {
     console.log(`${LOG_PREFIX} emitNewToken failed`, {

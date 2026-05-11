@@ -6,7 +6,7 @@ import type {
 } from "@survivefun/types";
 import type { Bet as DbBet, Market as DbMarket } from "@prisma/client";
 
-import { marketPdaBase58ForMintAndDuration } from "./marketOnChain";
+import { marketPdaBase58ForDbRow } from "./marketOnChain";
 
 function asMarketCurrency(raw: string): MarketCurrency {
   return raw === "sol" ? "sol" : "usdc";
@@ -17,17 +17,11 @@ function lamportsIntegerString(d: { toFixed: (n: number) => string }): string {
 }
 
 export function toMarketDto(row: DbMarket): Market {
-  const stored = row.onChainAddress?.trim() ?? null;
   let onChainAddress: string | null = null;
-  if (stored != null) {
-    try {
-      onChainAddress = marketPdaBase58ForMintAndDuration(
-        row.tokenMint,
-        row.durationSeconds,
-      );
-    } catch {
-      onChainAddress = stored;
-    }
+  try {
+    onChainAddress = marketPdaBase58ForDbRow(row);
+  } catch {
+    onChainAddress = row.onChainAddress?.trim() ?? null;
   }
   return {
     id: row.id,
@@ -49,6 +43,7 @@ export function toMarketDto(row: DbMarket): Market {
     resolvedAt: row.resolvedAt?.toISOString() ?? null,
     rugCondition: row.rugCondition ?? null,
     onChainAddress,
+    chainMarketKey: row.chainMarketKey?.trim() ?? null,
     createdAt: row.createdAt.toISOString(),
     totalBettors: row.totalBettors,
     currency: asMarketCurrency(row.currency),

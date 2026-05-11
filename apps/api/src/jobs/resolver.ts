@@ -14,7 +14,11 @@ import {
 
 import { prisma } from "../config/database";
 import { processMarketResolution } from "../services/payoutService";
-import { dbMarketToDetectInput, detectRug } from "../services/rugDetector";
+import {
+  buildResolutionMetaFromDetectResult,
+  dbMarketToDetectInput,
+  detectRug,
+} from "../services/rugDetector";
 
 const LOG_PREFIX = "[resolver]";
 const QUEUE_NAME = "survive-market-resolver";
@@ -24,31 +28,78 @@ const JOB_SCHEDULER_ID = "survive-market-resolver-every-30s";
 let resolverStarted = false;
 let fallbackInterval: ReturnType<typeof setInterval> | undefined;
 
-async function checkMarket(market: DbMarket): Promise<void> {
+async function checkMarket(marketRow: DbMarket): Promise<void> {
   try {
-    const result = await detectRug(dbMarketToDetectInput(market));
+    const fresh = await prisma.market.findUnique({
+      where: { id: marketRow.id },
+    });
+    if (!fresh || fresh.status !== "active") return;
+
+    const result = await detectRug(dbMarketToDetectInput(fresh));
+
+    if (result.error === "api_failure" || result.error === "rpc_failure") {
+      console.log(`${LOG_PREFIX} skip resolution (dependency outage)`, {
+        marketId: fresh.id,
+        error: result.error,
+      });
+      return;
+    }
+
+    if (!result.isRug && fresh.pendingRugAt) {
+      await prisma.market.update({
+        where: { id: fresh.id },
+        data: { pendingRugAt: null },
+      });
+    }
 
     if (result.isRug) {
-      console.log(`💀 RUG detected: ${market.id}`);
-      console.log(`Condition: ${result.condition}`);
+      if (!fresh.pendingRugAt) {
+        await prisma.market.update({
+          where: { id: fresh.id },
+          data: { pendingRugAt: new Date() },
+        });
+        console.log(`${LOG_PREFIX} rug signal — awaiting confirmation`, {
+          marketId: fresh.id,
+          condition: result.condition,
+        });
+        return;
+      }
+
+      const elapsed = Date.now() - fresh.pendingRugAt.getTime();
+      if (elapsed < 120_000) {
+        console.log(`${LOG_PREFIX} rug confirmation timer`, {
+          marketId: fresh.id,
+          elapsedMs: elapsed,
+        });
+        return;
+      }
+
+      console.log(`💀 RUG confirmed: ${fresh.id}`);
+      const meta = buildResolutionMetaFromDetectResult(
+        "rug",
+        result,
+        result.condition ?? "unknown",
+      );
       await processMarketResolution(
-        market.id,
+        fresh.id,
         "rug",
         result.condition ?? "unknown",
+        meta,
       );
       return;
     }
 
     if (result.isSurvive) {
-      console.log(`✅ SURVIVED: ${market.id}`);
-      await processMarketResolution(market.id, "survive", null);
+      console.log(`✅ SURVIVED: ${fresh.id}`);
+      const meta = buildResolutionMetaFromDetectResult("survive", result, null);
+      await processMarketResolution(fresh.id, "survive", null, meta);
       return;
     }
 
-    console.log(`⏳ Still active: ${market.id}`);
+    console.log(`⏳ Still active: ${fresh.id}`);
   } catch (err) {
     console.log(`${LOG_PREFIX} checkMarket error`, {
-      marketId: market.id,
+      marketId: marketRow.id,
       error: err instanceof Error ? err.message : String(err),
     });
   }

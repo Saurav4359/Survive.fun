@@ -7,6 +7,7 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
+    "test": "pnpm --dir apps/api run test",
     "setup-demo": "prisma generate --schema=apps/api/prisma/schema.prisma && ts-node --project tsconfig.scripts.json scripts/setup-demo.ts",
     "setup-demo-onchain": "prisma generate --schema=apps/api/prisma/schema.prisma && ts-node --transpile-only --project tsconfig.scripts.json scripts/setup-demo-onchain.ts",
     "test-flow": "ts-node --project tsconfig.scripts.json scripts/test-flow.ts",
@@ -21,7 +22,12 @@
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f --tail=200",
-    "demo": "tsx scripts/setup-demo.ts"
+    "demo": "tsx scripts/setup-demo.ts",
+    "db:generate": "pnpm --dir apps/api exec prisma generate --schema=./prisma/schema.prisma",
+    "db:migrate:dev": "pnpm --dir apps/api exec prisma migrate dev --schema=./prisma/schema.prisma",
+    "db:migrate:deploy": "pnpm --dir apps/api exec prisma migrate deploy --schema=./prisma/schema.prisma",
+    "db:migrate:reset": "pnpm --dir apps/api exec prisma migrate reset --schema=./prisma/schema.prisma",
+    "db:studio": "node scripts/run-prisma-studio.mjs"
   },
   "devDependencies": {
     "@survivefun/types": "workspace:^",

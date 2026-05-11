@@ -34,7 +34,7 @@ async function main(): Promise<void> {
     const onChainResolved = await isMarketResolvedOnChain(
       connection,
       row.tokenMint,
-      row.durationSeconds,
+      row.chainMarketKey,
     );
 
     const mismatch = !onChainResolved;
@@ -55,7 +55,7 @@ async function main(): Promise<void> {
         const out = await resolveMarketOnChain(
           connection,
           row.tokenMint,
-          row.durationSeconds,
+          row.chainMarketKey,
           row.outcome,
         );
         console.log(`[check-onchain] repair OK signature=${out.signature}`);

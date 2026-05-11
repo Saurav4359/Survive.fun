@@ -9,6 +9,8 @@
     "postinstall": "prisma generate --schema=./prisma/schema.prisma",
     "lint": "echo \"api: no lint configured\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "helius:list": "tsx src/scripts/helius-webhook.ts list",
     "helius:register": "tsx src/scripts/helius-webhook.ts register",
     "helius:ensure": "tsx src/scripts/helius-webhook.ts ensure",
@@ -16,7 +18,9 @@
     "db:migrate:deploy": "prisma migrate deploy --schema=./prisma/schema.prisma",
     "db:migrate:dev": "prisma migrate dev --schema=./prisma/schema.prisma",
     "db:generate": "prisma generate --schema=./prisma/schema.prisma",
-    "db:push": "prisma db push --schema=./prisma/schema.prisma"
+    "db:studio": "node ../../scripts/run-prisma-studio.mjs",
+    "db:push": "prisma db push --schema=./prisma/schema.prisma",
+    "db:delete-market": "tsx scripts/delete-market.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1",
@@ -41,6 +45,7 @@
     "@types/node": "^20.17.10",
     "prisma": "^6.19.3",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.4"
   }
 }

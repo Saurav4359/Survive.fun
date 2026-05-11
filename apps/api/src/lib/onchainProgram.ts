@@ -18,6 +18,7 @@ import {
 } from "@solana/web3.js";
 
 import { getProgramId } from "../config/solana";
+import type { MarketTokenBootstrap } from "./dexscreener";
 
 const IDL_PATH = path.resolve(__dirname, "..", "idl", "survivefun.json");
 
@@ -95,12 +96,32 @@ async function ensureSignerFunded(
   }
 }
 
-function marketPda(tokenMint: PublicKey, _durationSeconds: number): PublicKey {
+function marketPda(tokenMint: PublicKey, marketId: PublicKey): PublicKey {
+  const [pda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("market"), tokenMint.toBuffer(), marketId.toBuffer()],
+    getProgramId(),
+  );
+  return pda;
+}
+
+/** Legacy deployments: `[market, mint]` only. */
+function marketPdaLegacy(tokenMint: PublicKey): PublicKey {
   const [pda] = PublicKey.findProgramAddressSync(
     [Buffer.from("market"), tokenMint.toBuffer()],
     getProgramId(),
   );
   return pda;
+}
+
+function resolveMarketPubkey(
+  tokenMint: PublicKey,
+  chainMarketKeyBase58: string | null | undefined,
+): PublicKey {
+  const trimmed = chainMarketKeyBase58?.trim();
+  if (trimmed) {
+    return marketPda(tokenMint, new PublicKey(trimmed));
+  }
+  return marketPdaLegacy(tokenMint);
 }
 
 function accountEnumVariant(status: unknown): string | null {
@@ -124,13 +145,13 @@ function isResolvedMarketAccount(status: unknown, outcome: unknown): boolean {
 export async function isMarketResolvedOnChain(
   connection: Connection,
   tokenMintBase58: string,
-  durationSeconds: number,
+  chainMarketKeyBase58: string | null | undefined,
 ): Promise<boolean> {
   try {
     const idl = loadIdl();
     const coder = new BorshAccountsCoder(idl);
     const tokenMint = new PublicKey(tokenMintBase58);
-    const marketPk = marketPda(tokenMint, durationSeconds);
+    const marketPk = resolveMarketPubkey(tokenMint, chainMarketKeyBase58);
     const ai = await connection.getAccountInfo(marketPk, "confirmed");
     if (!ai?.data) return false;
     const acc = coder.decode("Market", ai.data) as {
@@ -156,21 +177,79 @@ export async function isMarketResolvedOnChain(
   }
 }
 
+async function snapshotFromBootstrap(
+  connection: Connection,
+  platformAuthority: PublicKey,
+  bootstrap: MarketTokenBootstrap | null | undefined,
+): Promise<{
+  devWallet: PublicKey;
+  devBalanceAtOpen: BN;
+  openPrice: BN;
+  openLiquidity: BN;
+}> {
+  let devWallet = platformAuthority;
+  let devBalanceAtOpen = new BN(0);
+  if (bootstrap?.devWallet?.trim()) {
+    try {
+      devWallet = new PublicKey(bootstrap.devWallet.trim());
+      const lamports = await connection.getBalance(devWallet, "confirmed");
+      devBalanceAtOpen = new BN(lamports);
+    } catch {
+      devWallet = platformAuthority;
+    }
+  }
+  let openPrice = new BN(0);
+  if (bootstrap?.openPrice) {
+    const n = Number.parseFloat(bootstrap.openPrice);
+    if (Number.isFinite(n)) {
+      openPrice = new BN(Math.min(Number.MAX_SAFE_INTEGER, Math.round(n * 1_000_000)));
+    }
+  }
+  let openLiquidity = new BN(0);
+  if (bootstrap?.openLiquidity) {
+    const n = Number.parseFloat(bootstrap.openLiquidity);
+    if (Number.isFinite(n)) {
+      openLiquidity = new BN(Math.min(Number.MAX_SAFE_INTEGER, Math.round(n * 100)));
+    }
+  }
+  return { devWallet, devBalanceAtOpen, openPrice, openLiquidity };
+}
+
 export async function createMarketOnChain(
   connection: Connection,
   tokenMintBase58: string,
   durationSeconds: number,
-): Promise<{ signature: string; marketPda: string; platformAuthority: string }> {
+  chainMarketKeyBase58?: string,
+  bootstrap?: MarketTokenBootstrap | null,
+): Promise<{
+  signature: string;
+  marketPda: string;
+  platformAuthority: string;
+  chainMarketKey: string;
+}> {
   const idl = loadIdl();
   const provider = providerFor(connection);
   const program = new Program(idl, provider);
   const tokenMint = new PublicKey(tokenMintBase58);
-  const market = marketPda(tokenMint, durationSeconds);
+  const marketIdKey = chainMarketKeyBase58?.trim()
+    ? new PublicKey(chainMarketKeyBase58.trim())
+    : Keypair.generate().publicKey;
+  const market = marketPda(tokenMint, marketIdKey);
   const platformAuthority = provider.wallet.publicKey;
   await ensureSignerFunded(connection, platformAuthority);
 
+  const snap = await snapshotFromBootstrap(connection, platformAuthority, bootstrap);
+
   const signature = await program.methods
-    .createMarket(tokenMint, new BN(durationSeconds))
+    .createMarket(
+      tokenMint,
+      marketIdKey,
+      new BN(durationSeconds),
+      snap.devWallet,
+      snap.devBalanceAtOpen,
+      snap.openPrice,
+      snap.openLiquidity,
+    )
     .accounts({
       creator: platformAuthority,
       platformAuthority,
@@ -183,20 +262,21 @@ export async function createMarketOnChain(
     signature,
     marketPda: market.toBase58(),
     platformAuthority: platformAuthority.toBase58(),
+    chainMarketKey: marketIdKey.toBase58(),
   };
 }
 
 export async function resolveMarketOnChain(
   connection: Connection,
   tokenMintBase58: string,
-  durationSeconds: number,
+  chainMarketKeyBase58: string | null | undefined,
   outcome: "survive" | "rug",
 ): Promise<{ signature: string; marketPda: string; platformAuthority: string }> {
   const idl = loadIdl();
   const provider = providerFor(connection);
   const program = new Program(idl, provider);
   const tokenMint = new PublicKey(tokenMintBase58);
-  const market = marketPda(tokenMint, durationSeconds);
+  const market = resolveMarketPubkey(tokenMint, chainMarketKeyBase58);
   const platformAuthority = provider.wallet.publicKey;
 
   const anchorOutcome = outcome === "rug" ? { rug: {} } : { survive: {} };

@@ -16,10 +16,9 @@ import { prisma } from "../config/database";
 import { birdeyeFetchOhlcv } from "../lib/birdeye";
 import { cacheGet } from "../lib/redisCache";
 import {
-  pairToMarketBootstrap,
-  requireDexPairForMint,
+  dexBodyToMarketBootstrap,
+  requireDexBodyForMint,
 } from "../lib/dexscreener";
-import { marketPdaBase58ForMintAndDuration } from "../lib/marketOnChain";
 import {
   createMarketOnChain,
   isMarketResolvedOnChain,
@@ -243,7 +242,7 @@ router.get("/:id/my-payout", async (req, res, next) => {
       onChainResolved = await isMarketResolvedOnChain(
         connection,
         marketRow.tokenMint,
-        marketRow.durationSeconds,
+        marketRow.chainMarketKey,
       );
     } catch (e) {
       console.log("[markets] my-payout on-chain status check failed", {
@@ -466,26 +465,61 @@ router.post("/", async (req, res, next) => {
       return;
     }
 
-    const pair = await requireDexPairForMint(input.tokenMint);
-    const boot = pairToMarketBootstrap(pair, input.tokenMint);
+    const snapshotAt = new Date();
+    let boot: NonNullable<ReturnType<typeof dexBodyToMarketBootstrap>>;
+    try {
+      const dexBody = await requireDexBodyForMint(input.tokenMint);
+      const b = dexBodyToMarketBootstrap(dexBody, input.tokenMint);
+      if (!b) {
+        throw new AppError(
+          "TOKEN_NOT_FOUND",
+          "No DexScreener pair with valid price for this mint",
+          404,
+        );
+      }
+      boot = b;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[markets] DexScreener snapshot failed", {
+        tokenMint: input.tokenMint,
+        error: msg,
+      });
+      if (e instanceof AppError) {
+        next(e);
+        return;
+      }
+      next(
+        new AppError(
+          "DEXSCREENER_ERROR",
+          `DexScreener snapshot failed: ${msg}`,
+          502,
+        ),
+      );
+      return;
+    }
 
-    const now = new Date();
+    const now = snapshotAt;
     const expiresAt = new Date(now.getTime() + input.duration * 1000);
 
     let onChainAddress: string;
+    let chainMarketKey: string;
     try {
       const chain = await createMarketOnChain(
         connection,
         input.tokenMint,
         input.duration,
+        undefined,
+        boot,
       );
       onChainAddress = chain.marketPda;
+      chainMarketKey = chain.chainMarketKey;
       console.log("[markets] create_market on-chain success", {
         tokenMint: input.tokenMint,
         duration: input.duration,
         creatorWallet: input.walletAddress,
         platformAuthority: chain.platformAuthority,
         marketPda: chain.marketPda,
+        chainMarketKey: chain.chainMarketKey,
         signature: chain.signature,
       });
     } catch (e) {
@@ -500,10 +534,28 @@ router.post("/", async (req, res, next) => {
         msg.includes("MarketAlreadyExists") ||
         msg.includes("custom program error: 0x1770")
       ) {
-        onChainAddress = marketPdaBase58ForMintAndDuration(
-          input.tokenMint,
-          input.duration,
-        );
+        try {
+          const retry = await createMarketOnChain(
+            connection,
+            input.tokenMint,
+            input.duration,
+            undefined,
+            boot,
+          );
+          onChainAddress = retry.marketPda;
+          chainMarketKey = retry.chainMarketKey;
+          console.log("[markets] create_market retry OK after MarketAlreadyExists", {
+            marketPda: retry.marketPda,
+            chainMarketKey: retry.chainMarketKey,
+          });
+        } catch (e2) {
+          const msg2 = e2 instanceof Error ? e2.message : String(e2);
+          throw new AppError(
+            "ONCHAIN_CREATE_FAILED",
+            `create_market failed on-chain: ${msg2}`,
+            502,
+          );
+        }
       } else {
         throw new AppError(
           "ONCHAIN_CREATE_FAILED",
@@ -529,8 +581,10 @@ router.post("/", async (req, res, next) => {
           openPrice: boot.openPrice,
           openLiquidity: boot.openLiquidity,
           devWallet: boot.devWallet,
+          openSnapshotAt: snapshotAt,
           status: "active",
           onChainAddress,
+          chainMarketKey,
           currency: input.currency,
         },
       });

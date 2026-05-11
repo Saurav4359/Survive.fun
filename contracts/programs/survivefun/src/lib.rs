@@ -12,8 +12,26 @@ declare_id!("9ZqPpXBid4xzB49HjB7zE6BnTWryMuuZFTULTSJqqTd8");
 pub mod survivefun {
     use super::*;
 
-    pub fn create_market(ctx: Context<CreateMarket>, token_mint: Pubkey, duration_seconds: u64) -> Result<()> {
-        instructions::create_market::create_market(ctx, token_mint, duration_seconds)
+    pub fn create_market(
+        ctx: Context<CreateMarket>,
+        token_mint: Pubkey,
+        market_id: Pubkey,
+        duration_seconds: u64,
+        dev_wallet: Pubkey,
+        dev_balance_at_open: u64,
+        open_price: u64,
+        open_liquidity: u64,
+    ) -> Result<()> {
+        instructions::create_market::create_market(
+            ctx,
+            token_mint,
+            market_id,
+            duration_seconds,
+            dev_wallet,
+            dev_balance_at_open,
+            open_price,
+            open_liquidity,
+        )
     }
 
     pub fn place_bet(ctx: Context<PlaceBet>, side: BetSide, amount: u64) -> Result<()> {
@@ -34,7 +52,15 @@ pub mod survivefun {
 }
 
 #[derive(Accounts)]
-#[instruction(token_mint: Pubkey, duration_seconds: u64)]
+#[instruction(
+    token_mint: Pubkey,
+    market_id: Pubkey,
+    duration_seconds: u64,
+    dev_wallet: Pubkey,
+    dev_balance_at_open: u64,
+    open_price: u64,
+    open_liquidity: u64
+)]
 pub struct CreateMarket<'info> {
     #[account(mut)]
     pub creator: Signer<'info>,
@@ -46,7 +72,7 @@ pub struct CreateMarket<'info> {
         init_if_needed,
         payer = creator,
         space = 8 + crate::state::market::Market::INIT_SPACE,
-        seeds = [b"market", token_mint.as_ref()],
+        seeds = [b"market", token_mint.as_ref(), market_id.as_ref()],
         bump
     )]
     pub market: Account<'info, crate::state::market::Market>,
@@ -90,7 +116,7 @@ pub struct CloseMarket<'info> {
     #[account(
         mut,
         close = authority,
-        seeds = [b"market", market.token_mint.as_ref()],
+        seeds = [b"market", market.token_mint.as_ref(), market.market_id.as_ref()],
         bump = market.bump,
         constraint = authority.key() == market.creator @ crate::instructions::create_market::SurviveError::Unauthorized
     )]

@@ -29,8 +29,17 @@ export interface Market {
   resolvedAt: string | null;
   rugCondition: string | null;
   onChainAddress: string | null;
+  /** On-chain `market_id` seed (base58); null for legacy single-seed markets. */
+  chainMarketKey: string | null;
   createdAt: string;
   totalBettors: number;
+  /**
+   * When set, rug signals are in a confirmation window (e.g. ~2 min).
+   * Clients should pause new bets until cleared.
+   */
+  pendingRugAt?: string | null;
+  /** JSON string with post-resolution audit fields (condition, dex checks, etc.). */
+  resolutionData?: string | null;
 }
 
 /** Row from `GET /v1/markets/:id/result` (SOL: `betAmount` / `payoutAmount` are lamports). */

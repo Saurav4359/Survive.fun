@@ -10,8 +10,10 @@ pub const PLATFORM_SEED_LAMPORTS_PER_SIDE: u64 = 10_000_000;
 
 #[error_code]
 pub enum SurviveError {
-    #[msg("Market already exists for this token mint")]
+    #[msg("Market already exists for this token mint and market id")]
     MarketAlreadyExists,
+    #[msg("Invalid market id")]
+    InvalidMarketId,
     #[msg("Market is not active")]
     MarketNotActive,
     #[msg("Market has expired")]
@@ -71,7 +73,17 @@ fn duration_allowed(duration_seconds: u64) -> bool {
         || (cfg!(feature = "integration-test") && duration_seconds == 10)
 }
 
-pub fn create_market(ctx: Context<crate::CreateMarket>, token_mint: Pubkey, duration_seconds: u64) -> Result<()> {
+pub fn create_market(
+    ctx: Context<crate::CreateMarket>,
+    token_mint: Pubkey,
+    market_id: Pubkey,
+    duration_seconds: u64,
+    dev_wallet: Pubkey,
+    dev_balance_at_open: u64,
+    open_price: u64,
+    open_liquidity: u64,
+) -> Result<()> {
+    require!(market_id != Pubkey::default(), SurviveError::InvalidMarketId);
     require!(
         duration_allowed(duration_seconds),
         SurviveError::InvalidDuration
@@ -116,6 +128,11 @@ pub fn create_market(ctx: Context<crate::CreateMarket>, token_mint: Pubkey, dura
     )?;
 
     market.token_mint = token_mint;
+    market.market_id = market_id;
+    market.dev_wallet = dev_wallet;
+    market.dev_balance_at_open = dev_balance_at_open;
+    market.open_price = open_price;
+    market.open_liquidity = open_liquidity;
     market.creator = ctx.accounts.creator.key();
     market.survive_pool = PLATFORM_SEED_LAMPORTS_PER_SIDE;
     market.rug_pool = PLATFORM_SEED_LAMPORTS_PER_SIDE;

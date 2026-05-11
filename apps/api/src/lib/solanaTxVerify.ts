@@ -29,6 +29,11 @@ function anchorIxDiscriminator(name: string): Buffer {
 
 const IX_CREATE_MARKET = anchorIxDiscriminator("create_market");
 const IX_PLACE_BET = anchorIxDiscriminator("place_bet");
+const IX_CLAIM_PAYOUT = anchorIxDiscriminator("claim_payout");
+
+function skipTxVerification(): boolean {
+  return process.env.SKIP_TX_VERIFICATION === "true";
+}
 
 function* walkPartiallyDecoded(
   tx: ParsedTransactionWithMeta,
@@ -92,10 +97,6 @@ export async function verifyCreateMarketTransaction(
   }
 
   const mintPk = new PublicKey(expectedMint);
-  const [expectedPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("market"), mintPk.toBuffer()],
-    programId,
-  );
 
   for (const ix of walkPartiallyDecoded(tx)) {
     if (!ix.programId.equals(programId)) continue;
@@ -105,11 +106,17 @@ export async function verifyCreateMarketTransaction(
     } catch {
       continue;
     }
-    if (buf.length < 8 + 32 + 8) continue;
+    // create_market: disc + mint + market_id + duration + dev_wallet + 3xu64 (snapshot fields)
+    if (buf.length < 8 + 32 + 32 + 8 + 32 + 8 + 8 + 8) continue;
     if (!buf.subarray(0, 8).equals(IX_CREATE_MARKET)) continue;
 
     const ixMint = new PublicKey(buf.subarray(8, 40));
-    const dur = Number(buf.readBigUInt64LE(40));
+    const ixMarketId = new PublicKey(buf.subarray(40, 72));
+    const dur = Number(buf.readBigUInt64LE(72));
+    const [expectedPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("market"), ixMint.toBuffer(), ixMarketId.toBuffer()],
+      programId,
+    );
     if (!ixMint.equals(mintPk)) {
       throw new AppError(
         "TX_MINT_MISMATCH",
@@ -145,6 +152,12 @@ export async function verifyPlaceBetTransaction(
     | { currency: "usdc"; amountUi: number }
     | { currency: "sol"; lamports: bigint },
 ): Promise<void> {
+  if (skipTxVerification()) {
+    console.warn(
+      "[solanaTxVerify] SKIP_TX_VERIFICATION=true — place_bet not verified (dev only)",
+    );
+    return;
+  }
   const programId = getProgramId();
   const amountRaw =
     stake.currency === "usdc"
@@ -233,6 +246,94 @@ export async function verifyPlaceBetTransaction(
   throw new AppError(
     "TX_NO_PLACE_BET",
     "No valid place_bet instruction found in transaction",
+    400,
+  );
+}
+
+/**
+ * Ensures the signature is a successful `claim_payout` for this market + bettor + bet PDA.
+ * Without this, any arbitrary on-chain tx id could mark a bet "claimed" in the DB.
+ */
+export async function verifyClaimPayoutTransaction(
+  connection: Connection,
+  signature: string,
+  expectedBettor: string,
+  marketPdaStr: string,
+  betPdaStr: string,
+): Promise<void> {
+  if (skipTxVerification()) {
+    console.warn(
+      "[solanaTxVerify] SKIP_TX_VERIFICATION=true — claim_payout not verified (dev only)",
+    );
+    return;
+  }
+
+  const programId = getProgramId();
+  const marketPk = new PublicKey(marketPdaStr);
+  const betPk = new PublicKey(betPdaStr);
+  const bettorPk = new PublicKey(expectedBettor);
+
+  const tx = await connection.getParsedTransaction(signature, {
+    maxSupportedTransactionVersion: 0,
+    commitment: "confirmed",
+  });
+  if (!tx) {
+    throw new AppError("TX_NOT_FOUND", "Transaction not found", 400);
+  }
+  if (tx.meta?.err) {
+    throw new AppError("TX_FAILED", "Transaction did not succeed on-chain", 400);
+  }
+
+  const payer = feePayer(tx);
+  if (!payer.equals(bettorPk)) {
+    throw new AppError(
+      "TX_SIGNER_MISMATCH",
+      "Transaction fee payer does not match bettor wallet",
+      400,
+    );
+  }
+
+  for (const ix of walkPartiallyDecoded(tx)) {
+    if (!ix.programId.equals(programId)) continue;
+    let buf: Buffer;
+    try {
+      buf = Buffer.from(bs58.decode(ix.data));
+    } catch {
+      continue;
+    }
+    if (buf.length < 8) continue;
+    if (!buf.subarray(0, 8).equals(IX_CLAIM_PAYOUT)) continue;
+
+    if (ix.accounts.length < 3) {
+      throw new AppError("TX_PARSE", "claim_payout has too few accounts", 400);
+    }
+    if (!ix.accounts[0].equals(marketPk)) {
+      throw new AppError(
+        "TX_MARKET_MISMATCH",
+        "claim payout targets a different market",
+        400,
+      );
+    }
+    if (!ix.accounts[1].equals(betPk)) {
+      throw new AppError(
+        "TX_BET_MISMATCH",
+        "claim payout targets a different bet account",
+        400,
+      );
+    }
+    if (!ix.accounts[2].equals(bettorPk)) {
+      throw new AppError(
+        "TX_BETTOR_MISMATCH",
+        "claim payout bettor account does not match wallet",
+        400,
+      );
+    }
+    return;
+  }
+
+  throw new AppError(
+    "TX_NO_CLAIM_PAYOUT",
+    "No valid claim_payout instruction found in transaction",
     400,
   );
 }

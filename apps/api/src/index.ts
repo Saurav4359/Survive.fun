@@ -30,7 +30,7 @@ if (!isRedisEnvConfigured()) {
   console.error("Current REDIS_URL:", process.env.REDIS_URL);
   process.exit(1);
 }
-console.log("✅ All envbles loaded correctly");
+console.log("✅ All required env vars loaded");
 
 import { createServer } from "node:http";
 

@@ -1,12 +1,11 @@
 /**
- * Automated rug heuristics for Survive.fun (Helius RPC + DexScreener).
+ * Automated rug heuristics for Survive.fun (RPC + DexScreener).
  * Never throws from `detectRug` — callers always get a result object.
+ * Baselines use DB snapshot fields only (no Dex refetch for open price/liquidity).
  */
 
 import type { Market as DbMarket } from "@prisma/client";
 import type { Market } from "@survivefun/types";
-import axios from "axios";
-import { createHelius } from "@helius-labs/helius-sdk";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import {
   PublicKey,
@@ -15,9 +14,7 @@ import {
 } from "@solana/web3.js";
 
 import { connection } from "../config/solana";
-
-const DEXSCREENER_TOKEN_URL =
-  "https://api.dexscreener.com/latest/dex/tokens";
+import { fetchDexAggregatesForMint } from "../lib/dexscreener";
 
 const LOG_PREFIX = "[rugDetector]";
 
@@ -45,29 +42,12 @@ export type DetectRugResult = {
   condition: RugConditionResult;
   isSurvive: boolean;
   data: Record<string, unknown>;
+  /** When set, resolver must not resolve (API/RPC outage). */
+  error?: "api_failure" | "rpc_failure";
 };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
-}
-
-function heliusNetwork(): "mainnet" | "devnet" {
-  const net = process.env.HELIUS_NETWORK?.trim().toLowerCase();
-  if (net === "mainnet" || net === "mainnet-beta") return "mainnet";
-  return "devnet";
-}
-
-function getHelius() {
-  const apiKey = process.env.HELIUS_API_KEY?.trim();
-  if (!apiKey) return null;
-  try {
-    return createHelius({ apiKey, network: heliusNetwork() });
-  } catch (e) {
-    console.warn(`${LOG_PREFIX} createHelius failed`, {
-      error: e instanceof Error ? e.message : String(e),
-    });
-    return null;
-  }
 }
 
 function uiAmountFromBalance(b: TokenBalance): number {
@@ -120,14 +100,6 @@ async function conditionDevSell(
     return { triggered: false, condition: null, detail: { ...detail, skipped: true, reason: "no_dev_wallet" } };
   }
 
-  if (!getHelius()) {
-    return {
-      triggered: false,
-      condition: null,
-      detail: { ...detail, skipped: true, reason: "missing_helius_api_key" },
-    };
-  }
-
   let mintPk: PublicKey;
   let ownerPk: PublicKey;
   try {
@@ -142,20 +114,48 @@ async function conditionDevSell(
   }
 
   try {
-    const sigInfos = await connection.getSignaturesForAddress(ownerPk, {
-      limit: 20,
-    });
+    let sigInfos: Awaited<
+      ReturnType<typeof connection.getSignaturesForAddress>
+    >;
+    try {
+      sigInfos = await connection.getSignaturesForAddress(ownerPk, {
+        limit: 100,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`${LOG_PREFIX} RPC failed`, {
+        marketId: market.id,
+        error: msg,
+      });
+      return {
+        triggered: false,
+        condition: null,
+        detail: {
+          ...detail,
+          rpcFailed: true,
+          error: msg,
+        },
+      };
+    }
 
     let totalSoldUi = 0;
     for (const info of sigInfos) {
       const sig = info.signature;
       if (!sig) continue;
-      const parsed = await connection.getParsedTransaction(sig, {
-        maxSupportedTransactionVersion: 0,
-        commitment: "confirmed",
-      });
-      if (!parsed?.meta) continue;
-      totalSoldUi += soldUiFromTxMeta(parsed.meta, market.tokenMint, devWallet);
+      try {
+        const parsed = await connection.getParsedTransaction(sig, {
+          maxSupportedTransactionVersion: 0,
+          commitment: "confirmed",
+        });
+        if (!parsed?.meta) continue;
+        totalSoldUi += soldUiFromTxMeta(parsed.meta, market.tokenMint, devWallet);
+      } catch (txErr) {
+        console.warn(`${LOG_PREFIX} getParsedTransaction skipped`, {
+          marketId: market.id,
+          signature: sig,
+          error: txErr instanceof Error ? txErr.message : String(txErr),
+        });
+      }
     }
 
     const ata = getAssociatedTokenAddressSync(mintPk, ownerPk, false);
@@ -193,46 +193,33 @@ async function conditionDevSell(
     }
     return { triggered: false, condition: null, detail: full };
   } catch (e) {
-    console.warn(`${LOG_PREFIX} dev_sell check failed (skipped)`, {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`${LOG_PREFIX} RPC / dev_sell failed`, {
       marketId: market.id,
-      error: e instanceof Error ? e.message : String(e),
+      error: msg,
     });
     return {
       triggered: false,
       condition: null,
       detail: {
         ...detail,
+        rpcFailed: true,
         skipped: true,
-        error: e instanceof Error ? e.message : String(e),
+        error: msg,
       },
     };
   }
 }
 
-async function fetchDexscreenerPair(
-  mint: string,
-): Promise<Record<string, unknown> | null> {
-  const url = `${DEXSCREENER_TOKEN_URL}/${encodeURIComponent(mint)}`;
-  const res = await axios.get<unknown>(url, {
-    timeout: 15_000,
-    validateStatus: (s) => s === 200,
-  });
-  const body = res.data;
-  if (!isRecord(body)) return null;
-  const pairs = body.pairs;
-  if (!Array.isArray(pairs) || pairs.length === 0) return null;
-  const first = pairs[0];
-  return isRecord(first) ? first : null;
-}
-
 /**
- * Single DexScreener request: price drop (>90%) and/or liquidity removed (>80%).
+ * Multi-pair Dex averages vs DB snapshot open price / liquidity (no snapshot refetch).
  */
 async function conditionDexPair(
   market: DetectRugMarketInput,
 ): Promise<{
   priceDrop: { triggered: boolean; detail: Record<string, unknown> };
   liquidityRemoved: { triggered: boolean; detail: Record<string, unknown> };
+  apiFailure: boolean;
 }> {
   const emptyDetail = { tokenMint: market.tokenMint };
   const priceDetail: Record<string, unknown> = { ...emptyDetail };
@@ -249,124 +236,131 @@ async function conditionDexPair(
     return {
       priceDrop: { triggered: false, detail: priceDetail },
       liquidityRemoved: { triggered: false, detail: liqDetail },
+      apiFailure: false,
     };
   }
 
+  let agg: Awaited<ReturnType<typeof fetchDexAggregatesForMint>>;
   try {
-    const pair = await fetchDexscreenerPair(market.tokenMint);
-    if (!pair) {
-      priceDetail.skipped = true;
-      priceDetail.reason = "dex_pair_not_found";
-      liqDetail.skipped = true;
-      liqDetail.reason = "dex_pair_not_found";
-      return {
-        priceDrop: { triggered: false, detail: priceDetail },
-        liquidityRemoved: { triggered: false, detail: liqDetail },
-      };
-    }
-
-    const priceUsdRaw = pair.priceUsd;
-    const currentPrice =
-      typeof priceUsdRaw === "string"
-        ? Number.parseFloat(priceUsdRaw)
-        : typeof priceUsdRaw === "number"
-          ? priceUsdRaw
-          : NaN;
-
-    priceDetail.openPrice = openPrice;
-    priceDetail.currentPrice = currentPrice;
-
-    if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
-      priceDetail.skipped = true;
-      priceDetail.reason = "no_current_price";
-    } else {
-      const dropFraction =
-        openPrice > 0 ? (openPrice - currentPrice) / openPrice : 0;
-      priceDetail.dropFraction = dropFraction;
-      priceDetail.thresholdFraction = PRICE_DROP_FRACTION;
-      if (dropFraction > PRICE_DROP_FRACTION) {
-        return {
-          priceDrop: { triggered: true, detail: priceDetail },
-          liquidityRemoved: {
-            triggered: false,
-            detail: {
-              ...liqDetail,
-              skipped: true,
-              reason: "evaluated_with_same_request_as_price",
-              pairLiquidityUsd: parseLiquidityUsd(pair),
-            },
-          },
-        };
-      }
-    }
-
-    if (!Number.isFinite(openLiquidity) || openLiquidity <= 0) {
-      liqDetail.skipped = true;
-      liqDetail.reason = "no_open_liquidity";
-      return {
-        priceDrop: { triggered: false, detail: priceDetail },
-        liquidityRemoved: { triggered: false, detail: liqDetail },
-      };
-    }
-
-    const currentLiquidity = parseLiquidityUsd(pair);
-    liqDetail.openLiquidityUsd = openLiquidity;
-    liqDetail.currentLiquidityUsd = currentLiquidity;
-
-    if (currentLiquidity == null || !Number.isFinite(currentLiquidity) || currentLiquidity < 0) {
-      liqDetail.skipped = true;
-      liqDetail.reason = "no_current_liquidity";
-      return {
-        priceDrop: { triggered: false, detail: priceDetail },
-        liquidityRemoved: { triggered: false, detail: liqDetail },
-      };
-    }
-
-    const removedPercent =
-      ((openLiquidity - currentLiquidity) / openLiquidity) * 100;
-    liqDetail.removedPercent = removedPercent;
-
-    if (removedPercent > LIQUIDITY_REMOVED_PERCENT) {
-      return {
-        priceDrop: { triggered: false, detail: priceDetail },
-        liquidityRemoved: { triggered: true, detail: liqDetail },
-      };
-    }
-
-    return {
-      priceDrop: { triggered: false, detail: priceDetail },
-      liquidityRemoved: { triggered: false, detail: liqDetail },
-    };
+    agg = await fetchDexAggregatesForMint(market.tokenMint);
   } catch (e) {
-    console.warn(`${LOG_PREFIX} DexScreener pair check failed (skipped)`, {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`${LOG_PREFIX} DexScreener failed`, {
       marketId: market.id,
-      error: e instanceof Error ? e.message : String(e),
+      error: msg,
     });
     priceDetail.skipped = true;
-    priceDetail.error = e instanceof Error ? e.message : String(e);
+    priceDetail.error = msg;
     liqDetail.skipped = true;
-    liqDetail.error = e instanceof Error ? e.message : String(e);
+    liqDetail.error = msg;
     return {
       priceDrop: { triggered: false, detail: priceDetail },
       liquidityRemoved: { triggered: false, detail: liqDetail },
+      apiFailure: true,
     };
   }
-}
 
-function parseLiquidityUsd(pair: Record<string, unknown>): number | null {
-  const liq = pair.liquidity;
-  if (!isRecord(liq)) return null;
-  const u = liq.usd;
-  if (typeof u === "number" && Number.isFinite(u)) return u;
-  if (typeof u === "string") {
-    const n = Number.parseFloat(u);
-    return Number.isFinite(n) ? n : null;
+  if (agg == null) {
+    console.error(`${LOG_PREFIX} DexScreener failed`, {
+      marketId: market.id,
+      error: "aggregate_unavailable",
+    });
+    priceDetail.skipped = true;
+    priceDetail.reason = "dex_aggregate_unavailable";
+    liqDetail.skipped = true;
+    liqDetail.reason = "dex_aggregate_unavailable";
+    return {
+      priceDrop: { triggered: false, detail: priceDetail },
+      liquidityRemoved: { triggered: false, detail: liqDetail },
+      apiFailure: true,
+    };
   }
-  return null;
+
+  const currentPrice = agg.avgPrice;
+  priceDetail.openPrice = openPrice;
+  priceDetail.currentPrice = currentPrice;
+  priceDetail.pairsChecked = agg.pairsChecked;
+  priceDetail.avgPriceUsed = currentPrice;
+
+  if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
+    priceDetail.skipped = true;
+    priceDetail.reason = "no_current_price";
+    return {
+      priceDrop: { triggered: false, detail: priceDetail },
+      liquidityRemoved: { triggered: false, detail: liqDetail },
+      apiFailure: true,
+    };
+  }
+
+  const dropFraction =
+    openPrice > 0 ? (openPrice - currentPrice) / openPrice : 0;
+  priceDetail.dropFraction = dropFraction;
+  priceDetail.thresholdFraction = PRICE_DROP_FRACTION;
+
+  if (dropFraction > PRICE_DROP_FRACTION) {
+    return {
+      priceDrop: { triggered: true, detail: priceDetail },
+      liquidityRemoved: {
+        triggered: false,
+        detail: {
+          ...liqDetail,
+          skipped: true,
+          reason: "evaluated_with_same_request_as_price",
+          avgLiquidityUsd: agg.avgLiquidity,
+        },
+      },
+      apiFailure: false,
+    };
+  }
+
+  if (!Number.isFinite(openLiquidity) || openLiquidity <= 0) {
+    liqDetail.skipped = true;
+    liqDetail.reason = "no_open_liquidity";
+    return {
+      priceDrop: { triggered: false, detail: priceDetail },
+      liquidityRemoved: { triggered: false, detail: liqDetail },
+      apiFailure: false,
+    };
+  }
+
+  const currentLiquidity = agg.avgLiquidity;
+  liqDetail.openLiquidityUsd = openLiquidity;
+  liqDetail.currentLiquidityUsd = currentLiquidity;
+  liqDetail.pairsChecked = agg.pairsChecked;
+  liqDetail.avgLiquidityUsed = currentLiquidity;
+
+  if (currentLiquidity == null || !Number.isFinite(currentLiquidity) || currentLiquidity < 0) {
+    liqDetail.skipped = true;
+    liqDetail.reason = "no_current_liquidity";
+    return {
+      priceDrop: { triggered: false, detail: priceDetail },
+      liquidityRemoved: { triggered: false, detail: liqDetail },
+      apiFailure: true,
+    };
+  }
+
+  const removedPercent =
+    ((openLiquidity - currentLiquidity) / openLiquidity) * 100;
+  liqDetail.removedPercent = removedPercent;
+
+  if (removedPercent > LIQUIDITY_REMOVED_PERCENT) {
+    return {
+      priceDrop: { triggered: false, detail: priceDetail },
+      liquidityRemoved: { triggered: true, detail: liqDetail },
+      apiFailure: false,
+    };
+  }
+
+  return {
+    priceDrop: { triggered: false, detail: priceDetail },
+    liquidityRemoved: { triggered: false, detail: liqDetail },
+    apiFailure: false,
+  };
 }
 
 export function dbMarketToDetectInput(row: DbMarket): DetectRugMarketInput {
-  const dev = (row.devWallet ?? row.creatorWallet ?? "").trim();
+  /** Snapshot-only dev wallet for rug ratio (never substitute creator at detection time). */
+  const dev = (row.devWallet ?? "").trim();
   const op = row.openPrice != null ? row.openPrice.toNumber() : 0;
   const ol = row.openLiquidity != null ? row.openLiquidity.toNumber() : 0;
   const sp = row.survivePool.toNumber();
@@ -391,7 +385,7 @@ export function dbMarketToDetectInput(row: DbMarket): DetectRugMarketInput {
 }
 
 function mapMarketDtoToInput(m: Market): DetectRugMarketInput {
-  const dev = (m.devWallet ?? m.creatorWallet ?? "").trim();
+  const dev = (m.devWallet ?? "").trim();
   const op = m.openPrice != null ? Number.parseFloat(m.openPrice) : NaN;
   const ol = m.openLiquidity != null ? Number.parseFloat(m.openLiquidity) : NaN;
   const sp = Number.parseFloat(m.survivePool);
@@ -416,6 +410,27 @@ function mapMarketDtoToInput(m: Market): DetectRugMarketInput {
   };
 }
 
+export function buildResolutionMetaFromDetectResult(
+  outcome: "rug" | "survive",
+  result: DetectRugResult,
+  rugCondition: string | null,
+): Record<string, unknown> {
+  const d = result.data;
+  return {
+    outcome,
+    condition: rugCondition,
+    timestamp: new Date().toISOString(),
+    dataSource: "dexscreener",
+    pairsChecked: d.pairsChecked,
+    avgPriceUsed: d.avgPriceUsed,
+    avgLiquidityUsed: d.avgLiquidityUsed,
+    devSellRatio: d.devSellRatio,
+    txsScanned: d.txsScanned,
+    detectionError: result.error ?? null,
+    confirmedAt: new Date().toISOString(),
+  };
+}
+
 export async function detectRug(market: DetectRugMarketInput): Promise<DetectRugResult> {
   const data: Record<string, unknown> = {
     marketId: market.id,
@@ -430,6 +445,32 @@ export async function detectRug(market: DetectRugMarketInput): Promise<DetectRug
   try {
     const dev = await conditionDevSell(market);
     data.devSell = dev.detail;
+    if (dev.detail.rpcFailed === true) {
+      data.devSellRatio = undefined;
+      data.txsScanned = undefined;
+      data.pairsChecked = undefined;
+      data.avgPriceUsed = undefined;
+      data.avgLiquidityUsed = undefined;
+      const fail: DetectRugResult = {
+        isRug: false,
+        condition: null,
+        isSurvive: false,
+        error: "rpc_failure",
+        data,
+      };
+      console.error(`${LOG_PREFIX} abort — RPC failure`, {
+        marketId: market.id,
+      });
+      return fail;
+    }
+
+    const soldRatio =
+      typeof dev.detail.soldToInitialRatio === "number"
+        ? dev.detail.soldToInitialRatio
+        : undefined;
+    data.devSellRatio = soldRatio;
+    data.txsScanned = dev.detail.signaturesScanned;
+
     if (dev.triggered && dev.condition) {
       condition = dev.condition;
       console.log(`${LOG_PREFIX} condition fired`, {
@@ -442,6 +483,25 @@ export async function detectRug(market: DetectRugMarketInput): Promise<DetectRug
       const dex = await conditionDexPair(market);
       data.priceDrop = dex.priceDrop.detail;
       data.liquidityRemoved = dex.liquidityRemoved.detail;
+      data.pairsChecked = dex.priceDrop.detail.pairsChecked ?? dex.liquidityRemoved.detail.pairsChecked;
+      data.avgPriceUsed = dex.priceDrop.detail.avgPriceUsed ?? dex.priceDrop.detail.currentPrice;
+      data.avgLiquidityUsed =
+        dex.liquidityRemoved.detail.avgLiquidityUsed ??
+        dex.liquidityRemoved.detail.currentLiquidityUsd;
+
+      if (dex.apiFailure) {
+        const fail: DetectRugResult = {
+          isRug: false,
+          condition: null,
+          isSurvive: false,
+          error: "api_failure",
+          data,
+        };
+        console.error(`${LOG_PREFIX} abort — DexScreener aggregate unavailable`, {
+          marketId: market.id,
+        });
+        return fail;
+      }
 
       if (dex.priceDrop.triggered) {
         condition = "price_drop";
@@ -493,6 +553,7 @@ export async function detectRug(market: DetectRugMarketInput): Promise<DetectRug
       isRug: false,
       condition: null,
       isSurvive: false,
+      error: "api_failure",
       data: {
         ...data,
         fatal: e instanceof Error ? e.message : String(e),

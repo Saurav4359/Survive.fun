@@ -7,6 +7,11 @@ import { Prisma } from "@prisma/client";
 import { connection } from "../config/solana";
 import { prisma } from "../config/database";
 import { resolveMarketOnChain } from "../lib/onchainProgram";
+import {
+  betPdaBase58,
+  marketPdaBase58ForDbRow,
+} from "../lib/marketOnChain";
+import { verifyClaimPayoutTransaction } from "../lib/solanaTxVerify";
 import { toMarketDto } from "../lib/dto";
 import { AppError } from "../middleware/errorHandler";
 import {
@@ -48,6 +53,7 @@ export async function processMarketResolution(
   marketId: string,
   outcome: "survive" | "rug",
   rugCondition: string | null,
+  resolutionMeta?: Record<string, unknown> | null,
 ): Promise<void> {
   const market = await prisma.market.findUnique({ where: { id: marketId } });
   if (!market) {
@@ -89,7 +95,7 @@ export async function processMarketResolution(
     const sig = await resolveMarketOnChain(
       connection,
       market.tokenMint,
-      market.durationSeconds,
+      market.chainMarketKey,
       outcome,
     );
     console.log(`${LOG_PREFIX} ✅ On-chain resolved`, {
@@ -118,6 +124,12 @@ export async function processMarketResolution(
         outcome,
         resolvedAt,
         rugCondition: outcome === "rug" ? rugCondition : null,
+        pendingRugAt: null,
+        ...(resolutionMeta != null
+          ? {
+              resolutionData: resolutionMeta as Prisma.InputJsonValue,
+            }
+          : {}),
       },
     });
 
@@ -222,22 +234,15 @@ export async function processMarketResolution(
     `);
 }
 
-export async function verifyClaimTransactionSignature(
-  txSignature: string,
-): Promise<boolean> {
-  const tx = await connection.getTransaction(txSignature, {
-    maxSupportedTransactionVersion: 0,
-    commitment: "confirmed",
-  });
-  return tx != null;
-}
-
 export async function processBetClaim(
   betId: string,
   txSignature: string,
   walletAddress: string,
 ): Promise<{ success: true; amount: string }> {
-  const bet = await prisma.bet.findUnique({ where: { id: betId } });
+  const bet = await prisma.bet.findUnique({
+    where: { id: betId },
+    include: { market: true },
+  });
   if (!bet) {
     throw new AppError("NOT_FOUND", "Bet not found", 404);
   }
@@ -250,10 +255,16 @@ export async function processBetClaim(
   if (bet.claimed) {
     throw new AppError("ALREADY_CLAIMED", "Already claimed", 409);
   }
-  const ok = await verifyClaimTransactionSignature(txSignature);
-  if (!ok) {
-    throw new AppError("TX_NOT_FOUND", "Transaction not found on RPC", 400);
-  }
+
+  const marketPk = marketPdaBase58ForDbRow(bet.market);
+  const betPk = betPdaBase58(marketPk, walletAddress);
+  await verifyClaimPayoutTransaction(
+    connection,
+    txSignature,
+    walletAddress,
+    marketPk,
+    betPk,
+  );
 
   const updated = await prisma.bet.update({
     where: { id: betId },

@@ -20,13 +20,21 @@ model Market {
   openPrice       Decimal?  @map("open_price") @db.Decimal(18, 9)
   openLiquidity   Decimal?  @map("open_liquidity") @db.Decimal(18, 2)
   devWallet       String?   @map("dev_wallet") @db.VarChar(44)
+  /// Dex/bootstrap snapshot time at market creation (never refetched for rug math).
+  openSnapshotAt  DateTime? @map("open_snapshot_at") @db.Timestamp(6)
   /// Demo-only: when set (e.g. 0.05), dev_sell rug ratio uses this instead of 25%.
   devSellThresholdOverride Decimal? @map("dev_sell_threshold_override") @db.Decimal(7, 6)
+  /// First rug signal timestamp; second confirmation after ~2m triggers resolution.
+  pendingRugAt    DateTime? @map("pending_rug_at") @db.Timestamp(6)
+  /// Final automated resolution audit payload (JSON).
+  resolutionData  Json?     @map("resolution_data")
   status          String    @default("active") @db.VarChar(20)
   outcome         String?   @db.VarChar(10)
   resolvedAt      DateTime? @map("resolved_at") @db.Timestamp(6)
   rugCondition    String?   @map("rug_condition") @db.VarChar(50)
   onChainAddress  String?   @map("on_chain_address") @db.VarChar(44)
+  /// Second PDA seed (`market_id` pubkey) — new markets only; null = legacy `[market, mint]` layout.
+  chainMarketKey  String?   @map("chain_market_key") @db.VarChar(44)
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
   totalBettors    Int       @default(0) @map("total_bettors")
   currency        String    @default("usdc") @db.VarChar(10)
