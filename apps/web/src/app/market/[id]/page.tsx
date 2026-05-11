@@ -52,6 +52,7 @@ import {
   formatPoolTotals,
   formatSolBetLine,
   formatUsd,
+  formatUsdPriceLiteral,
   formatWallet,
   parsePoolLamports,
 } from "@/utils/format";
@@ -601,7 +602,9 @@ export default function MarketPage() {
     tokenHook.liquidity ?? parseNum(market?.openLiquidity);
   const pairCreatedAtSeconds = tokenHook.pair?.pairCreatedAt ?? null;
 
-  const displayPriceUsd = tokenHook.price ?? parseNum(market?.openPrice ?? null);
+  const displayPriceUsdText = formatUsdPriceLiteral(
+    tokenHook.priceUsdText ?? market?.openPrice ?? null,
+  );
   const change24Num =
     tokenHook.priceChange24h != null ? tokenHook.priceChange24h : null;
   const change24 =
@@ -1120,8 +1123,8 @@ export default function MarketPage() {
                 <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-fg-muted">
                   Price
                 </p>
-                <p className="mt-0.5 font-mono text-2xl font-bold tabular-nums text-white sm:text-3xl">
-                  {displayPriceUsd != null ? formatUsd(displayPriceUsd) : "—"}
+                <p className="mt-0.5 min-w-0 break-all font-mono text-2xl font-bold tabular-nums text-white sm:text-3xl">
+                  {displayPriceUsdText}
                 </p>
               </div>
               <div>

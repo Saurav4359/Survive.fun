@@ -36,7 +36,10 @@ export async function fetchTokenFromApi(mint: string): Promise<{
 
 export type UseTokenResult = {
   token: Token | null;
+  /** Parsed for math/charts; prefer `priceUsdText` for UI to avoid float rounding. */
   price: number | null;
+  /** Raw `pair.priceUsd` from API — use with `formatUsdPriceLiteral` for display. */
+  priceUsdText: string | null;
   priceChange24h: number | null;
   liquidity: number | null;
   devWallet: string | null;
@@ -72,7 +75,11 @@ export function useToken(mint: string | undefined): UseTokenResult {
       }
     : null;
 
-  const price = pair?.priceUsd != null ? parseNum(pair.priceUsd) : null;
+  const priceUsdText =
+    pair?.priceUsd != null && String(pair.priceUsd).trim() !== ""
+      ? String(pair.priceUsd).trim()
+      : null;
+  const price = priceUsdText != null ? parseNum(priceUsdText) : null;
   const priceChange24h =
     pair?.priceChange?.h24 != null ? pair.priceChange.h24 : null;
   const liquidity =
@@ -84,6 +91,7 @@ export function useToken(mint: string | undefined): UseTokenResult {
   return {
     token,
     price,
+    priceUsdText,
     priceChange24h,
     liquidity,
     devWallet,

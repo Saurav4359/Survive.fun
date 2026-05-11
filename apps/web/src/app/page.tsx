@@ -4,7 +4,16 @@ import type { ApiResponse, Market, MarketListPage } from "@survivefun/types";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { ArrowRight, Inbox, Skull } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import {
+  ArrowRight,
+  CircleCheck,
+  Flame,
+  Inbox,
+  Skull,
+  Sparkles,
+  Star,
+} from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -51,12 +60,12 @@ const DURATION_TABS: {
 
 type FilterKey = "hot" | "high-risk" | "likely" | "new" | "watch";
 
-const FILTERS: { key: FilterKey; label: string }[] = [
-  { key: "hot", label: "🔥 Hot" },
-  { key: "high-risk", label: "💀 High Risk" },
-  { key: "likely", label: "✅ Likely Survive" },
-  { key: "new", label: "⚡ New" },
-  { key: "watch", label: "⭐ Watch" },
+const FILTERS: { key: FilterKey; label: string; Icon: LucideIcon }[] = [
+  { key: "hot", label: "Hot", Icon: Flame },
+  { key: "high-risk", label: "High Risk", Icon: Skull },
+  { key: "likely", label: "Likely Survive", Icon: CircleCheck },
+  { key: "new", label: "New", Icon: Sparkles },
+  { key: "watch", label: "Watch", Icon: Star },
 ];
 
 function applyFilter(
@@ -533,16 +542,31 @@ export default function HomePage() {
           <section className="min-w-0 lg:col-span-9" aria-label="Active markets">
             {/* Filter tabs */}
             <div className="flex flex-wrap gap-0.5 border-b border-border">
-              {FILTERS.map(({ key, label }) => {
+              {FILTERS.map(({ key, label, Icon }) => {
                 const active = filter === key;
                 return (
                   <button
                     key={key}
                     type="button"
                     onClick={() => setFilter(key)}
-                    className="relative px-2 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.14em] transition-colors sm:px-2.5 sm:text-[11px]"
+                    className="group relative inline-flex items-center gap-1 px-2 py-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.14em] transition-colors sm:gap-1.5 sm:px-2.5 sm:text-[11px]"
                   >
-                    <span className={active ? "text-accent" : "text-fg-soft hover:text-white"}>
+                    <Icon
+                      className={
+                        active
+                          ? "h-3 w-3 shrink-0 text-accent-bright drop-shadow-[0_0_10px_rgba(138,255,142,0.85)] sm:h-3.5 sm:w-3.5"
+                          : "h-3 w-3 shrink-0 text-accent/90 drop-shadow-[0_0_6px_rgba(138,255,142,0.45)] transition-[color,filter] group-hover:text-accent-bright group-hover:drop-shadow-[0_0_12px_rgba(138,255,142,0.75)] sm:h-3.5 sm:w-3.5"
+                      }
+                      strokeWidth={active ? 2.5 : 2.25}
+                      aria-hidden
+                    />
+                    <span
+                      className={
+                        active
+                          ? "text-accent"
+                          : "text-fg-soft transition-colors group-hover:text-white"
+                      }
+                    >
                       {label}
                     </span>
                     {active ? (

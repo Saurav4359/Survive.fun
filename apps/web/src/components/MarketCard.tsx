@@ -14,7 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { formatUsd, parsePoolLamports } from "@/utils/format";
+import { formatUsdPriceLiteral, parsePoolLamports } from "@/utils/format";
 
 import { PoolBar } from "./PoolBar";
 import { TokenThumb } from "./TokenThumb";
@@ -56,9 +56,7 @@ export function MarketCard({ market }: { market: Market }) {
   const ticker = market.tokenTicker?.trim() || "—";
   const survive = Number(parsePoolLamports(market.survivePool));
   const rug = Number(parsePoolLamports(market.rugPool));
-  const open = market.openPrice;
-  const priceNum = open != null ? Number.parseFloat(open) : NaN;
-  const hasPrice = Number.isFinite(priceNum);
+  const priceLabel = formatUsdPriceLiteral(market.openPrice);
   const expiresAt = new Date(market.expiresAt);
   const risk = inferRisk(market);
 
@@ -122,8 +120,8 @@ export function MarketCard({ market }: { market: Market }) {
                 <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-fg-muted">
                   Price
                 </p>
-                <p className="mt-0.5 font-mono text-lg font-semibold tabular-nums leading-none text-white">
-                  {hasPrice ? formatUsd(priceNum) : "—"}
+                <p className="mt-0.5 min-w-0 break-all font-mono text-lg font-semibold tabular-nums leading-none text-white">
+                  {priceLabel}
                 </p>
               </div>
               <div className="flex items-center gap-2 text-right">

@@ -17,6 +17,21 @@ export function formatUsd(amount: number): string {
   return usdFormatter.format(amount);
 }
 
+/** Decimal string the API/DB already validated — no float or Intl rounding. */
+const USD_PRICE_LITERAL_RE = /^-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?$/;
+
+/**
+ * Renders a USD price exactly as given (e.g. `market.openPrice` or `pair.priceUsd`).
+ * Does not parse through `Number` (avoids IEEE rounding on long fractional strings).
+ */
+export function formatUsdPriceLiteral(value: string | null | undefined): string {
+  if (value == null) return "—";
+  const t = value.trim();
+  if (t === "") return "—";
+  if (!USD_PRICE_LITERAL_RE.test(t)) return "—";
+  return `$${t}`;
+}
+
 /** Lamports → `"x.xxxx SOL"` */
 export function formatSOL(lamports: number): string {
   if (!Number.isFinite(lamports)) return "0.0000 SOL";
