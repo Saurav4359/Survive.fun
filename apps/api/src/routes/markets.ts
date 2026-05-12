@@ -25,9 +25,11 @@ import {
 } from "../lib/onchainProgram";
 import { verifyCreateMarketTransaction } from "../lib/solanaTxVerify";
 import { enforceSolanaMarketRowInvariants } from "../lib/marketPdaGuard";
+import { openPriceMicroStringToDecimal } from "../lib/openPriceCodec";
 import { toMarketDto } from "../lib/dto";
 import { formatZod, parseQuery } from "../lib/zodUtil";
 import { AppError } from "../middleware/errorHandler";
+import { reconcileWinningBetsIfClaimedOnChain } from "../services/payoutService";
 import { emitMarketCreated } from "../websocket/socketHandler";
 
 const router = Router();
@@ -179,6 +181,10 @@ const walletQuerySchema = z.object({
   wallet: solanaAddress,
 });
 
+const reconcileClaimBodySchema = z.object({
+  walletAddress: solanaAddress,
+});
+
 router.get("/:id/result", async (req, res, next) => {
   try {
     const { id } = parseQuery(idParamSchema, req.params);
@@ -264,11 +270,12 @@ router.get("/:id/my-payout", async (req, res, next) => {
       onChainResolved = false;
     }
 
-    const bet = await prisma.bet.findFirst({
+    const betRows = await prisma.bet.findMany({
       where: { marketId, bettorWallet: wallet },
+      orderBy: { createdAt: "desc" },
     });
 
-    if (!bet) {
+    if (betRows.length === 0) {
       const data = {
         found: false as const,
         won: false,
@@ -284,16 +291,42 @@ router.get("/:id/my-payout", async (req, res, next) => {
       return;
     }
 
+    const anyClaimed = betRows.some((b) => b.claimed);
+    const ref = betRows[0]!;
+    const payoutSum = betRows.reduce(
+      (s, b) => s + (b.payoutAmount != null ? b.payoutAmount.toNumber() : 0),
+      0,
+    );
+
     const data = {
       found: true as const,
-      won: bet.won,
-      betAmount: bet.amountUsdc.toNumber(),
-      betSide: bet.side,
-      payoutAmount: bet.payoutAmount?.toNumber() ?? 0,
-      claimed: bet.claimed,
-      claimTxSignature: bet.payoutTx,
+      won: ref.won,
+      betAmount: ref.amountUsdc.toNumber(),
+      betSide: ref.side,
+      payoutAmount: payoutSum > 0 ? payoutSum : ref.payoutAmount?.toNumber() ?? 0,
+      claimed: anyClaimed,
+      claimTxSignature: betRows.find((b) => b.payoutTx)?.payoutTx ?? null,
       onChainResolved,
     };
+    const body: ApiResponse<typeof data> = { success: true, data };
+    res.json(body);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post("/:id/reconcile-claim", async (req, res, next) => {
+  try {
+    const { id: marketId } = parseQuery(idParamSchema, req.params);
+    const parsed = reconcileClaimBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new AppError("VALIDATION_ERROR", formatZod(parsed.error), 400);
+    }
+    const { walletAddress } = parsed.data;
+    const data = await reconcileWinningBetsIfClaimedOnChain(
+      marketId,
+      walletAddress,
+    );
     const body: ApiResponse<typeof data> = { success: true, data };
     res.json(body);
   } catch (e) {
@@ -542,8 +575,10 @@ router.post("/", async (req, res, next) => {
       survivePoolStr = chainSnap.survivePool;
       rugPoolStr = chainSnap.rugPool;
       devWalletVal = chainSnap.devWallet;
-      openPriceVal =
-        chainSnap.openPrice === "0" ? null : chainSnap.openPrice;
+      const chainOpenDecimal = openPriceMicroStringToDecimal(
+        chainSnap.openPrice,
+      );
+      openPriceVal = chainOpenDecimal ?? boot.openPrice ?? null;
       openLiquidityVal =
         chainSnap.openLiquidity === "0" ? null : chainSnap.openLiquidity;
       console.log("[markets] create_market indexed from user-signed tx", {
