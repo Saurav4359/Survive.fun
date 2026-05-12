@@ -21,7 +21,7 @@ import {
   formatSolBetLine,
   parsePoolLamports,
 } from "@/utils/format";
-import { solscanTxUrl } from "@/utils/explorer";
+import { isLikelySolanaTxSignature, solscanTxUrl } from "@/utils/explorer";
 import {
   claimPayout,
   getBetPDA,
@@ -372,7 +372,7 @@ export default function BetsPage() {
               <>
                 {/* Desktop table */}
                 <div className="hidden overflow-x-auto border border-border bg-card md:block">
-                  <table className="w-full min-w-[860px] border-collapse text-left font-mono text-sm">
+                  <table className="w-full min-w-[980px] border-collapse text-left font-mono text-sm">
                     <thead>
                       <tr className="border-b border-border text-[9px] uppercase tracking-[0.2em] text-fg-muted">
                         <th className="px-4 py-3 font-bold">Token</th>
@@ -381,6 +381,7 @@ export default function BetsPage() {
                         <th className="px-4 py-3 font-bold">Pool %</th>
                         <th className="px-4 py-3 font-bold">Status</th>
                         <th className="px-4 py-3 font-bold">Win</th>
+                        <th className="px-4 py-3 font-bold">Details</th>
                         <th className="px-4 py-3 font-bold">Action</th>
                       </tr>
                     </thead>
@@ -448,6 +449,20 @@ export default function BetsPage() {
                               {outcome === "active" ? winDisplay : "—"}
                             </td>
                             <td className="px-4 py-3">
+                              {isLikelySolanaTxSignature(bet.txSignature) ? (
+                                <a
+                                  href={solscanTxUrl(bet.txSignature)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-red-400 underline-offset-2 hover:text-red-300 hover:underline"
+                                >
+                                  See transaction details
+                                </a>
+                              ) : (
+                                <span className="text-fg-muted">—</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
                               {claimable ? (
                                 <motion.button
                                   whileTap={{ scale: 0.95 }}
@@ -471,7 +486,7 @@ export default function BetsPage() {
                                   rel="noreferrer"
                                   className="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-accent underline-offset-2 hover:underline"
                                 >
-                                  Tx ↗
+                                  Payout tx ↗
                                 </a>
                               ) : (
                                 <span className="text-fg-muted">—</span>
@@ -564,6 +579,18 @@ export default function BetsPage() {
                             </dd>
                           </div>
                         </dl>
+                        {isLikelySolanaTxSignature(bet.txSignature) ? (
+                          <div className="border-t border-border pt-3">
+                            <a
+                              href={solscanTxUrl(bet.txSignature)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-mono text-xs font-bold uppercase tracking-[0.1em] text-red-400 underline-offset-2 hover:text-red-300 hover:underline"
+                            >
+                              See transaction details
+                            </a>
+                          </div>
+                        ) : null}
                         <div className="flex justify-end border-t border-border pt-3">
                           {claimable ? (
                             <motion.button
@@ -588,7 +615,7 @@ export default function BetsPage() {
                               rel="noreferrer"
                               className="font-mono text-xs font-bold text-accent underline-offset-2 hover:underline"
                             >
-                              View tx ↗
+                              View payout tx ↗
                             </a>
                           ) : (
                             <span className="font-mono text-xs text-fg-muted">

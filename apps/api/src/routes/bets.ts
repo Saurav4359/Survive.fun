@@ -248,6 +248,7 @@ marketBetsRouter.post("/:id/bets", async (req, res, next) => {
       rugPool: marketDto.rugPool,
       timestamp: dto.createdAt,
       betId: dto.id,
+      txSignature: dto.txSignature,
     });
     emitPoolUpdate({
       marketId,

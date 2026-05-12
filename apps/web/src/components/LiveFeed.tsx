@@ -23,6 +23,7 @@ import { useWebSocketEvents } from "@/hooks/useWebSocket";
 import { cn } from "@/lib/utils";
 import { apiV1Url } from "@/utils/constants";
 import { formatBetStake, formatSolBetLine, formatWallet } from "@/utils/format";
+import { isLikelySolanaTxSignature, solscanTxUrl } from "@/utils/explorer";
 
 type FeedRow =
   | {
@@ -32,6 +33,8 @@ type FeedRow =
       side: BetSide;
       stakeLabel: string;
       at: Date;
+      /** Place-bet on-chain signature when available (Solscan). */
+      txSignature?: string;
     }
   | {
       kind: "resolved";
@@ -54,6 +57,7 @@ function normalizeBetPayload(raw: BetPlaced, fallbackId: string): FeedRow {
       amountLamports: raw.amountLamports ?? "0",
     }),
     at: new Date(raw.timestamp),
+    txSignature: raw.txSignature,
   };
 }
 
@@ -67,6 +71,7 @@ function betDtoToFeedRow(b: Bet): FeedRow {
       amountLamports: b.amountLamports ?? "0",
     }),
     at: new Date(b.createdAt),
+    txSignature: b.txSignature,
   };
 }
 
@@ -113,6 +118,16 @@ function FeedRowCard({ row }: { row: FeedRow }) {
               {row.stakeLabel}
             </span>
           </p>
+          {isLikelySolanaTxSignature(row.txSignature) ? (
+            <a
+              href={solscanTxUrl(row.txSignature)}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1.5 inline-block font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-red-400 underline-offset-2 hover:text-red-300 hover:underline"
+            >
+              See transaction details
+            </a>
+          ) : null}
         </div>
         <time
           dateTime={row.at.toISOString()}

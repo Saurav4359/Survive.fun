@@ -45,7 +45,7 @@ import {
 import { useToken } from "@/hooks/useToken";
 import { userBetsQueryKey, useUserBets } from "@/hooks/useUserBets";
 import { apiV1Url } from "@/utils/constants";
-import { solscanTxUrl } from "@/utils/explorer";
+import { isLikelySolanaTxSignature, solscanTxUrl } from "@/utils/explorer";
 import {
   formatBetStake,
   formatPool,
@@ -484,11 +484,10 @@ export default function MarketPage() {
         marketId: id,
       });
     },
-    onSuccess: (txSig) => {
+    onSuccess: () => {
       toast({
         variant: "success",
         title: "Bet placed",
-        message: `${solscanTxUrl(txSig)} — Phantom Activity is per-network: enable Devnet (test mode) to see this tx; the app defaults to devnet.`,
       });
       setLiveFeedRefresh((n) => n + 1);
       void queryClient.invalidateQueries({ queryKey: marketQueryKey(id) });
@@ -523,11 +522,10 @@ export default function MarketPage() {
         betId: userMarketBet.id,
       });
     },
-    onSuccess: (txSig) => {
+    onSuccess: () => {
       toast({
         variant: "success",
         title: "Payout claimed",
-        message: `${solscanTxUrl(txSig)} — Enable Devnet in Phantom if Activity looks empty.`,
       });
       void queryClient.invalidateQueries({ queryKey: marketQueryKey(id) });
       void queryClient.invalidateQueries({ queryKey: marketBetsQueryKey(id) });
@@ -1459,12 +1457,13 @@ export default function MarketPage() {
                       No bets recorded yet.
                     </p>
                   ) : (
-                    <table className="w-full min-w-[320px] border-collapse font-mono text-xs">
+                    <table className="w-full min-w-[360px] border-collapse font-mono text-xs">
                       <thead>
                         <tr className="border-b border-border text-left text-[9px] uppercase tracking-[0.2em] text-fg-muted">
                           <th className="pb-3 pr-4 font-bold">Time</th>
                           <th className="pb-3 pr-4 font-bold">Side</th>
-                          <th className="pb-3 font-bold">Amount</th>
+                          <th className="pb-3 pr-4 font-bold">Amount</th>
+                          <th className="pb-3 font-bold">Details</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1488,8 +1487,22 @@ export default function MarketPage() {
                               >
                                 {row.side === "survive" ? "SURVIVE" : "RUG"}
                               </td>
-                              <td className="py-2.5 tabular-nums text-white">
+                              <td className="py-2.5 pr-4 tabular-nums text-white">
                                 {formatBetStake(row)}
+                              </td>
+                              <td className="py-2.5">
+                                {isLikelySolanaTxSignature(row.txSignature) ? (
+                                  <a
+                                    href={solscanTxUrl(row.txSignature)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="font-bold uppercase tracking-[0.1em] text-red-400 underline-offset-2 hover:text-red-300 hover:underline"
+                                  >
+                                    See transaction details
+                                  </a>
+                                ) : (
+                                  <span className="text-fg-muted">—</span>
+                                )}
                               </td>
                             </tr>
                           );

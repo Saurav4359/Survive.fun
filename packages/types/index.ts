@@ -320,6 +320,8 @@ export interface BetPlaced {
   timestamp: string;
   /** DB row id — lets clients dedupe REST rows vs `bet_placed` socket events. */
   betId?: string;
+  /** On-chain signature for the place-bet transaction (Solscan link in UI). */
+  txSignature?: string;
 }
 
 export interface MarketResolved {
