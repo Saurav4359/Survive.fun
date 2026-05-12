@@ -25,3 +25,28 @@ export async function postBetClaim(
   }
   return body.data;
 }
+
+export async function postReconcileClaimFromChain(
+  marketId: string,
+  walletAddress: string,
+): Promise<{ updated: number; onChainClaimed: boolean }> {
+  const res = await fetch(
+    apiV1Url(`/markets/${encodeURIComponent(marketId)}/reconcile-claim`),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ walletAddress }),
+    },
+  );
+  const body = (await res.json()) as ApiResponse<{
+    updated: number;
+    onChainClaimed: boolean;
+  }>;
+  if (!res.ok || !body.success) {
+    const msg = !body.success
+      ? body.error.message
+      : `Reconcile failed (${res.status})`;
+    throw new Error(msg);
+  }
+  return body.data;
+}

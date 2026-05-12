@@ -31,7 +31,7 @@ import {
 } from "@solana/web3.js";
 
 import survivefunIdl from "@/idl/survivefun.json";
-import { postBetClaim } from "@/utils/betClaimApi";
+import { postBetClaim, postReconcileClaimFromChain } from "@/utils/betClaimApi";
 import {
   apiV1Url,
   CREATE_MARKET_TX_FEE_BUFFER_LAMPORTS,
@@ -208,7 +208,7 @@ function appendDevnetHintIfRelevant(message: string): string {
 
 const SURVIVE_PROGRAM_USER_MSG = {
   alreadyClaimed:
-    "This payout was already claimed on-chain. If the app still shows Claim, refresh the page — the UI may be out of sync until we record your claim.",
+    "This payout was already claimed on-chain. Your bet list has been synced.",
   marketNotActive:
     "This market is not active on-chain anymore (resolved or closed). Betting is disabled — refresh the page so the UI matches chain state.",
   marketExpired:
@@ -347,8 +347,23 @@ function surviveProgramUserMessage(text: string): string | null {
   return null;
 }
 
-function alreadyClaimedUserMessage(): string {
-  return SURVIVE_PROGRAM_USER_MSG.alreadyClaimed;
+/** Returned when the chain already paid out; DB rows are reconciled without a new wallet tx. */
+export const CLAIM_PAYOUT_SYNCED_SENTINEL = "__SURVIVE_CLAIM_SYNCED__";
+
+export function isClaimPayoutSyncedResult(sig: string): boolean {
+  return sig === CLAIM_PAYOUT_SYNCED_SENTINEL;
+}
+
+async function tryReconcileClaimedDb(
+  marketId: string | undefined,
+  walletBase58: string,
+): Promise<void> {
+  if (!marketId?.trim()) return;
+  try {
+    await postReconcileClaimFromChain(marketId.trim(), walletBase58);
+  } catch {
+    /* non-fatal — UI still refetches */
+  }
 }
 
 async function mapSendError(
@@ -788,7 +803,7 @@ export async function claimPayout(
   wallet: WalletContextState,
   marketPDA: string,
   betPDA: string,
-  opts?: { betId?: string },
+  opts?: { betId?: string; marketId?: string },
 ): Promise<string> {
   const bettor = assertWalletReady(wallet);
 
@@ -817,10 +832,10 @@ export async function claimPayout(
   try {
     const betAcc = await acc.bet.fetch(betPk);
     if (betAcc.claimed) {
-      throw new Error(alreadyClaimedUserMessage());
+      await tryReconcileClaimedDb(opts?.marketId, bettor.toBase58());
+      return CLAIM_PAYOUT_SYNCED_SENTINEL;
     }
-  } catch (e) {
-    if (e instanceof Error && e.message === alreadyClaimedUserMessage()) throw e;
+  } catch {
     /* Missing bet account etc. — let the chain reject with a normal error. */
   }
 
@@ -834,7 +849,22 @@ export async function claimPayout(
     })
     .instruction();
 
-  const sig = await sendInstructions(wallet, [ix]);
+  let sig: string;
+  try {
+    sig = await sendInstructions(wallet, [ix]);
+  } catch (e) {
+    const mapped = await mapSendError(e, connection);
+    const m = mapped.message.toLowerCase();
+    if (
+      opts?.marketId &&
+      (m.includes("already claimed") || m.includes("alreadyclaimed"))
+    ) {
+      await tryReconcileClaimedDb(opts.marketId, bettor.toBase58());
+      return CLAIM_PAYOUT_SYNCED_SENTINEL;
+    }
+    throw mapped;
+  }
+
   if (opts?.betId) {
     await postBetClaim(opts.betId, sig, bettor.toBase58());
   }
