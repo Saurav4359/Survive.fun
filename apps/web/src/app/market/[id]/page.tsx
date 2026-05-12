@@ -60,6 +60,7 @@ import { formatRugConditionLabel } from "@/utils/rugConditionLabel";
 import {
   claimPayout,
   getBetPDA,
+  isClaimPayoutSyncedResult,
   placeBet as placeBetOnChain,
   resolveMarketPdaForTransaction,
 } from "@/utils/transactions";
@@ -520,13 +521,23 @@ export default function MarketPage() {
       const betPda = (await getBetPDA(marketPda, bettor.toBase58())).toBase58();
       return claimPayout(wallet, marketPda, betPda, {
         betId: userMarketBet.id,
+        marketId: id,
       });
     },
-    onSuccess: () => {
-      toast({
-        variant: "success",
-        title: "Payout claimed",
-      });
+    onSuccess: (sig) => {
+      if (isClaimPayoutSyncedResult(sig)) {
+        toast({
+          variant: "success",
+          title: "Already paid out",
+          message:
+            "This payout was already claimed on-chain. Your view is synced — no extra wallet transaction.",
+        });
+      } else {
+        toast({
+          variant: "success",
+          title: "Payout claimed",
+        });
+      }
       void queryClient.invalidateQueries({ queryKey: marketQueryKey(id) });
       void queryClient.invalidateQueries({ queryKey: marketBetsQueryKey(id) });
       if (userWallet) {

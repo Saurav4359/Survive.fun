@@ -25,6 +25,7 @@ import { isLikelySolanaTxSignature, solscanTxUrl } from "@/utils/explorer";
 import {
   claimPayout,
   getBetPDA,
+  isClaimPayoutSyncedResult,
   resolveMarketPdaForTransaction,
 } from "@/utils/transactions";
 
@@ -88,6 +89,15 @@ export default function BetsPage() {
   const { bets, isLoading, error } = useUserBets(wallet);
   const [filter, setFilter] = useState<BetFilter>("all");
 
+  /** One on-chain bet PDA per user+market; DB can have multiple rows — hide Claim if any row is claimed. */
+  const marketWalletClaimed = useMemo(() => {
+    const s = new Set<string>();
+    for (const b of bets) {
+      if (b.claimed) s.add(`${b.marketId}:${b.bettorWallet}`);
+    }
+    return s;
+  }, [bets]);
+
   const claimMut = useMutation({
     mutationFn: async (bet: BetWithMarket) => {
       const m = bet.market;
@@ -102,14 +112,24 @@ export default function BetsPage() {
       const betPda = (await getBetPDA(marketPda, bettor.toBase58())).toBase58();
       return claimPayout(walletAdapter, marketPda, betPda, {
         betId: bet.id,
+        marketId: bet.market.id,
       });
     },
-    onSuccess: (_sig, bet) => {
-      toast({
-        variant: "success",
-        title: "Payout claimed",
-        message: "Funds should appear in your wallet shortly.",
-      });
+    onSuccess: (sig, bet) => {
+      if (isClaimPayoutSyncedResult(sig)) {
+        toast({
+          variant: "success",
+          title: "Already paid out",
+          message:
+            "This was claimed on-chain already. Your list is synced — no extra wallet transaction.",
+        });
+      } else {
+        toast({
+          variant: "success",
+          title: "Payout claimed",
+          message: "Funds should appear in your wallet shortly.",
+        });
+      }
       if (wallet) {
         void queryClient.invalidateQueries({
           queryKey: userBetsQueryKey(wallet),
@@ -397,7 +417,18 @@ export default function BetsPage() {
                               : null;
                         const winDisplay =
                           winRaw != null ? formatNativeBetAmount(winRaw) : "—";
-                        const claimable = outcome === "won" && !bet.claimed;
+                        const pairKey = `${bet.marketId}:${bet.bettorWallet}`;
+                        const pairClaimed = marketWalletClaimed.has(pairKey);
+                        const payoutSig =
+                          bet.payoutTx ??
+                          bets.find(
+                            (b) =>
+                              b.marketId === bet.marketId &&
+                              b.bettorWallet === bet.bettorWallet &&
+                              b.payoutTx,
+                          )?.payoutTx ??
+                          null;
+                        const claimable = outcome === "won" && !pairClaimed;
                         const rowEdge =
                           outcome === "won"
                             ? "border-l-4 border-l-accent"
@@ -473,15 +504,15 @@ export default function BetsPage() {
                                 >
                                   {claimMut.isPending ? "…" : "Claim"}
                                 </motion.button>
-                              ) : outcome === "won" && bet.claimed ? (
+                              ) : outcome === "won" && pairClaimed ? (
                                 <span className="font-mono text-[10px] font-bold text-accent">
                                   Claimed ✅
                                 </span>
                               ) : outcome === "won" &&
-                                bet.payoutTx != null &&
-                                bet.payoutTx.length > 0 ? (
+                                payoutSig != null &&
+                                payoutSig.length > 0 ? (
                                 <a
-                                  href={solscanTxUrl(bet.payoutTx)}
+                                  href={solscanTxUrl(payoutSig)}
                                   target="_blank"
                                   rel="noreferrer"
                                   className="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-accent underline-offset-2 hover:underline"
@@ -512,7 +543,18 @@ export default function BetsPage() {
                           : null;
                     const winDisplay =
                       winRaw != null ? formatNativeBetAmount(winRaw) : "—";
-                    const claimable = outcome === "won" && !bet.claimed;
+                    const pairKey = `${bet.marketId}:${bet.bettorWallet}`;
+                    const pairClaimed = marketWalletClaimed.has(pairKey);
+                    const payoutSig =
+                      bet.payoutTx ??
+                      bets.find(
+                        (b) =>
+                          b.marketId === bet.marketId &&
+                          b.bettorWallet === bet.bettorWallet &&
+                          b.payoutTx,
+                      )?.payoutTx ??
+                      null;
+                    const claimable = outcome === "won" && !pairClaimed;
                     const cardEdge =
                       outcome === "won"
                         ? "border-l-4 border-l-accent"
@@ -602,15 +644,15 @@ export default function BetsPage() {
                             >
                               {claimMut.isPending ? "…" : "Claim"}
                             </motion.button>
-                          ) : outcome === "won" && bet.claimed ? (
+                          ) : outcome === "won" && pairClaimed ? (
                             <span className="font-mono text-xs font-bold text-accent">
                               Claimed ✅
                             </span>
                           ) : outcome === "won" &&
-                            bet.payoutTx != null &&
-                            bet.payoutTx.length > 0 ? (
+                            payoutSig != null &&
+                            payoutSig.length > 0 ? (
                             <a
-                              href={solscanTxUrl(bet.payoutTx)}
+                              href={solscanTxUrl(payoutSig)}
                               target="_blank"
                               rel="noreferrer"
                               className="font-mono text-xs font-bold text-accent underline-offset-2 hover:underline"
