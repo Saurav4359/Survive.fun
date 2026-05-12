@@ -248,6 +248,16 @@ function acquireSocket(): Socket {
       reconnectionDelay: 1000,
       reconnectionDelayMax: 10_000,
     });
+    if (process.env.NODE_ENV === "development") {
+      socketInstance.on("connect_error", (err) => {
+        console.warn(
+          "[socket.io] connect_error — is the API running at",
+          API_URL,
+          "?",
+          err.message,
+        );
+      });
+    }
     bindHandlers(socketInstance);
     patchSnapshot({ isConnected: socketInstance.connected });
   }

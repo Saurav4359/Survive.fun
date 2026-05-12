@@ -81,7 +81,11 @@ export function useToken(mint: string | undefined): UseTokenResult {
       : null;
   const price = priceUsdText != null ? parseNum(priceUsdText) : null;
   const priceChange24h =
-    pair?.priceChange?.h24 != null ? pair.priceChange.h24 : null;
+    pair?.priceChange?.h24 != null
+      ? pair.priceChange.h24
+      : pair?.birdeyePriceChange24hPercent != null
+        ? pair.birdeyePriceChange24hPercent
+        : null;
   const liquidity =
     pair?.liquidity?.usd != null ? pair.liquidity.usd : null;
   const devWallet = pair?.devWallet ?? null;

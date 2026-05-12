@@ -19,8 +19,9 @@ export const IDL = survivefunIdl as Idl;
 export const RPC_URL =
   process.env.NEXT_PUBLIC_RPC_URL?.trim() || clusterApiUrl("devnet");
 
-export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL?.trim() || "http://localhost:3001";
+export const API_URL = (
+  process.env.NEXT_PUBLIC_API_URL?.trim() || "http://localhost:3001"
+).replace(/\/+$/, "");
 
 /**
  * REST prefix mounted by the API (`/v1` or `/api/v1`). Socket.IO still uses `API_URL` origin only.
