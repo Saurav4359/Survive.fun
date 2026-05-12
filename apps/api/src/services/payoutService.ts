@@ -6,7 +6,10 @@ import { Prisma } from "@prisma/client";
 
 import { connection } from "../config/solana";
 import { prisma } from "../config/database";
-import { resolveMarketOnChain } from "../lib/onchainProgram";
+import {
+  fetchBetClaimedFromChain,
+  resolveMarketOnChain,
+} from "../lib/onchainProgram";
 import {
   betPdaBase58,
   marketPdaBase58ForDbRow,
@@ -234,6 +237,46 @@ export async function processMarketResolution(
     `);
 }
 
+/**
+ * When the on-chain Bet account is already `claimed`, mark every winning DB row
+ * for this user+market (multiple rows can exist from separate `place_bet` txs).
+ */
+export async function reconcileWinningBetsIfClaimedOnChain(
+  marketId: string,
+  walletAddress: string,
+): Promise<{ updated: number; onChainClaimed: boolean }> {
+  const market = await prisma.market.findUnique({ where: { id: marketId } });
+  if (!market) {
+    throw new AppError("NOT_FOUND", "Market not found", 404);
+  }
+
+  const marketPk = marketPdaBase58ForDbRow(market);
+  const onChainClaimed = await fetchBetClaimedFromChain(
+    connection,
+    marketPk,
+    walletAddress,
+  );
+
+  if (!onChainClaimed) {
+    return { updated: 0, onChainClaimed: false };
+  }
+
+  const result = await prisma.bet.updateMany({
+    where: {
+      marketId,
+      bettorWallet: walletAddress,
+      won: true,
+      claimed: false,
+    },
+    data: {
+      claimed: true,
+      claimedAt: new Date(),
+    },
+  });
+
+  return { updated: result.count, onChainClaimed: true };
+}
+
 export async function processBetClaim(
   betId: string,
   txSignature: string,
@@ -266,14 +309,21 @@ export async function processBetClaim(
     betPk,
   );
 
-  const updated = await prisma.bet.update({
-    where: { id: betId },
+  await prisma.bet.updateMany({
+    where: {
+      marketId: bet.marketId,
+      bettorWallet: walletAddress,
+      won: true,
+      claimed: false,
+    },
     data: {
       claimed: true,
       claimedAt: new Date(),
       payoutTx: txSignature,
     },
   });
+
+  const updated = await prisma.bet.findUniqueOrThrow({ where: { id: betId } });
 
   const amountStr = updated.payoutAmount?.toString() ?? "0";
   try {

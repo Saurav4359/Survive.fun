@@ -23,6 +23,7 @@ import {
   MarketAddressScheme,
 } from "@survivefun/solana-pda";
 
+import { betPdaBase58 } from "./marketOnChain";
 import { getProgramId } from "../config/solana";
 import type { MarketTokenBootstrap } from "./dexscreener";
 
@@ -128,8 +129,28 @@ function isResolvedMarketAccount(status: unknown, outcome: unknown): boolean {
 }
 
 /**
- * True when on-chain market account is `Resolved` with a set outcome (required for `claim_payout`).
+ * Reads the on-chain Bet account's `claimed` flag (same PDA for all DB rows per user+market).
  */
+export async function fetchBetClaimedFromChain(
+  connection: Connection,
+  marketPdaBase58: string,
+  bettorWalletBase58: string,
+): Promise<boolean> {
+  try {
+    const idl = loadIdl();
+    const program = new Program(idl, providerFor(connection));
+    const betPk = new PublicKey(betPdaBase58(marketPdaBase58, bettorWalletBase58));
+    const accNs = program.account as unknown as {
+      bet: { fetch: (pk: PublicKey) => Promise<{ claimed?: boolean }> };
+    };
+    const acc = await accNs.bet.fetch(betPk);
+    return Boolean(acc.claimed);
+  } catch {
+    return false;
+  }
+}
+
+/** True when on-chain market account is `Resolved` with a set outcome (required for `claim_payout`). */
 export async function isMarketResolvedOnChain(
   connection: Connection,
   tokenMintBase58: string,
