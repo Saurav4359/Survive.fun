@@ -22,8 +22,8 @@ export function MarketSearchBar() {
         type="search"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search name, ticker, or mint…"
-        className="w-full rounded-md border border-neutral-600 bg-surface py-2 pl-9 pr-3 font-mono text-[13.2px] text-white caret-accent placeholder:text-fg-soft placeholder:opacity-100 transition-shadow focus:border-accent focus:outline-none focus:shadow-glow-sm sm:py-2.5 sm:pl-10 sm:text-[15.4px]"
+        placeholder="Search existing market"
+        className="w-full rounded-md border border-neutral-600 bg-surface py-2 pl-9 pr-3 font-sans text-[13.2px] text-white caret-accent placeholder:text-fg-soft placeholder:opacity-100 transition-shadow focus:border-accent focus:outline-none focus:shadow-glow-sm sm:py-2.5 sm:pl-10 sm:text-[15.4px]"
         autoComplete="off"
       />
     </div>
