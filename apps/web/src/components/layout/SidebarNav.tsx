@@ -71,10 +71,13 @@ export function SidebarNav({ onNavigate }: Props) {
         </div>
       </Link>
 
-      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto pb-4 hide-scrollbar">
+      <nav className="shrink-0 space-y-1 overflow-y-auto pb-4 hide-scrollbar">
         {NAV.map(({ href, label, Icon }) => {
+          /** Exact path or nested segment — `startsWith("/live")` wrongly matches `/live-rugs`. */
           const active =
-            href === "/" ? pathname === "/" : pathname.startsWith(href);
+            href === "/"
+              ? pathname === "/"
+              : pathname === href || pathname.startsWith(`${href}/`);
 
           return (
             <Link
