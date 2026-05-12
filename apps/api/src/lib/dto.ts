@@ -7,6 +7,7 @@ import type {
 import type { Bet as DbBet, Market as DbMarket } from "@prisma/client";
 
 import { marketPdaBase58ForDbRow } from "./marketOnChain";
+import { apiOpenPriceFromStored } from "./openPriceCodec";
 
 function asMarketCurrency(raw: string): MarketCurrency {
   return raw === "sol" ? "sol" : "usdc";
@@ -46,7 +47,7 @@ export function toMarketDto(row: DbMarket): Market {
     expiresAt: row.expiresAt.toISOString(),
     survivePool: row.survivePool.toString(),
     rugPool: row.rugPool.toString(),
-    openPrice: row.openPrice?.toString() ?? null,
+    openPrice: apiOpenPriceFromStored(row.openPrice?.toString() ?? null),
     openLiquidity: row.openLiquidity?.toString() ?? null,
     devWallet: row.devWallet,
     devSellThresholdOverride:
