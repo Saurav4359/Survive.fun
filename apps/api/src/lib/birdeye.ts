@@ -63,10 +63,25 @@ export function enrichTokenPairFromBirdeye(
   const pc = data.priceChange24hPercent ?? data.price_change_24h_percent;
   if (typeof pc === "number" && Number.isFinite(pc)) {
     birdeyePriceChange24hPercent = pc;
+  } else if (typeof pc === "string") {
+    const n = Number.parseFloat(pc);
+    if (Number.isFinite(n)) birdeyePriceChange24hPercent = n;
   }
+
+  const h24FromBirdeye = birdeyePriceChange24hPercent;
+  const mergedPriceChange = {
+    ...pair.priceChange,
+    h24:
+      pair.priceChange.h24 != null
+        ? pair.priceChange.h24
+        : h24FromBirdeye != null
+          ? h24FromBirdeye
+          : null,
+  };
 
   return {
     ...pair,
+    priceChange: mergedPriceChange,
     holderCount: holderCount ?? pair.holderCount ?? null,
     birdeyePriceChange24hPercent:
       birdeyePriceChange24hPercent ?? pair.birdeyePriceChange24hPercent ?? null,
