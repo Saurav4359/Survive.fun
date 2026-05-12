@@ -23,7 +23,6 @@ import { useWebSocketEvents } from "@/hooks/useWebSocket";
 import { cn } from "@/lib/utils";
 import { apiV1Url } from "@/utils/constants";
 import { formatBetStake, formatSolBetLine, formatWallet } from "@/utils/format";
-import { isLikelySolanaTxSignature, solscanTxUrl } from "@/utils/explorer";
 
 type FeedRow =
   | {
@@ -33,8 +32,6 @@ type FeedRow =
       side: BetSide;
       stakeLabel: string;
       at: Date;
-      /** Place-bet on-chain signature when available (Solscan). */
-      txSignature?: string;
     }
   | {
       kind: "resolved";
@@ -57,7 +54,6 @@ function normalizeBetPayload(raw: BetPlaced, fallbackId: string): FeedRow {
       amountLamports: raw.amountLamports ?? "0",
     }),
     at: new Date(raw.timestamp),
-    txSignature: raw.txSignature,
   };
 }
 
@@ -71,7 +67,6 @@ function betDtoToFeedRow(b: Bet): FeedRow {
       amountLamports: b.amountLamports ?? "0",
     }),
     at: new Date(b.createdAt),
-    txSignature: b.txSignature,
   };
 }
 
@@ -124,17 +119,6 @@ function FeedRowCard({ row }: { row: FeedRow }) {
           {formatTime(row.at)}
         </time>
       </div>
-      {isLikelySolanaTxSignature(row.txSignature) ? (
-        <a
-          href={solscanTxUrl(row.txSignature)}
-          target="_blank"
-          rel="noreferrer"
-          title="Open place-bet transaction on Solscan"
-          className="mt-2 block w-full border-t border-border/60 pt-2 font-mono text-[11px] font-medium leading-normal tracking-normal text-red-400 underline-offset-[3px] hover:text-red-300 hover:underline"
-        >
-          See transaction details →
-        </a>
-      ) : null}
     </motion.div>
   );
 }
