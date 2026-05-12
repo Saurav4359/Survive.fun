@@ -96,46 +96,45 @@ function FeedRowCard({ row }: { row: FeedRow }) {
       transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
       className={
         row.side === "survive"
-          ? "border border-border border-l-[3px] border-l-survive bg-[#0d0d0d] px-3 py-2"
-          : "border border-border border-l-[3px] border-l-rug bg-[#0d0d0d] px-3 py-2"
+          ? "border border-border border-l-[3px] border-l-survive bg-[#0d0d0d] px-3 py-2.5"
+          : "border border-border border-l-[3px] border-l-rug bg-[#0d0d0d] px-3 py-2.5"
       }
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate font-mono text-[13px] font-semibold tracking-tight text-white">
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-mono text-[13px] font-semibold leading-tight tracking-tight text-white">
             {formatWallet(row.wallet)}
           </p>
-          <p className="mt-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em]">
+          <p className="mt-1 font-mono text-[11px] font-semibold leading-snug tracking-normal">
             {row.side === "survive" ? (
-              <span className="font-semibold text-survive brightness-110">
-                Survive
-              </span>
+              <span className="text-survive brightness-110">Survive</span>
             ) : (
-              <span className="font-semibold text-rug brightness-110">Rug</span>
-            )}{" "}
-            <span className="text-neutral-500">·</span>{" "}
-            <span className="tabular-nums font-semibold text-[#b6ff9a]">
+              <span className="text-rug brightness-110">Rug</span>
+            )}
+            <span className="text-neutral-500"> · </span>
+            <span className="tabular-nums text-neutral-200">
               {row.stakeLabel}
             </span>
           </p>
-          {isLikelySolanaTxSignature(row.txSignature) ? (
-            <a
-              href={solscanTxUrl(row.txSignature)}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-1.5 inline-block font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-red-400 underline-offset-2 hover:text-red-300 hover:underline"
-            >
-              See transaction details
-            </a>
-          ) : null}
         </div>
         <time
           dateTime={row.at.toISOString()}
-          className="shrink-0 font-mono text-[10px] tabular-nums text-neutral-300"
+          className="shrink-0 pt-0.5 font-mono text-[11px] font-medium tabular-nums leading-none text-fg-soft"
         >
           {formatTime(row.at)}
         </time>
       </div>
+      {isLikelySolanaTxSignature(row.txSignature) ? (
+        <a
+          href={solscanTxUrl(row.txSignature)}
+          target="_blank"
+          rel="noreferrer"
+          title="Open place-bet transaction on Solscan"
+          className="mt-2 block w-full border-t border-border/60 pt-2 font-mono text-[11px] font-medium leading-normal tracking-normal text-red-400 underline-offset-[3px] hover:text-red-300 hover:underline"
+        >
+          See transaction details →
+        </a>
+      ) : null}
     </motion.div>
   );
 }
@@ -204,7 +203,7 @@ function ResolutionFeedCard({
         </div>
         <time
           dateTime={row.at.toISOString()}
-          className="shrink-0 font-mono text-[10px] tabular-nums text-neutral-300"
+          className="shrink-0 pt-0.5 font-mono text-[11px] font-medium tabular-nums leading-none text-fg-soft"
         >
           {formatTime(row.at)}
         </time>
