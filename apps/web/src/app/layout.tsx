@@ -11,6 +11,13 @@ import { BRAND_LOGO_SRC } from "@/utils/constants";
 function siteOrigin(): string {
   const fromEnv = process.env.NEXT_PUBLIC_APP_URL?.trim();
   if (fromEnv) return fromEnv.replace(/\/$/, "");
+  const productionHost = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  if (productionHost) {
+    const host = productionHost
+      .replace(/^https?:\/\//, "")
+      .replace(/\/$/, "");
+    return `https://${host}`;
+  }
   if (process.env.VERCEL_URL)
     return `https://${process.env.VERCEL_URL.replace(/\/$/, "")}`;
   return "http://localhost:3000";

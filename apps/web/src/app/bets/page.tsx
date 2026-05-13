@@ -38,19 +38,24 @@ const FILTERS: { key: BetFilter; label: string }[] = [
   { key: "lost", label: "Lost" },
 ];
 
-function rowOutcome(b: BetWithMarket): "active" | "won" | "lost" {
+function rowOutcome(b: BetWithMarket): "active" | "settling" | "won" | "lost" {
   const m = b.market;
-  if (m.status === "active") return "active";
-  if (m.status !== "resolved" || !m.outcome) return "active";
-  if (m.outcome === "survive" && b.side === "survive") return "won";
-  if (m.outcome === "rug" && b.side === "rug") return "won";
-  return "lost";
+  if (m.status === "resolved" && m.outcome != null) {
+    if (m.outcome === "survive" && b.side === "survive") return "won";
+    if (m.outcome === "rug" && b.side === "rug") return "won";
+    return "lost";
+  }
+  const expMs = new Date(m.expiresAt).getTime();
+  const past =
+    Number.isFinite(expMs) && (Date.now() >= expMs || m.status === "expired");
+  if (m.status === "active" && !past) return "active";
+  return "settling";
 }
 
 function matchesFilter(b: BetWithMarket, filter: BetFilter): boolean {
   const o = rowOutcome(b);
   if (filter === "all") return true;
-  if (filter === "active") return o === "active";
+  if (filter === "active") return o === "active" || o === "settling";
   if (filter === "won") return o === "won";
   return o === "lost";
 }
@@ -190,7 +195,7 @@ export default function BetsPage() {
       const lam = Number(BigInt(b.amountLamports ?? "0"));
       if (Number.isFinite(lam)) totalBetSol += lam / 1e9;
       const o = rowOutcome(b);
-      if (o === "active") openBets += 1;
+      if (o === "active" || o === "settling") openBets += 1;
       if (o === "won" || o === "lost") resolved += 1;
       if (o === "won") {
         wins += 1;
@@ -414,7 +419,11 @@ export default function BetsPage() {
                             ? bet.payoutAmount
                             : outcome === "won" && bet.potentialWin != null
                               ? bet.potentialWin
-                              : null;
+                              : (outcome === "active" ||
+                                    outcome === "settling") &&
+                                  bet.potentialWin != null
+                                ? bet.potentialWin
+                                : null;
                         const winDisplay =
                           winRaw != null ? formatNativeBetAmount(winRaw) : "—";
                         const pairKey = `${bet.marketId}:${bet.bettorWallet}`;
@@ -466,6 +475,10 @@ export default function BetsPage() {
                                 <Timer
                                   expiresAt={new Date(bet.market.expiresAt)}
                                 />
+                              ) : outcome === "settling" ? (
+                                <span className="font-mono text-sm tabular-nums text-rug">
+                                  pending
+                                </span>
                               ) : outcome === "won" ? (
                                 <span className="font-bold tabular-nums text-accent">
                                   WON {winDisplay}
@@ -477,7 +490,9 @@ export default function BetsPage() {
                               )}
                             </td>
                             <td className="px-4 py-3 tabular-nums text-fg-soft">
-                              {outcome === "active" ? winDisplay : "—"}
+                              {outcome === "active" || outcome === "settling"
+                                ? winDisplay
+                                : "—"}
                             </td>
                             <td className="px-4 py-3">
                               {isLikelySolanaTxSignature(bet.txSignature) ? (
@@ -540,7 +555,11 @@ export default function BetsPage() {
                         ? bet.payoutAmount
                         : outcome === "won" && bet.potentialWin != null
                           ? bet.potentialWin
-                          : null;
+                          : (outcome === "active" ||
+                                outcome === "settling") &&
+                              bet.potentialWin != null
+                            ? bet.potentialWin
+                            : null;
                     const winDisplay =
                       winRaw != null ? formatNativeBetAmount(winRaw) : "—";
                     const pairKey = `${bet.marketId}:${bet.bettorWallet}`;
@@ -603,6 +622,10 @@ export default function BetsPage() {
                                 <Timer
                                   expiresAt={new Date(bet.market.expiresAt)}
                                 />
+                              ) : outcome === "settling" ? (
+                                <span className="font-mono text-sm tabular-nums text-rug">
+                                  pending
+                                </span>
                               ) : outcome === "won" ? (
                                 <span className="font-bold tabular-nums text-accent">
                                   WON {winDisplay}
@@ -617,7 +640,9 @@ export default function BetsPage() {
                           <div>
                             <dt className="text-fg-muted">Win</dt>
                             <dd className="mt-0.5 tabular-nums text-fg-soft">
-                              {outcome === "active" ? winDisplay : "—"}
+                              {outcome === "active" || outcome === "settling"
+                                ? winDisplay
+                                : "—"}
                             </dd>
                           </div>
                         </dl>

@@ -19,8 +19,16 @@ export const IDL = survivefunIdl as Idl;
 export const RPC_URL =
   process.env.NEXT_PUBLIC_RPC_URL?.trim() || clusterApiUrl("devnet");
 
+const nextPublicApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+/** On Vercel, `NEXT_PUBLIC_*` is baked in at build time — without this, browsers call localhost and “pages feel broken”. */
+if (process.env.VERCEL === "1" && !nextPublicApiUrl) {
+  throw new Error(
+    "NEXT_PUBLIC_API_URL must be set in Vercel → Settings → Environment Variables (public API origin only, no trailing slash), then redeploy.",
+  );
+}
+
 export const API_URL = (
-  process.env.NEXT_PUBLIC_API_URL?.trim() || "http://localhost:3001"
+  nextPublicApiUrl || "http://localhost:3001"
 ).replace(/\/+$/, "");
 
 /**
