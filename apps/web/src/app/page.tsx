@@ -45,7 +45,10 @@ const ParticleField = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="absolute inset-0 bg-bg" aria-hidden />
+      <div
+        className="pointer-events-none absolute inset-0 bg-bg"
+        aria-hidden
+      />
     ),
   },
 );

@@ -17,7 +17,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         initial={{ x: -32, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-        className="fixed inset-y-0 left-0 z-40 hidden w-[240px] shrink-0 border-r border-border bg-bg lg:flex lg:flex-col"
+        className="fixed inset-y-0 left-0 z-[900] hidden w-[240px] shrink-0 border-r border-border bg-bg lg:flex lg:flex-col"
       >
         <div className="flex h-full min-h-0 flex-col px-4 py-5">
           <SidebarNav />
@@ -57,7 +57,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           <HotMarketsStrip />
           <TopBar onMenuClick={() => setMobileOpen(true)} />
         </div>
-        <main className="min-h-0 flex-1">{children}</main>
+        {/* layoutRoot: Framer `layoutId` (e.g. home filter tab) must not project a hit-target over the fixed sidebar */}
+        <motion.main layoutRoot className="min-h-0 flex-1">
+          {children}
+        </motion.main>
       </div>
     </div>
   );

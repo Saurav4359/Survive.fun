@@ -216,6 +216,7 @@ export function ParticleField({
     canvas.style.display = "block";
     canvas.style.width = "100%";
     canvas.style.height = "100%";
+    canvas.style.pointerEvents = "none";
     container.appendChild(canvas);
 
     const n = reduced
