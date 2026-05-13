@@ -114,11 +114,20 @@ app.use("/api/v1/webhook", webhookRawBody, createHeliusWebhookRouter());
 
 app.use(express.json({ limit: "1mb" }));
 
-app.get("/health", (_req, res) => {
-  res.json({ ok: true });
-});
+/** Liveness — no DB call (Railway / probes). Root + versioned paths for any base URL. */
+function healthHandler(_req: express.Request, res: express.Response): void {
+  res.json({
+    ok: true,
+    service: "survivefun-api",
+    uptimeSec: Math.round(process.uptime()),
+    ts: new Date().toISOString(),
+  });
+}
+
+app.get("/health", healthHandler);
 
 const apiRouter = Router();
+apiRouter.get("/health", healthHandler);
 apiRouter.use("/bets", betsClaimRouter);
 apiRouter.use("/markets", marketBetsRouter);
 apiRouter.use("/markets", marketsRouter);
