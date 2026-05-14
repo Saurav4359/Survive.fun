@@ -34,6 +34,10 @@ import { formatSolBetLine, parsePoolLamports } from "@/utils/format";
 import { isActiveMarketStillOpen } from "@/utils/marketListing";
 import { totalPoolLamports } from "@/utils/marketRisk";
 
+/** When the API isn’t reachable—friendlier than “Failed to fetch”. */
+const NO_MARKETS_YET_COPY =
+  "Feels like there's no user in this platform hence there is not market rn";
+
 /**
  * WebGL has no Node canvas — this component must hydrate on the client only.
  * That is unrelated to “dev vs prod”: `next build` + `next start` still ship an optimized bundle.
@@ -493,9 +497,9 @@ export default function HomePage() {
               />
             ))
           ) : statsError ? (
-            <div className="col-span-full border border-rug/40 bg-card px-3 py-3">
-              <p className="font-mono text-xs text-rug">
-                Failed to load stats: {statsError.message}
+            <div className="col-span-full border border-border bg-card px-3 py-3">
+              <p className="font-mono text-xs leading-relaxed text-fg-soft">
+                {NO_MARKETS_YET_COPY}
               </p>
             </div>
           ) : (
@@ -610,8 +614,8 @@ export default function HomePage() {
               ) : marketsError ? (
                 <EmptyState
                   icon={Inbox}
-                  title="Failed to load markets"
-                  description={marketsError.message}
+                  title="No markets yet"
+                  description={NO_MARKETS_YET_COPY}
                   action={{
                     label: "Retry",
                     onClick: () => void marketsQuery.refetch(),
