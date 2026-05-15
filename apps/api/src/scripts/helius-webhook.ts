@@ -17,13 +17,18 @@
  *   HELIUS_WEBHOOK_URL          Public HTTPS URL ending in /webhook/helius
  *   HELIUS_WEBHOOK_AUTH_SECRET  Long random string Helius will send as Authorization
  *
- * Watches Pump.fun program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P for
+ * Watches Pump.fun program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P (mainnet) for
  * TOKEN_MINT and TRANSFER events.
+ *
+ * Default `HELIUS_NETWORK=devnet` skips register/ensure (Survive.fun targets devnet only).
+ * Set `HELIUS_NETWORK=mainnet` only to manage legacy mainnet Pump.fun webhooks.
  */
 
 import "dotenv/config";
 
 import { createHelius } from "@helius-labs/helius-sdk";
+
+import { resolveHeliusSdkNetwork } from "../lib/heliusSdk";
 
 const PUMP_FUN_PROGRAM_ADDRESS = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
 
@@ -46,7 +51,8 @@ function requireEnv(name: string): string {
 
 function getClient() {
   const apiKey = requireEnv("HELIUS_API_KEY");
-  return createHelius({ apiKey, network: "mainnet" });
+  const network = resolveHeliusSdkNetwork();
+  return createHelius({ apiKey, network });
 }
 
 async function listWebhooks(): Promise<HeliusWebhook[]> {
@@ -66,6 +72,13 @@ async function cmdList(): Promise<void> {
 }
 
 async function cmdRegister(): Promise<void> {
+  if (resolveHeliusSdkNetwork() !== "mainnet") {
+    console.log(
+      "ℹ️ Skipping register: HELIUS_NETWORK is devnet (default). Pump.fun webhooks use Helius mainnet. Set HELIUS_NETWORK=mainnet only if you need to register or delete those webhooks.",
+    );
+    return;
+  }
+
   const webhookURL = requireEnv("HELIUS_WEBHOOK_URL");
   const authHeader = requireEnv("HELIUS_WEBHOOK_AUTH_SECRET");
 

@@ -25,6 +25,11 @@ import {
 } from "../lib/onchainProgram";
 import { verifyCreateMarketTransaction } from "../lib/solanaTxVerify";
 import { enforceSolanaMarketRowInvariants } from "../lib/marketPdaGuard";
+import {
+  clampOptionalVarchar,
+  MARKET_TOKEN_NAME_DB_MAX,
+  MARKET_TOKEN_TICKER_DB_MAX,
+} from "../lib/marketDbFields";
 import { openPriceMicroStringToDecimal } from "../lib/openPriceCodec";
 import { toMarketDto } from "../lib/dto";
 import { formatZod, parseQuery } from "../lib/zodUtil";
@@ -568,19 +573,32 @@ router.post("/", async (req, res, next) => {
       );
       onChainAddress = verified.marketPda;
       chainMarketKey = verified.chainMarketKey;
-      const chainSnap = await fetchMarketSnapshotFromChain(
-        connection,
-        new PublicKey(verified.marketPda),
-      );
-      survivePoolStr = chainSnap.survivePool;
-      rugPoolStr = chainSnap.rugPool;
-      devWalletVal = chainSnap.devWallet;
-      const chainOpenDecimal = openPriceMicroStringToDecimal(
-        chainSnap.openPrice,
-      );
-      openPriceVal = chainOpenDecimal ?? boot.openPrice ?? null;
-      openLiquidityVal =
-        chainSnap.openLiquidity === "0" ? null : chainSnap.openLiquidity;
+      try {
+        const chainSnap = await fetchMarketSnapshotFromChain(
+          connection,
+          new PublicKey(verified.marketPda),
+        );
+        survivePoolStr = chainSnap.survivePool;
+        rugPoolStr = chainSnap.rugPool;
+        devWalletVal = chainSnap.devWallet;
+        const chainOpenDecimal = openPriceMicroStringToDecimal(
+          chainSnap.openPrice,
+        );
+        openPriceVal = chainOpenDecimal ?? boot.openPrice ?? null;
+        openLiquidityVal =
+          chainSnap.openLiquidity === "0" ? null : chainSnap.openLiquidity;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error(
+          "[markets] chain snapshot after verified create_market failed; using bootstrap",
+          { marketPda: verified.marketPda, signature: userTxSig, error: msg },
+        );
+        survivePoolStr = seedLamportsPerSide;
+        rugPoolStr = seedLamportsPerSide;
+        openPriceVal = boot.openPrice ?? null;
+        openLiquidityVal = boot.openLiquidity ?? null;
+        devWalletVal = boot.devWallet;
+      }
       console.log("[markets] create_market indexed from user-signed tx", {
         tokenMint: input.tokenMint,
         duration: input.duration,
@@ -660,8 +678,14 @@ router.post("/", async (req, res, next) => {
       row = await prisma.market.create({
         data: {
           tokenMint: input.tokenMint,
-          tokenName: boot.tokenName,
-          tokenTicker: boot.tokenTicker,
+          tokenName: clampOptionalVarchar(
+            boot.tokenName,
+            MARKET_TOKEN_NAME_DB_MAX,
+          ),
+          tokenTicker: clampOptionalVarchar(
+            boot.tokenTicker,
+            MARKET_TOKEN_TICKER_DB_MAX,
+          ),
           creatorWallet: input.walletAddress,
           durationSeconds: input.duration,
           expiresAt,
@@ -701,6 +725,19 @@ router.post("/", async (req, res, next) => {
           "MARKET_CONFLICT",
           "An active market for this token and duration already exists",
           409,
+        );
+      }
+      if (e instanceof Prisma.PrismaClientKnownRequestError) {
+        console.error("[markets] prisma.market.create failed", {
+          code: e.code,
+          meta: e.meta,
+          message: e.message,
+          tokenMint: input.tokenMint,
+        });
+        throw new AppError(
+          "MARKET_DB_ERROR",
+          "Could not save the market (database error). Check server logs or try again.",
+          500,
         );
       }
       throw e;

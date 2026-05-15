@@ -9,7 +9,7 @@
 #
 # Optional repository variables (Settings → Variables) to override build-time public env:
 #   • NEXT_PUBLIC_API_URL, NEXT_PUBLIC_WS_URL, NEXT_PUBLIC_PROGRAM_ID,
-#     NEXT_PUBLIC_NETWORK, NEXT_PUBLIC_RPC_URL
+#     NEXT_PUBLIC_NETWORK (default devnet), NEXT_PUBLIC_RPC_URL (default public devnet RPC)
 
 name: Deploy production
 
@@ -38,8 +38,8 @@ jobs:
       next_public_api_url: ${{ vars.NEXT_PUBLIC_API_URL || 'https://api.survive.fun/api/v1' }}
       next_public_ws_url: ${{ vars.NEXT_PUBLIC_WS_URL || 'https://api.survive.fun' }}
       next_public_program_id: ${{ vars.NEXT_PUBLIC_PROGRAM_ID || '9ZqPpXBid4xzB49HjB7zE6BnTWryMuuZFTULTSJqqTd8' }}
-      next_public_network: ${{ vars.NEXT_PUBLIC_NETWORK || 'mainnet-beta' }}
-      next_public_rpc_url: ${{ vars.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com' }}
+      next_public_network: ${{ vars.NEXT_PUBLIC_NETWORK || 'devnet' }}
+      next_public_rpc_url: ${{ vars.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com' }}
     secrets: inherit
 
   deploy-web-vercel:

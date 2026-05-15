@@ -163,8 +163,16 @@ async function bootstrap(): Promise<void> {
 
   httpServer.listen(PORT, () => {
     console.log(`✅ Server running on port ${PORT}`);
-    void registerHeliusWebhook().then(() => {
-      console.log("✅ Helius webhook registered");
+    void registerHeliusWebhook().then((registered) => {
+      if (registered) {
+        console.log(
+          "✅ Helius Pump.fun webhook registered (uses mainnet Helius API)",
+        );
+      } else {
+        console.log(
+          "ℹ️ Helius Pump.fun auto-registration skipped — devnet-only deployments skip mainnet Pump webhooks (see startup logs)",
+        );
+      }
     });
   });
 }

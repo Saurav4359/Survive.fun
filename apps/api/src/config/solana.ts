@@ -10,6 +10,8 @@ export const connection = new Connection(
   "confirmed",
 );
 
+/** Survive.fun ships for Solana devnet. Public RPC defaults to devnet; production refuses mainnet-looking URLs unless `ALLOW_MAINNET_RPC=I_KNOW_WHAT_IM_DOING`. */
+
 /** Default from `contracts/programs/survivefun` Anchor `declare_id!` (local dev). */
 const DEFAULT_DEV_PROGRAM_ID = "9ZqPpXBid4xzB49HjB7zE6BnTWryMuuZFTULTSJqqTd8";
 

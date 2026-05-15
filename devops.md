@@ -45,7 +45,7 @@ The **bold** name is what the code reads (`process.env.X`); the indented italici
 | **`CORS_ORIGIN`** | ✅ in prod | Express + Socket.IO | Comma-separated allowed origins. **If `NODE_ENV=production` and this parses to an empty list, the process exits on startup.** In dev, omitting it keeps permissive behavior (Express reflects origin; Socket.IO uses `*`). |
 | **`HELIUS_WEBHOOK_URL`** | ✅ | webhook bootstrap | `${BACKEND_URL}/webhook/helius` — must be public HTTPS. |
 | **`HELIUS_WEBHOOK_AUTH_SECRET`** | ✅ | webhook auth | Long random string. Helius sends it as `Authorization` header; API verifies via `timingSafeEqual`. |
-| `HELIUS_NETWORK` | optional | rug detector | `mainnet` (default) or `devnet`. |
+| `HELIUS_NETWORK` | optional | Helius SDK (webhook tooling) | **`devnet`** (default). Use `mainnet` only to list/delete **legacy** Pump.fun webhooks on Helius; the API skips auto-registration unless this is `mainnet`. |
 | `AUTO_MARKET_CREATOR_WALLET` | optional | webhook auto-create | Wallet recorded as creator on Pump.fun TOKEN_MINT auto-markets. |
 | `BIRDEYE_API_KEY` | optional | OHLCV chart, graduation rule | Improves charts; not required. |
 | `PORT` | optional | Express | Railway sets this automatically; default `3001`. |

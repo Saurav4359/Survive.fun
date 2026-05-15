@@ -24,11 +24,11 @@ on:
       next_public_network:
         type: string
         required: false
-        default: "mainnet-beta"
+        default: "devnet"
       next_public_rpc_url:
         type: string
         required: false
-        default: "https://api.mainnet-beta.solana.com"
+        default: "https://api.devnet.solana.com"
 
 permissions:
   contents: read

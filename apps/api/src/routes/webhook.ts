@@ -15,8 +15,14 @@ import express, { Router, type Request, type Response } from "express";
 import { connection } from "../config/solana";
 import { prisma } from "../config/database";
 import type { MarketTokenBootstrap } from "../lib/dexscreener";
+import { resolveHeliusSdkNetwork } from "../lib/heliusSdk";
 import { resolveMarketTokenBootstrap } from "../lib/tokenBootstrap";
 import { createMarketOnChain } from "../lib/onchainProgram";
+import {
+  clampOptionalVarchar,
+  MARKET_TOKEN_NAME_DB_MAX,
+  MARKET_TOKEN_TICKER_DB_MAX,
+} from "../lib/marketDbFields";
 import {
   buildResolutionMetaFromDetectResult,
   dbMarketToDetectInput,
@@ -27,7 +33,7 @@ import { emitNewToken } from "../websocket/socketHandler";
 
 const LOG_PREFIX = "[heliusWebhook]";
 
-/** Pump.fun program (mainnet). */
+/** Pump.fun program (Solana mainnet). Not used for devnet auto-markets. */
 export const PUMP_FUN_PROGRAM_ADDRESS =
   "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
 
@@ -274,8 +280,14 @@ async function handleTokenMintEvent(ev: Record<string, unknown>): Promise<void> 
     market = await prisma.market.create({
       data: {
         tokenMint: mint,
-        tokenName: boot.tokenName,
-        tokenTicker: boot.tokenTicker,
+        tokenName: clampOptionalVarchar(
+          boot.tokenName,
+          MARKET_TOKEN_NAME_DB_MAX,
+        ),
+        tokenTicker: clampOptionalVarchar(
+          boot.tokenTicker,
+          MARKET_TOKEN_TICKER_DB_MAX,
+        ),
         creatorWallet,
         durationSeconds: ONE_HOUR_SECONDS,
         expiresAt,
@@ -431,10 +443,12 @@ export function createHeliusWebhookRouter(): Router {
 }
 
 /**
- * Registers (creates) a Helius webhook watching Pump.fun for TOKEN_MINT + TRANSFER.
- * Call once on server startup when `HELIUS_WEBHOOK_URL` is public HTTPS.
+ * Registers (creates) a Helius webhook watching Pump.fun for TOKEN_MINT + TRANSFER
+ * (Helius **mainnet** API only; devnet-first deployments skip this — see logs).
+ *
+ * @returns true if a Pump.fun webhook was registered
  */
-export async function registerHeliusWebhook(): Promise<void> {
+export async function registerHeliusWebhook(): Promise<boolean> {
   const apiKey = process.env.HELIUS_API_KEY?.trim();
   const backendUrl = process.env.BACKEND_URL?.trim();
   const webhookURL = backendUrl
@@ -446,7 +460,14 @@ export async function registerHeliusWebhook(): Promise<void> {
     console.log(
       `${LOG_PREFIX} registerHeliusWebhook skipped (missing HELIUS_API_KEY, BACKEND_URL, or HELIUS_WEBHOOK_AUTH_SECRET)`,
     );
-    return;
+    return false;
+  }
+
+  if (resolveHeliusSdkNetwork() !== "mainnet") {
+    console.log(
+      `${LOG_PREFIX} registerHeliusWebhook skipped: HELIUS_NETWORK is devnet (default). Pump.fun monitoring uses Helius mainnet; enable only if you set HELIUS_NETWORK=mainnet for webhook tooling.`,
+    );
+    return false;
   }
 
   try {
@@ -463,9 +484,11 @@ export async function registerHeliusWebhook(): Promise<void> {
       webhookID: webhook.webhookID,
       url: webhook.webhookURL,
     });
+    return true;
   } catch (e) {
     console.log(`${LOG_PREFIX} registerHeliusWebhook failed`, {
       error: e instanceof Error ? e.message : String(e),
     });
+    return false;
   }
 }
