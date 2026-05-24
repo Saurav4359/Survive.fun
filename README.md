@@ -1,5 +1,5 @@
 # Survive.fun
-<img width="2048" height="1173" alt="image" src="https://github.com/user-attachments/assets/df8808e0-8d1c-4c1f-8d93-0bacb4388a0a" />
+<img width="1657" height="949" alt="image" src="https://github.com/user-attachments/assets/0fed9ddb-b6d5-4df0-b503-f356bb08f4c0" />
 
 
 On-chain prediction markets for Pump.fun memecoins. Bet USDC on **SURVIVE** or **RUG**; markets resolve from objective on-chain signals (dev dump, price collapse, liquidity pull, failed graduation) or when the timer ends.
