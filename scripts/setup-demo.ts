@@ -1,8 +1,11 @@
 /**
- * Seeds demo markets and bets for local development.
+ * Seeds 7 demo markets and bets for local / showcase environments.
+ *
+ * Markets use real Solana mints (charts via DexScreener), stay open ~60 days
+ * (override with DEMO_MARKET_TTL_DAYS), and include realistic pool + bet volume.
  *
  * Run from repo root:
- *   npx ts-node scripts/setup-demo.ts
+ *   pnpm setup-demo
  */
 
 import path from "node:path";
@@ -29,6 +32,13 @@ if (process.env.DATABASE_URL.toLowerCase().includes("placeholder")) {
 }
 
 const creatorWallet = "7u1f7PjM9n4EsrA8sNpR8uS3Yf9rE7d8qJgN5H2k6LmP";
+
+/** Demo markets stay open long enough for judges / reviewers (default ~60 days). */
+const DEMO_MARKET_TTL_DAYS = Number.parseInt(
+  process.env.DEMO_MARKET_TTL_DAYS ?? "60",
+  10,
+);
+
 const userWallets = [
   "8hW9v5kKx2Yq8M4s3Zr6Nf2Dq7Pj4Lw1Tg9sVb6mQeY2",
   "4tY8dK3nQp7Lr2Vb9sJm5Fh1Wz6Xc8Nq3Pj7Rk4LhM2",
@@ -55,116 +65,91 @@ const LAMPORTS = {
   twelve: "12000000000",
 } as const;
 
+/** Seven showcase markets — real Solana mints (DexScreener charts), valid ≤44-char addresses. */
 const marketsSeed = [
   {
     tokenMint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
-    tokenName: "PepeCoin",
-    tokenTicker: "PEPE2",
+    tokenName: "Bonk",
+    tokenTicker: "BONK",
     durationSeconds: 3600,
-    openPrice: "0.00013",
-    openLiquidity: "42000",
-    devWallet: "9qPmDemoDevWallet111111111111111111111111111",
-    survivePool: "1420000000",
-    rugPool: "5870000000",
-  },
-  {
-    tokenMint: "7zQ5Q8bG8AaP8k1hVj6xVg4E2j5qC6Y8L4j2f1n8mP9A",
-    tokenName: "MoonFrog",
-    tokenTicker: "MFRG",
-    durationSeconds: 21600,
-    openPrice: "0.00042",
-    openLiquidity: "28000",
-    devWallet: "6mQkDemoDevWallet222222222222222222222222222",
-    survivePool: "2150000000",
-    rugPool: "1890000000",
-  },
-  {
-    tokenMint: "So11111111111111111111111111111111111111112",
-    tokenName: "SafeRocket",
-    tokenTicker: "SRKT",
-    durationSeconds: 86400,
-    openPrice: "0.00091",
-    openLiquidity: "12000",
-    devWallet: "9pKrRandom3ghiiiiiiiiiiiiiiiiiiiiiiiiiiii",
-    survivePool: "8900000000",
-    rugPool: "2100000000",
-  },
-  {
-    tokenMint: "JUPyiwrYJFskUPiHa7PkKq7X8K2vN4mT5wR9pL3sQ1c",
-    tokenName: "ChadPump",
-    tokenTicker: "CHAD",
-    durationSeconds: 3600,
-    openPrice: "0.00284",
-    openLiquidity: "95000",
-    devWallet: "3xChDemoDevWallet333333333333333333333333333",
-    survivePool: "12400000000",
-    rugPool: "9600000000",
+    openPrice: "0.000024",
+    openLiquidity: "842000",
+    devWallet: "9qPmDemoDevWallet11111111111111111111111",
+    survivePool: "4200000000",
+    rugPool: "11800000000",
+    ageMinutes: 18,
   },
   {
     tokenMint: "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
-    tokenName: "WojakCoin",
-    tokenTicker: "WOJAK",
+    tokenName: "dogwifhat",
+    tokenTicker: "WIF",
     durationSeconds: 21600,
-    openPrice: "0.000067",
-    openLiquidity: "18500",
-    devWallet: "4wOjDemoDevWallet444444444444444444444444444",
-    survivePool: "3200000000",
-    rugPool: "7800000000",
-  },
-  {
-    tokenMint: "9mK4vR2nQp8Ls7Wx5Tc3Yh1Fj6Bq9Pn2Km8Rv4Lw7Xz0",
-    tokenName: "DiamondPaws",
-    tokenTicker: "DPAW",
-    durationSeconds: 86400,
-    openPrice: "0.00112",
-    openLiquidity: "67000",
-    devWallet: "5dPaDemoDevWallet555555555555555555555555555",
+    openPrice: "2.84",
+    openLiquidity: "12400000",
+    devWallet: "6mQkDemoDevWallet22222222222222222222222",
     survivePool: "15600000000",
-    rugPool: "4400000000",
+    rugPool: "4800000000",
+    ageMinutes: 95,
   },
   {
-    tokenMint: "3sN5aC7mQ2pT8vX1wY9zA2bD5eF7gH0jK3mN6qR4tU8",
-    tokenName: "SnailMoon",
-    tokenTicker: "SNAIL",
-    durationSeconds: 3600,
-    openPrice: "0.000019",
-    openLiquidity: "5400",
-    devWallet: "6sNaDemoDevWallet666666666666666666666666666",
-    survivePool: "680000000",
-    rugPool: "4320000000",
-  },
-  {
-    tokenMint: "8kR2vN5mQp9Ls4Wx7Tc6Yh2Fj8Bq1Pn3Km9Rv5Lw8Xz1",
-    tokenName: "GhostCat",
-    tokenTicker: "GHOST",
-    durationSeconds: 7200,
-    openPrice: "0.000088",
-    openLiquidity: "31000",
-    devWallet: "7gCaDemoDevWallet777777777777777777777777777",
-    survivePool: "2100000000",
-    rugPool: "6900000000",
-  },
-  {
-    tokenMint: "4pM7aC9nQ3rT6vX2wY8zB4cD7eF1gH5jK8mN2qR6tV0",
-    tokenName: "LaserBull",
-    tokenTicker: "LBULL",
-    durationSeconds: 43200,
-    openPrice: "0.000156",
-    openLiquidity: "52000",
-    devWallet: "8lBuDemoDevWallet888888888888888888888888888",
-    survivePool: "9800000000",
-    rugPool: "3200000000",
-  },
-  {
-    tokenMint: "2nK5bD8mP1sQ4eF7gH0jL3nR6tU9vX2wY5zA8cB1dE4fG7",
-    tokenName: "ZenFrog",
-    tokenTicker: "ZEN",
+    tokenMint: "7GCihgDB8fe6KNjn2MYtkzZcRjQy3f9EqDu4Q1X6qNbm",
+    tokenName: "Popcat",
+    tokenTicker: "POPCAT",
     durationSeconds: 86400,
-    openPrice: "0.00341",
-    openLiquidity: "112000",
-    devWallet: "9zFrDemoDevWallet999999999999999999999999999",
-    survivePool: "18700000000",
-    rugPool: "5300000000",
+    openPrice: "1.12",
+    openLiquidity: "6800000",
+    devWallet: "9pKrDemoDevWallet33333333333333333333333",
+    survivePool: "9200000000",
+    rugPool: "7400000000",
+    ageMinutes: 410,
+  },
+  {
+    tokenMint: "JUPyiwrYJFskUPiHa7Pk6aM5XBVCTjPzcs6kHarD9p",
+    tokenName: "Jupiter",
+    tokenTicker: "JUP",
+    durationSeconds: 3600,
+    openPrice: "0.92",
+    openLiquidity: "18500000",
+    devWallet: "3xChDemoDevWallet44444444444444444444444",
+    survivePool: "11200000000",
+    rugPool: "3600000000",
+    ageMinutes: 42,
+  },
+  {
+    tokenMint: "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
+    tokenName: "Raydium",
+    tokenTicker: "RAY",
+    durationSeconds: 21600,
+    openPrice: "3.18",
+    openLiquidity: "9200000",
+    devWallet: "4wOjDemoDevWallet55555555555555555555555",
+    survivePool: "3800000000",
+    rugPool: "10200000000",
+    ageMinutes: 220,
+  },
+  {
+    tokenMint: "MEW1gQWJ3nEXg2qgERiKu7FAFj79PHvQVREQUzScPP5",
+    tokenName: "cat in a dogs world",
+    tokenTicker: "MEW",
+    durationSeconds: 3600,
+    openPrice: "0.0068",
+    openLiquidity: "2100000",
+    devWallet: "5dPaDemoDevWallet66666666666666666666666",
+    survivePool: "6400000000",
+    rugPool: "8900000000",
+    ageMinutes: 7,
+  },
+  {
+    tokenMint: "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN",
+    tokenName: "OFFICIAL TRUMP",
+    tokenTicker: "TRUMP",
+    durationSeconds: 21600,
+    openPrice: "12.40",
+    openLiquidity: "42000000",
+    devWallet: "6sNaDemoDevWallet77777777777777777777777",
+    survivePool: "14800000000",
+    rugPool: "5200000000",
+    ageMinutes: 155,
   },
 ] as const;
 
@@ -200,32 +185,17 @@ const betsTemplate: Array<{
   { marketIndex: 4, userIndex: 2, side: "rug", amountLamports: LAMPORTS.four },
   { marketIndex: 4, userIndex: 3, side: "survive", amountLamports: LAMPORTS.one },
   { marketIndex: 4, userIndex: 4, side: "rug", amountLamports: LAMPORTS.twoHalf },
-  { marketIndex: 5, userIndex: 1, side: "survive", amountLamports: LAMPORTS.eight },
-  { marketIndex: 5, userIndex: 2, side: "survive", amountLamports: LAMPORTS.four },
-  { marketIndex: 5, userIndex: 3, side: "rug", amountLamports: LAMPORTS.two },
-  { marketIndex: 5, userIndex: 4, side: "survive", amountLamports: LAMPORTS.three },
-  { marketIndex: 5, userIndex: 5, side: "rug", amountLamports: LAMPORTS.oneHalf },
-  { marketIndex: 6, userIndex: 0, side: "survive", amountLamports: LAMPORTS.half },
-  { marketIndex: 6, userIndex: 1, side: "rug", amountLamports: LAMPORTS.four },
-  { marketIndex: 6, userIndex: 2, side: "rug", amountLamports: LAMPORTS.two },
-  { marketIndex: 6, userIndex: 3, side: "survive", amountLamports: LAMPORTS.one },
-  { marketIndex: 6, userIndex: 4, side: "rug", amountLamports: LAMPORTS.three },
-  { marketIndex: 7, userIndex: 0, side: "rug", amountLamports: LAMPORTS.three },
-  { marketIndex: 7, userIndex: 1, side: "survive", amountLamports: LAMPORTS.one },
-  { marketIndex: 7, userIndex: 2, side: "rug", amountLamports: LAMPORTS.twoHalf },
-  { marketIndex: 7, userIndex: 3, side: "rug", amountLamports: LAMPORTS.four },
-  { marketIndex: 7, userIndex: 5, side: "survive", amountLamports: LAMPORTS.half },
-  { marketIndex: 8, userIndex: 1, side: "survive", amountLamports: LAMPORTS.six },
-  { marketIndex: 8, userIndex: 2, side: "survive", amountLamports: LAMPORTS.five },
-  { marketIndex: 8, userIndex: 3, side: "rug", amountLamports: LAMPORTS.two },
-  { marketIndex: 8, userIndex: 4, side: "survive", amountLamports: LAMPORTS.three },
-  { marketIndex: 8, userIndex: 5, side: "rug", amountLamports: LAMPORTS.oneHalf },
-  { marketIndex: 9, userIndex: 0, side: "survive", amountLamports: LAMPORTS.ten },
-  { marketIndex: 9, userIndex: 1, side: "survive", amountLamports: LAMPORTS.eight },
-  { marketIndex: 9, userIndex: 2, side: "rug", amountLamports: LAMPORTS.three },
-  { marketIndex: 9, userIndex: 3, side: "survive", amountLamports: LAMPORTS.four },
-  { marketIndex: 9, userIndex: 4, side: "rug", amountLamports: LAMPORTS.two },
-  { marketIndex: 9, userIndex: 5, side: "survive", amountLamports: LAMPORTS.twoHalf },
+  { marketIndex: 5, userIndex: 0, side: "rug", amountLamports: LAMPORTS.two },
+  { marketIndex: 5, userIndex: 1, side: "survive", amountLamports: LAMPORTS.oneHalf },
+  { marketIndex: 5, userIndex: 2, side: "rug", amountLamports: LAMPORTS.four },
+  { marketIndex: 5, userIndex: 3, side: "rug", amountLamports: LAMPORTS.twoHalf },
+  { marketIndex: 5, userIndex: 4, side: "survive", amountLamports: LAMPORTS.one },
+  { marketIndex: 6, userIndex: 0, side: "survive", amountLamports: LAMPORTS.ten },
+  { marketIndex: 6, userIndex: 1, side: "survive", amountLamports: LAMPORTS.eight },
+  { marketIndex: 6, userIndex: 2, side: "rug", amountLamports: LAMPORTS.three },
+  { marketIndex: 6, userIndex: 3, side: "survive", amountLamports: LAMPORTS.four },
+  { marketIndex: 6, userIndex: 4, side: "rug", amountLamports: LAMPORTS.two },
+  { marketIndex: 6, userIndex: 5, side: "survive", amountLamports: LAMPORTS.twoHalf },
 ];
 
 const txPrefix = "demo_tx_";
@@ -245,6 +215,17 @@ async function main(): Promise<void> {
   await prisma.bet.deleteMany({
     where: { txSignature: { startsWith: txPrefix } },
   });
+
+  const priorDemoMarkets = await prisma.market.findMany({
+    where: { creatorWallet: seed.creatorWallet },
+    select: { id: true },
+  });
+  if (priorDemoMarkets.length > 0) {
+    const ids = priorDemoMarkets.map((m) => m.id);
+    await prisma.bet.deleteMany({ where: { marketId: { in: ids } } });
+    await prisma.market.deleteMany({ where: { id: { in: ids } } });
+  }
+
   await prisma.market.deleteMany({
     where: {
       tokenMint: {
@@ -252,13 +233,17 @@ async function main(): Promise<void> {
       },
     },
   });
-  console.log("[setup-demo] Removed prior demo rows (same mints / tx prefix).");
+  console.log(
+    "[setup-demo] Removed prior demo rows (creator wallet, mints, tx prefix).",
+  );
 
   const now = Date.now();
+  const demoTtlMs = DEMO_MARKET_TTL_DAYS * 24 * 60 * 60 * 1000;
   const createdMarkets = [];
 
   for (const m of seed.markets) {
-    const expiresAt = new Date(now + m.durationSeconds * 1000);
+    const expiresAt = new Date(now + demoTtlMs);
+    const createdAt = new Date(now - m.ageMinutes * 60 * 1000);
     const row = await prisma.market.create({
       data: {
         tokenMint: m.tokenMint,
@@ -267,6 +252,8 @@ async function main(): Promise<void> {
         creatorWallet: seed.creatorWallet,
         durationSeconds: m.durationSeconds,
         expiresAt,
+        createdAt,
+        openSnapshotAt: createdAt,
         survivePool: m.survivePool,
         rugPool: m.rugPool,
         openPrice: m.openPrice,
@@ -352,6 +339,7 @@ async function main(): Promise<void> {
     markets: createdMarkets.length,
     bets: createdBets.length,
     demoUsers: seed.userWallets.length,
+    demoTtlDays: DEMO_MARKET_TTL_DAYS,
   });
 }
 
