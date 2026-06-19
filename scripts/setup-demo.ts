@@ -1,8 +1,8 @@
 /**
  * Seeds 7 demo markets and bets for local / showcase environments.
  *
- * Markets use real Solana mints (charts via DexScreener), stay open ~60 days
- * (override with DEMO_MARKET_TTL_DAYS), and include realistic pool + bet volume.
+ * Markets use real Solana mints (charts via DexScreener), each with its own
+ * duration (1h / 6h / 24h). Re-run this script to refresh countdowns.
  *
  * Run from repo root:
  *   pnpm setup-demo
@@ -32,12 +32,6 @@ if (process.env.DATABASE_URL.toLowerCase().includes("placeholder")) {
 }
 
 const creatorWallet = "7u1f7PjM9n4EsrA8sNpR8uS3Yf9rE7d8qJgN5H2k6LmP";
-
-/** Demo markets stay open long enough for judges / reviewers (default ~60 days). */
-const DEMO_MARKET_TTL_DAYS = Number.parseInt(
-  process.env.DEMO_MARKET_TTL_DAYS ?? "60",
-  10,
-);
 
 const userWallets = [
   "8hW9v5kKx2Yq8M4s3Zr6Nf2Dq7Pj4Lw1Tg9sVb6mQeY2",
@@ -238,12 +232,16 @@ async function main(): Promise<void> {
   );
 
   const now = Date.now();
-  const demoTtlMs = DEMO_MARKET_TTL_DAYS * 24 * 60 * 60 * 1000;
   const createdMarkets = [];
 
   for (const m of seed.markets) {
-    const expiresAt = new Date(now + demoTtlMs);
-    const createdAt = new Date(now - m.ageMinutes * 60 * 1000);
+    const durationMs = m.durationSeconds * 1000;
+    const ageMs = Math.min(
+      m.ageMinutes * 60 * 1000,
+      Math.max(durationMs - 60_000, 0),
+    );
+    const createdAt = new Date(now - ageMs);
+    const expiresAt = new Date(createdAt.getTime() + durationMs);
     const row = await prisma.market.create({
       data: {
         tokenMint: m.tokenMint,
@@ -339,7 +337,6 @@ async function main(): Promise<void> {
     markets: createdMarkets.length,
     bets: createdBets.length,
     demoUsers: seed.userWallets.length,
-    demoTtlDays: DEMO_MARKET_TTL_DAYS,
   });
 }
 
