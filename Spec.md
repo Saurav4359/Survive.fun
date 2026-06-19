@@ -872,7 +872,7 @@ Evening:
 → Deploy to Vercel + Railway
 → Record backup demo video
 → Practice pitch 20 times
-→ Submit to Colosseum + 100xDevs
+→ Ship launch
 ```
 
 ---
@@ -1079,7 +1079,7 @@ survivefun/
 
 ## 15. Pitch Script
 
-### For 100xDevs + Colosseum Judges
+### Pitch Script
 
 ```
 "$500 million lost to memecoin rugs in 2024.
@@ -1112,5 +1112,3 @@ Rug risk is now a liquid market."
 ---
 
 > **Survive.fun** — Pump.fun lets you buy the coin. We let you bet on whether it survives.
->
-> Built for Colosseum Frontier Hackathon + 100xDevs Track 2025.

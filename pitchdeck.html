@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Survive.fun — Pitch Deck</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #000000;
+      --surface: #0a0a0a;
+      --card: #111111;
+      --border: #1a1a1a;
+      --accent: #a3e635;
+      --accent-dim: #7cb518;
+      --survive: #a3e635;
+      --rug: #ef4444;
+      --text: #ffffff;
+      --muted: #737373;
+      --muted-dim: #525252;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Space Grotesk", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .deck {
+      height: 100vh;
+      width: 100vw;
+      position: relative;
+    }
+
+    .slide {
+      display: none;
+      height: 100vh;
+      width: 100vw;
+      padding: 3.5rem 4.5rem 5rem;
+      flex-direction: column;
+      justify-content: space-between;
+      animation: fadeIn 0.35s ease;
+    }
+
+    .slide.active {
+      display: flex;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .slide-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.25rem;
+    }
+
+    .brand {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    .slide-num {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.7rem;
+      color: var(--muted-dim);
+      letter-spacing: 0.1em;
+    }
+
+    .slide-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      max-width: 1100px;
+      padding: 2rem 0;
+    }
+
+    .slide-body.wide {
+      max-width: 1200px;
+    }
+
+    h1 {
+      font-size: clamp(2.5rem, 5vw, 4rem);
+      font-weight: 700;
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+      margin-bottom: 1.5rem;
+    }
+
+    h1 .accent { color: var(--accent); }
+    h1 .rug { color: var(--rug); }
+
+    h2 {
+      font-size: clamp(1.75rem, 3vw, 2.5rem);
+      font-weight: 700;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      margin-bottom: 1.25rem;
+    }
+
+    .tagline {
+      font-size: clamp(1.1rem, 2vw, 1.45rem);
+      color: var(--muted);
+      line-height: 1.5;
+      max-width: 52rem;
+    }
+
+    .quote {
+      font-size: clamp(1.25rem, 2.2vw, 1.75rem);
+      font-weight: 600;
+      line-height: 1.4;
+      border-left: 3px solid var(--accent);
+      padding-left: 1.5rem;
+      margin-top: 1rem;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+      margin-top: 1.5rem;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem;
+      margin-top: 1.5rem;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      padding: 1.25rem 1.5rem;
+    }
+
+    .card.accent-top {
+      border-top: 2px solid var(--accent);
+    }
+
+    .card.rug-top {
+      border-top: 2px solid var(--rug);
+    }
+
+    .card h3 {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .card .value {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .card .value.rug { color: var(--rug); }
+
+    .card p {
+      font-size: 0.9rem;
+      color: var(--muted);
+      line-height: 1.45;
+      margin-top: 0.35rem;
+    }
+
+    ul.clean {
+      list-style: none;
+      margin-top: 1rem;
+    }
+
+    ul.clean li {
+      position: relative;
+      padding-left: 1.25rem;
+      margin-bottom: 0.65rem;
+      font-size: 1.05rem;
+      line-height: 1.45;
+      color: #d4d4d4;
+    }
+
+    ul.clean li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0.55em;
+      width: 6px;
+      height: 6px;
+      background: var(--accent);
+    }
+
+    ul.clean li.rug::before { background: var(--rug); }
+
+    .flow {
+      display: flex;
+      align-items: stretch;
+      gap: 0;
+      margin-top: 1.5rem;
+      flex-wrap: wrap;
+    }
+
+    .flow-step {
+      flex: 1;
+      min-width: 140px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      padding: 1rem 1.1rem;
+      position: relative;
+    }
+
+    .flow-step .num {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.65rem;
+      color: var(--accent);
+      letter-spacing: 0.15em;
+      margin-bottom: 0.4rem;
+    }
+
+    .flow-step strong {
+      display: block;
+      font-size: 0.95rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .flow-step span {
+      font-size: 0.8rem;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+
+    .flow-arrow {
+      display: flex;
+      align-items: center;
+      color: var(--muted-dim);
+      font-size: 1.25rem;
+      padding: 0 0.35rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1.25rem;
+      font-size: 0.88rem;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 0.75rem 1rem;
+      border: 1px solid var(--border);
+    }
+
+    th {
+      background: var(--card);
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    td { color: #d4d4d4; }
+
+    .yes { color: var(--survive); font-weight: 600; }
+    .no { color: var(--rug); }
+    .partial { color: #f59e0b; }
+
+    .analogy {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 1.5rem;
+      align-items: center;
+      margin-top: 1.5rem;
+    }
+
+    .analogy-side {
+      background: var(--card);
+      border: 1px solid var(--border);
+      padding: 1.5rem;
+    }
+
+    .analogy-side h4 {
+      font-size: 0.7rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .analogy-side .name {
+      font-size: 1.35rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+
+    .analogy-vs {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.75rem;
+      color: var(--muted-dim);
+    }
+
+    .slide-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px solid var(--border);
+      padding-top: 1rem;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.65rem;
+      color: var(--muted-dim);
+      letter-spacing: 0.08em;
+    }
+
+    .nav-hint {
+      color: var(--muted-dim);
+    }
+
+    .progress {
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 2px;
+      background: var(--accent);
+      transition: width 0.3s ease;
+      z-index: 100;
+    }
+
+    .nav-btn {
+      position: fixed;
+      bottom: 2rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      width: 44px;
+      height: 44px;
+      cursor: pointer;
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      transition: border-color 0.2s, color 0.2s;
+    }
+
+    .nav-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .nav-btn.prev { left: 2rem; }
+    .nav-btn.next { right: 2rem; }
+
+    .mono {
+      font-family: "JetBrains Mono", monospace;
+    }
+
+    .small {
+      font-size: 0.85rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .stat-row {
+      display: flex;
+      gap: 3rem;
+      margin-top: 2rem;
+      flex-wrap: wrap;
+    }
+
+    .stat-item .num {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: var(--accent);
+      line-height: 1;
+    }
+
+    .stat-item .num.rug { color: var(--rug); }
+
+    .stat-item .label {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 0.35rem;
+      max-width: 12rem;
+    }
+
+    @media (max-width: 900px) {
+      .slide { padding: 2rem 1.5rem 4rem; }
+      .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+      .analogy { grid-template-columns: 1fr; }
+      .flow-arrow { display: none; }
+    }
+
+    @media print {
+      .slide {
+        display: flex !important;
+        page-break-after: always;
+        height: auto;
+        min-height: 100vh;
+      }
+      .nav-btn, .progress, .nav-hint { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="progress" id="progress"></div>
+
+  <div class="deck" id="deck">
+
+    <!-- 1: Title -->
+    <section class="slide active" data-slide="1">
+      <div class="slide-header">
+        <span class="brand">Survive.fun</span>
+        <span class="slide-num">01 / 14</span>
+      </div>
+      <div class="slide-body">
+        <h1>The first on-chain<br /><span class="accent">memecoin survival</span><br />prediction market</h1>
+        <p class="tagline">Pump.fun lets anyone launch a coin. Survive.fun lets anyone trade whether that coin survives.</p>
+        <p class="quote">Bet on <span class="accent">SURVIVE</span> or <span class="rug">RUG</span> — before the outcome is obvious.</p>
+      </div>
+      <div class="slide-footer">
+        <span>survive.fun</span>
+        <span class="nav-hint">← → or click to advance</span>
+      </div>
+    </section>
+
+    <!-- 2: Problem -->
+    <section class="slide" data-slide="2">
+      <div class="slide-header">
+        <span class="brand">Problem</span>
+        <span class="slide-num">02 / 14</span>
+      </div>
+      <div class="slide-body">
+        <h2>Memecoin traders lose billions with no way to act on rug risk</h2>
+        <div class="stat-row">
+          <div class="stat-item">
+            <div class="num rug">$6B</div>
+            <div class="label">Lost to crypto rug pulls in 2025 (DappRadar)</div>
+          </div>
+          <div class="stat-item">
+            <div class="num rug">$500M+</div>
+            <div class="label">Memecoin rug pulls &amp; scams in 2024 alone (Merkle Science / CoinDesk)</div>
+          </div>
+          <div class="stat-item">
+            <div class="num">57%</div>
+            <div class="label">Share of Solana memecoin volume moving to prediction markets by late 2025 (Blockworks)</div>
+          </div>
+        </div>
+        <ul class="clean" style="margin-top: 2rem;">
+          <li>Traders see dev wallets, thin liquidity, and pump patterns — but can only buy the token and hope</li>
+          <li class="rug">When the rug hits, spot holders lose everything. There is no hedge and no way to profit from calling the dump</li>
+          <li>Scanners warn you. Launchpads try to prevent rugs. Nobody offers a liquid market on the outcome itself</li>
+        </ul>
+      </div>
+      <div class="slide-footer">
+        <span>Survive.fun</span>
+        <span>Market opportunity</span>
+      </div>
+    </section>
+
+    <!-- 3: Solution -->
+    <section class="slide" data-slide="3">
+      <div class="slide-header">
+        <span class="brand">Solution</span>
+        <span class="slide-num">03 / 14</span>
+      </div>
+      <div class="slide-body">
+        <h2>A rug/default market for live Pump.fun tokens</h2>
+        <p class="tagline">Survive.fun is a prediction market where traders stake SOL on whether a memecoin survives the window or rugs — resolved by objective on-chain signals, not human judges.</p>
+        <div class="grid-2">
+          <div class="card accent-top">
+            <h3>Pump.fun user</h3>
+            <p><strong style="color: var(--text);">Buys the token</strong><br />Owns the bag. Hopes price goes up. Gets rugged → loses principal.</p>
+          </div>
+          <div class="card rug-top">
+            <h3>Survive.fun user</h3>
+            <p><strong style="color: var(--text);">Bets on the outcome</strong><br />Never needs to hold the token. Calls RUG → wins pool when rug criteria fire.</p>
+          </div>
+        </div>
+        <p class="quote" style="margin-top: 1.5rem;">"I bought a bag. I can now buy protection or short the rug."</p>
+      </div>
+      <div class="slide-footer">
+        <span>survive.fun</span>
+        <span>New Solana-native trading primitive</span>
+      </div>
+    </section>
+
+    <!-- 4: How it works -->
+    <section class="slide" data-slide="4">
+      <div class="slide-header">
+        <span class="brand">Product</span>
+        <span class="slide-num">04 / 14</span>
+      </div>
+      <div class="slide-body wide">
+        <h2>How it works</h2>
+        <div class="flow">
+          <div class="flow-step">
+            <div class="num">01</div>
+            <strong>Paste token</strong>
+            <span>Any Pump.fun mint — including newly launched tokens via Pump.fun API fallback</span>
+          </div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-step">
+            <div class="num">02</div>
+            <strong>Create market</strong>
+            <span>1h / 6h / 24h duration. Pools seeded on-chain. Live odds chart.</span>
+          </div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-step">
+            <div class="num">03</div>
+            <strong>Pick a side</strong>
+            <span>Stake SOL on SURVIVE or RUG. Escrow locked in Anchor program.</span>
+          </div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-step">
+            <div class="num">04</div>
+            <strong>Auto-resolve</strong>
+            <span>Helius + DexScreener watch chain. Resolver runs every 30s.</span>
+          </div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-step">
+            <div class="num">05</div>
+            <strong>Claim payout</strong>
+            <span>Winners split losing pool (minus 2% fee). Trustless claim on Solana.</span>
+          </div>
+        </div>
+        <ul class="clean" style="margin-top: 1.75rem;">
+          <li><strong class="rug">RUG wins</strong> if any objective rug event fires before expiry</li>
+          <li><strong class="accent">SURVIVE wins</strong> if the timer expires with no rug event detected</li>
+        </ul>
+      </div>
+      <div class="slide-footer">
+        <span>Core loop</span>
+        <span>Paste → Bet → Watch → Resolve → Pay</span>
+      </div>
+    </section>
+
+    <!-- 5: Resolution -->
+    <section class="slide" data-slide="5">
+      <div class="slide-header">
+        <span class="brand">Resolution</span>
+        <span class="slide-num">05 / 14</span>
+      </div>
+      <div class="slide-body">
+        <h2>Objective rug criteria — code decides, not humans</h2>
+        <p class="tagline">Resolution is driven by verifiable on-chain and market data. Any one condition triggers RUG.</p>
+        <div class="grid-2">
+          <ul class="clean">
+            <li class="rug"><strong>Dev dump</strong> — Creator wallet sells &gt;25% of holdings (Helius transaction history)</li>
+            <li class="rug"><strong>Price collapse</strong> — Token drops &gt;90% from market-open price (DexScreener)</li>
+            <li class="rug"><strong>Liquidity pull</strong> — Liquidity removed &gt;80% vs open snapshot (DexScreener)</li>
+            <li class="rug"><strong>Failed graduation</strong> — Token fails to graduate after reaching defined bonding-curve stage (roadmap)</li>
+          </ul>
+          <div class="card accent-top">
+            <h3>Survive condition</h3>
+            <p style="color: var(--text); font-size: 1rem; margin-bottom: 0.75rem;">Market duration elapses with <strong>zero</strong> rug triggers.</p>
+            <p>Backend resolver (BullMQ, 30s) → <span class="mono">resolve_market</span> on-chain → winners claim via <span class="mono">claim_payout</span>.</p>
+            <p style="margin-top: 0.75rem; font-size: 0.8rem;">Early rug resolution supported on-chain (expiry gate removed for MVP).</p>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span>Trust model</span>
+        <span>Automated · Auditable · No manual outcome votes</span>
+      </div>
+    </section>
+
+    <!-- 6: Market -->
+    <section class="slide" data-slide="6">
+      <div class="slide-header">
+        <span class="brand">Market</span>
+        <span class="slide-num">06 / 14</span>
+      </div>
+      <div class="slide-body">
+        <h2>The derivatives layer Pump.fun never built</h2>
+        <div class="analogy">
+          <div class="analogy-side">
+            <h4>Spot</h4>
+            <div class="name">Pump.fun</div>
+            <p class="small">Launch and buy memecoins on the bonding curve. Own the token. Price exposure only.</p>
+          </div>
+          <div class="analogy-vs">↔</div>
+          <div class="analogy-side">
+            <h4>Outcome market</h4>
+            <div class="name" style="color: var(--accent);">Survive.fun</div>
+            <p class="small">Trade survival probability on any live Pump.fun token. Hedge rug risk or speculate on the dump.</p>
+          </div>
+        </div>
+        <div class="grid-3" style="margin-top: 2rem;">
+          <div class="card">
+            <h3>Demand signal</h3>
+            <p>Prediction market volume on Solana grew from &lt;10% to 57% of memecoin volume (Aug–Nov 2025)</p>
+          </div>
+          <div class="card">
+            <h3>Supply</h3>
+            <p>Pump.fun: millions of token launches, continuous new mints — ideal for short-duration survival markets</p>
+          </div>
+          <div class="card accent-top">
+            <h3>Gap</h3>
+            <p>No clean public product offering one-click tradable rug/default protection on <em>existing</em> Pump.fun tokens</p>
+          </div>
+        </div>
+        <p class="quote" style="margin-top: 1.5rem; font-size: 1.15rem;">Pump.fun is Binance. Survive.fun is Exness — for memecoin survival.</p>
+      </div>
+      <div class="slide-footer">
+        <span>TAM narrative</span>
+        <span>Rug risk → liquid market</span>
+      </div>
+    </section>
+
+    <!-- 7: Competition -->
+    <section class="slide" data-slide="7">
+      <div class="slide-header">
+        <span class="brand">Competition</span>
+        <span class="slide-num">07 / 14</span>
+      </div>
+      <div class="slide-body wide">
+        <h2>Two names in the conversation — neither is a direct match</h2>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Polymarket</h3>
+            <p style="color: var(--text); font-weight: 600; font-size: 0.95rem;">Adjacent, not a direct competitor</p>
+            <p>General prediction markets — politics, sports, macro. Not memecoin-native. No flow to paste an existing Pump.fun mint and bet SURVIVE vs RUG in a 1h/6h/24h window. Resolution is human- or oracle-led, not tuned for per-token rug signals on Solana.</p>
+          </div>
+          <div class="card">
+            <h3>dum.fun</h3>
+            <p style="color: var(--text); font-weight: 600; font-size: 0.95rem;">Pump.fun meets Polymarket — different product</p>
+            <p>The Solana memecoin launchpad with prediction markets on every token <em>they</em> launch. Launch a coin in seconds. Bet YES/NO on whether it rugs, moons, or graduates to Raydium. Markets resolve automatically from on-chain signals — profit from calling a rug, not just being early.</p>
+            <p style="margin-top: 0.6rem; font-size: 0.85rem; color: #a8a8a8;">Ireland Superteam grant · Nov 2025 · Still not live on mainnet.</p>
+          </div>
+        </div>
+        <div class="card accent-top" style="margin-top: 1.25rem;">
+          <h3>Survive.fun</h3>
+          <p style="color: var(--accent); font-weight: 600; font-size: 0.95rem;">Survival prediction market only — no token launch</p>
+          <p>We do not compete with Pump.fun on launching coins. Paste <strong>any</strong> token already live on Pump.fun → open a SURVIVE vs RUG market → auto-resolve from on-chain rules. Complements the launchpad; does not replace it. MVP live on devnet today.</p>
+        </div>
+        <p class="quote" style="margin-top: 1.25rem; font-size: 1.05rem;">dum.fun wants you to launch and bet on their mints. We let you bet on survival for mints that already exist.</p>
+      </div>
+      <div class="slide-footer">
+        <span>Differentiation</span>
+        <span>Not a launchpad · Not Polymarket · A survival market</span>
+      </div>
+    </section>
+
+    <!-- 8: Moat -->
+    <section class="slide" data-slide="8">
+      <div class="slide-header">
+        <span class="brand">Why us</span>
+        <span class="slide-num">08 / 14</span>
+      </div>
+      <div class="slide-body">
+        <h2>Why traders should care</h2>
+        <div class="grid-2">
+          <ul class="clean">
+            <li><strong>New primitive</strong> — Rug risk as a tradeable outcome on Solana</li>
+            <li><strong>Pump.fun native</strong> — Works on tokens already live, not only new launches</li>
+            <li><strong>Live MVP</strong> — Anchor program, resolver, UI, real devnet markets &amp; bets</li>
+            <li><strong>Crypto-native UX</strong> — Degens understand SURVIVE vs RUG in one second</li>
+          </ul>
+          <ul class="clean">
+            <li><strong>Real pain</strong> — Billions lost; traders want to express a view on survival</li>
+            <li><strong>Not another launchpad</strong> — Complements Pump.fun; does not compete on token creation</li>
+            <li><strong>Honest risk posture</strong> — Position limits, platform-seeded pools, on-chain-first resolution</li>
+            <li><strong>Timing</strong> — Memecoins + prediction markets both at peak Solana attention</li>
+          </ul>
+        </div>
+        <p class="quote" style="margin-top: 1.25rem;">Every other tool tells you a coin might rug. We let you profit when it does.</p>
+      </div>
+      <div class="slide-footer">
+        <span>Innovation</span>
+        <span>Execution · UX · Completeness</span>
+      </div>
+    </section>
+
+    <!-- 9: Business model -->
+    <section class="slide" data-slide="9">
+      <div class="slide-header">
+        <span class="brand">Business model</span>
+        <span class="slide-num">09 / 14</span>
+      </div>
+      <div class="slide-body">
+        <h2>Revenue scales with pool volume</h2>
+        <div class="grid-4">
+          <div class="card accent-top">
+            <h3>Platform fee</h3>
+            <div class="value">2%</div>
+            <p>Of losing pool on every resolution — taken automatically in <span class="mono">claim_payout</span></p>
+          </div>
+          <div class="card">
+            <h3>Example</h3>
+            <p><span class="mono">SURVIVE $240 · RUG $180</span><br />RUG wins → fee ≈ <strong style="color: var(--accent);">$4.80</strong> on $240 losing pool</p>
+          </div>
+          <div class="card">
+            <h3>At scale</h3>
+            <p>100 markets/day × $200 avg pool → ~<strong>$400/day</strong> fees → ~$12k/month</p>
+          </div>
+          <div class="card">
+            <h3>Future</h3>
+            <p>Market creation fee · Premium rug signals · API for traders &amp; bots</p>
+          </div>
+        </div>
+        <ul class="clean" style="margin-top: 1.5rem;">
+          <li>Bet limits: $1–$50 USDC/SOL per wallet (MVP) — limits insider manipulation cost</li>
+          <li>Platform seeds both sides at market creation so empty pools are never shown to first users</li>
+        </ul>
+      </div>
+      <div class="slide-footer">
+        <span>Unit economics</span>
+        <span>Volume-linked · Protocol-native</span>
+      </div>
+    </section>
+
+    <!-- 10: GTM -->
+    <section class="slide" data-slide="10">
+      <div class="slide-header">
+        <span class="brand">Go-to-market</span>
+        <span class="slide-num">10 / 14</span>
+      </div>
+      <div class="slide-body">
+        <h2>Cold start → organic degen growth</h2>
+        <div class="grid-3">
+          <div class="card">
+            <h3>Week 0 — Launch</h3>
+            <p>Devnet demo · Seeded markets · Community wallets · Twitter proof (live charts, real bets)</p>
+          </div>
+          <div class="card">
+            <h3>Week 1–2 — Crypto Twitter</h3>
+            <p>"Bet whether $TICKER rugs in 1h" on trending Pump.fun tokens · Pump.fun TG groups · Influencer challenge bets</p>
+          </div>
+          <div class="card accent-top">
+            <h3>Week 3+ — Incentives</h3>
+            <p>First N bets loss coverage · Leaderboard · Rug-caller reputation · Mainnet + audit</p>
+          </div>
+        </div>
+        <p class="tagline" style="margin-top: 1.5rem;">Helius webhooks auto-create markets on new Pump.fun mints (optional). Users can also paste any mint manually — core USP for newly launched tokens.</p>
+      </div>
+      <div class="slide-footer">
+        <span>Growth</span>
+        <span>Product-led · Meme-native distribution</span>
+      </div>
+    </section>
+
+    <!-- 11: Tech -->
+    <section class="slide" data-slide="11">
+      <div class="slide-header">
+        <span class="brand">Technology</span>
+        <span class="slide-num">11 / 14</span>
+      </div>
+      <div class="slide-body wide">
+        <h2>Started days ago — this is the MVP</h2>
+        <div class="grid-2">
+          <div>
+            <h3 style="font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.75rem;">On-chain</h3>
+            <ul class="clean">
+              <li>Solana · Anchor · SPL (SOL/USDC escrow)</li>
+              <li>Instructions: <span class="mono">create_market · place_bet · resolve_market · claim_payout</span></li>
+              <li>Program ID (devnet): <span class="mono" style="font-size: 0.75rem;">9ZqPpXBid4xzB49HjB7zE6BnTWryMuuZFTULTSJqqTd8</span></li>
+            </ul>
+          </div>
+          <div>
+            <h3 style="font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.75rem;">Off-chain</h3>
+            <ul class="clean">
+              <li>Express · Prisma · PostgreSQL · Redis · BullMQ</li>
+              <li>Socket.io live pools, bets, resolutions</li>
+              <li>Helius webhooks · DexScreener · Birdeye · Pump.fun API</li>
+            </ul>
+          </div>
+        </div>
+        <div class="grid-2" style="margin-top: 1rem;">
+          <div>
+            <h3 style="font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.75rem;">Frontend</h3>
+            <ul class="clean">
+              <li>Next.js 14 · Phantom wallet · TradingView Lightweight Charts</li>
+              <li>Live RUG % probability chart · Risk signals · GSAP motion</li>
+            </ul>
+          </div>
+          <div>
+            <h3 style="font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.75rem;">Status</h3>
+            <ul class="clean">
+              <li class="accent">Live on devnet · Vercel frontend · Real bets &amp; claims tested</li>
+              <li>Mainnet path: audit (OtterSec/Sec3) · legal review · liquidity seed</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span>Stack</span>
+        <span>Monorepo · Turborepo · TypeScript end-to-end</span>
+      </div>
+    </section>
+
+    <!-- 12: Risks -->
+    <section class="slide" data-slide="12">
+      <div class="slide-header">
+        <span class="brand">Risks</span>
+        <span class="slide-num">12 / 14</span>
+      </div>
+      <div class="slide-body wide">
+        <h2>Known risks — and how we mitigate</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Risk</th>
+              <th>Mitigation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Insider manipulation (dev bets RUG then rugs)</td>
+              <td>Per-wallet bet caps · Reputation scoring (roadmap) · Public wallet history on leaderboard</td>
+            </tr>
+            <tr>
+              <td>Oracle / data dependency (DexScreener, Helius)</td>
+              <td>Multi-source fallbacks (Pump.fun → DexScreener → Birdeye) · On-chain tx verification for bets · Transparent rule thresholds</td>
+            </tr>
+            <tr>
+              <td>Thin liquidity on new markets</td>
+              <td>Platform seeds both pools at creation · Concentrate marketing on hot tokens</td>
+            </tr>
+            <tr>
+              <td>Regulatory (prediction / gambling)</td>
+              <td>Position as risk markets · Geo restrictions · Legal entity (UAE/SG roadmap) at scale</td>
+            </tr>
+            <tr>
+              <td>Competition (dum.fun launchpad overlap)</td>
+              <td>No token launch — bet on any existing Pump.fun mint · Devnet MVP live · dum.fun still pre-mainnet after Nov 2025 Superteam grant</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="slide-footer">
+        <span>Honest founder view</span>
+        <span>Flawed but viable — same as Polymarket at launch</span>
+      </div>
+    </section>
+
+    <!-- 13: Team -->
+    <section class="slide" data-slide="13">
+      <div class="slide-header">
+        <span class="brand">Team</span>
+        <span class="slide-num">13 / 14</span>
+      </div>
+      <div class="slide-body">
+        <h2>Solo founder — full-time builder</h2>
+        <div class="grid-2">
+          <div class="card accent-top">
+            <h3>Founder</h3>
+            <p style="color: var(--text); font-size: 1.1rem; font-weight: 600;">Saurav Sharma</p>
+            <p style="margin-top: 0.5rem;">India (Greater Noida) · Started days ago · Solo full-time builder · What you see is the MVP</p>
+          </div>
+          <div class="card">
+            <h3>Next hires</h3>
+            <ul class="clean" style="margin-top: 0.5rem;">
+              <li>Smart contract security / audit lead</li>
+              <li>Growth — crypto Twitter &amp; Pump.fun community</li>
+            </ul>
+          </div>
+        </div>
+        <ul class="clean" style="margin-top: 1.5rem;">
+          <li>No legal entity yet · No prior investment · Not currently fundraising</li>
+          <li>Plan: continue full-time — this is a company, not a demo discard</li>
+        </ul>
+      </div>
+      <div class="slide-footer">
+        <span>Builder-first</span>
+        <span>@saurav_twts · @survivedotfun</span>
+      </div>
+    </section>
+
+    <!-- 14: Close -->
+    <section class="slide" data-slide="14">
+      <div class="slide-header">
+        <span class="brand">Close</span>
+        <span class="slide-num">14 / 14</span>
+      </div>
+      <div class="slide-body">
+        <h1>$6B in losses.<br />One missing market.</h1>
+        <p class="tagline" style="margin-top: 1rem;">Survive.fun turns memecoin rug risk into a liquid, on-chain prediction market — for every Pump.fun token, resolved by code.</p>
+        <div class="stat-row" style="margin-top: 2.5rem;">
+          <div class="stat-item">
+            <div class="num">Paste</div>
+            <div class="label">Any Pump.fun mint</div>
+          </div>
+          <div class="stat-item">
+            <div class="num">Bet</div>
+            <div class="label">SURVIVE or RUG</div>
+          </div>
+          <div class="stat-item">
+            <div class="num">Win</div>
+            <div class="label">Automatic payout</div>
+          </div>
+        </div>
+        <p class="quote" style="margin-top: 2rem; font-size: 1.35rem;">Pump.fun lets you buy the coin.<br />Survive.fun lets you bet on whether it survives.</p>
+        <p style="margin-top: 1.5rem; font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; color: var(--accent);">survive.fun</p>
+      </div>
+      <div class="slide-footer">
+        <span>Thank you</span>
+        <span>Demo · GitHub · Devnet program on request</span>
+      </div>
+    </section>
+
+  </div>
+
+  <button class="nav-btn prev" id="prev" aria-label="Previous slide">←</button>
+  <button class="nav-btn next" id="next" aria-label="Next slide">→</button>
+
+  <script>
+    const slides = document.querySelectorAll(".slide");
+    const total = slides.length;
+    let current = 0;
+
+    function show(index) {
+      current = Math.max(0, Math.min(index, total - 1));
+      slides.forEach((s, i) => s.classList.toggle("active", i === current));
+      document.getElementById("progress").style.width =
+        ((current + 1) / total) * 100 + "%";
+      slides.forEach((s, i) => {
+        const num = s.querySelector(".slide-num");
+        if (num) num.textContent = String(i + 1).padStart(2, "0") + " / " + String(total).padStart(2, "0");
+      });
+    }
+
+    document.getElementById("next").addEventListener("click", () => show(current + 1));
+    document.getElementById("prev").addEventListener("click", () => show(current - 1));
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") {
+        e.preventDefault();
+        show(current + 1);
+      }
+      if (e.key === "ArrowLeft" || e.key === "PageUp") {
+        e.preventDefault();
+        show(current - 1);
+      }
+      if (e.key === "Home") show(0);
+      if (e.key === "End") show(total - 1);
+    });
+
+    document.getElementById("deck").addEventListener("click", (e) => {
+      if (e.target.closest(".nav-btn")) return;
+      const x = e.clientX;
+      if (x > window.innerWidth * 0.65) show(current + 1);
+      else if (x < window.innerWidth * 0.35) show(current - 1);
+    });
+
+    show(0);
+  </script>
+</body>
+</html>

@@ -1,0 +1,34 @@
+name: Deploy Pitch Deck to Vercel
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@53.4.0
+
+      - name: Deploy to Vercel Production
+        id: deploy
+        working-directory: .pitchdeck-deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+        run: |
+          set -e
+          OUTPUT=$(vercel deploy --prod --yes --token "$VERCEL_TOKEN" --scope "$VERCEL_ORG_ID" 2>&1)
+          echo "$OUTPUT"
+          URL=$(echo "$OUTPUT" | grep -oE 'https://[a-zA-Z0-9.-]+\.vercel\.app' | tail -1)
+          if [ -z "$URL" ]; then
+            echo "Failed to extract deployment URL" >&2
+            exit 1
+          fi
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "PRODUCTION_URL=$URL"
+
+      - name: Print production URL
+        run: echo "Production URL is ${{ steps.deploy.outputs.url }}"
